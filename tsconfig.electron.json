@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-electron",
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "rootDir": "electron",
+    "target": "ES2022",
+    "moduleResolution": "node",
+    "allowJs": false
+  },
+  "include": [
+    "electron/**/*"
+  ]
+}

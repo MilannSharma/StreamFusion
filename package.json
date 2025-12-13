@@ -1,0 +1,75 @@
+{
+  "name": "stremfusion",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Streamfusion - Android Device Mirroring",
+  "author": "Stremfusion",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "preview": "vite preview",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "electron:dev": "npm run build:electron && npx electron .",
+    "start": "electron .",
+    "pack": "npm run build && electron-builder --win --publish never",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "main": "dist-electron/main.js",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "ci": "^2.3.0",
+    "path": "^0.12.7",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "url": "^0.11.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.0",
+      "electron": "^39.2.6",
+    "electron-builder": "^25.1.8",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.stremfusion.app",
+    "productName": "Streamfusion",
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist-app"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "tools",
+        "to": "tools",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Streamfusion"
+    }
+  }
+}
