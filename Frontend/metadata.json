@@ -1,0 +1,5 @@
+{
+  "name": "Stremfusion",
+  "description": "A desktop application for controlling streaming setups with Android/iOS mirroring and OBS integration.",
+  "requestFramePermissions": []
+}

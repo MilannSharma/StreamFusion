@@ -1,0 +1,1322 @@
+STREMFUSION v2.0    |  Product & Engineering Documentation
+
+
+
+
+
+
+
+
+
+STREMFUSION
+
+Version 2.0
+
+  
+
+
+
+Complete Product & Engineering Documentation
+
+PRD  •  SRD  •  Requirements  •  Architecture  •  Execution Plan
+
+
+
+
+
+
+
+Product
+
+StremFusion Desktop App v2.0
+
+Author
+
+Milan Sharma
+
+Build Tool
+
+Antigravity (AI-powered .exe builder)
+
+Date
+
+March 2026
+
+License
+
+MIT — Give credit to respective developers
+
+
+
+
+SECTION 1 — PRODUCT REQUIREMENTS DOCUMENT (PRD)
+
+1.1  Executive Summary
+
+StremFusion v2.0 is a next-generation Windows desktop application that enables seamless Android device mirroring, wireless auto-connection, real-time file drag-and-drop, and full device control — all without requiring any permanent app installation on the phone. It is built on top of open-source technology (scrcpy, ADB) and packaged as a standalone .exe using Antigravity.
+
+The primary upgrade from v1.0 is the elimination of the USB-first requirement: users will be able to pair and connect their Android device entirely over Wi-Fi using Android 11+ Wireless Debugging, with the desktop app handling discovery, pairing, and connection automatically.
+
+1.2  Problem Statement
+
+Existing solutions like Microsoft Phone Link work only on specific OEMs (Samsung, select Android devices), require Microsoft account sign-in, and offer limited file transfer control. scrcpy is powerful but requires manual terminal commands. No existing open-source desktop app provides:
+
+Auto Wi-Fi pairing without USB (for Android 11+)
+
+Native drag-and-drop file transfer from the mirrored screen
+
+A polished, modern desktop UI
+
+A fully portable, no-install .exe for Windows
+
+
+
+1.3  Goals & Non-Goals
+
+Goals
+
+Auto-discover Android devices on the same Wi-Fi network
+
+One-time wireless pairing via QR code or pairing code (ADB mDNS + Android 11+ Wireless Debugging)
+
+Persistent device trust so future connections require zero user action
+
+Real-time HD screen mirroring with low latency (target < 70ms on LAN)
+
+Drag file from phone mirrored screen to PC → auto ADB pull
+
+Drag file from PC to mirrored screen → auto ADB push
+
+Clipboard sync (copy on phone → paste on PC, vice versa)
+
+Phone file explorer panel inside the desktop app
+
+USB connection still supported as fallback
+
+Single portable .exe output — no installation required
+
+Non-Goals
+
+iOS support (v2.0 scope)
+
+Cloud sync or internet-based remote streaming
+
+Audio streaming (planned for v2.1)
+
+Mobile companion app (desktop-only product)
+
+
+
+1.4  Target Users
+
+User Type
+
+Use Case
+
+Key Need
+
+Developers / Testers
+
+Test Android apps on big screen
+
+Low latency, USB + WiFi support
+
+Content Creators
+
+Record phone screen for tutorials
+
+HD quality, OBS integration
+
+Power Users
+
+File transfer + remote control
+
+Drag-drop, clipboard, file explorer
+
+General Users
+
+View phone on larger screen
+
+Simple UI, auto-connect, no setup
+
+
+
+1.5  Success Metrics
+
+Metric
+
+v1.0 Baseline
+
+v2.0 Target
+
+Connection time (USB)
+
+~8 sec
+
+< 5 sec
+
+Wi-Fi auto-connect (after pairing)
+
+Not available
+
+< 10 sec
+
+Mirroring latency (LAN)
+
+~70ms
+
+< 50ms
+
+File drag-drop support
+
+Not available
+
+Yes (both ways)
+
+Exe size
+
+102 MB
+
+< 120 MB
+
+Crash rate
+
+Unknown
+
+< 0.5%
+
+
+
+1.6  Feature Requirements
+
+F1 — Wireless Auto-Connection (Core New Feature)
+
+App scans local network for Android devices with Wireless Debugging enabled via ADB mDNS
+
+Displays discovered devices with IP, model name, and pairing status
+
+First-time pairing: user enables Wireless Debugging on phone and enters 6-digit code shown in app (or scans QR)
+
+App calls adb pair [IP]:[PORT] automatically
+
+Device saved to trusted list; all future connections are fully automatic
+
+USB connection still works as fallback and is auto-detected
+
+F2 — HD Screen Mirroring
+
+Mirror phone screen in real-time using scrcpy 3.3.3+ engine
+
+Resolution up to 1920x1080, configurable
+
+Bitrate: 4Mbps default, user-configurable up to 16Mbps
+
+Frame rate: up to 60fps
+
+Mouse + keyboard input forwarded to phone
+
+Mirroring window: resizable, always-on-top option, fullscreen option
+
+F3 — Drag & Drop File Transfer
+
+User can drag any file from PC onto mirrored screen → file pushed to phone via ADB push
+
+User can drag files shown in the Phone File Explorer panel to PC desktop → ADB pull
+
+Transfer progress bar displayed in app
+
+Support: images, videos, documents, APKs, any file type
+
+Default phone destination: /sdcard/StremFusion/
+
+Default PC destination: configurable in Settings (default: ~/Downloads/StremFusion/)
+
+F4 — Phone File Explorer
+
+Panel inside app showing phone's file system via ADB shell ls
+
+Browse folders, view files, select for download
+
+Right-click context menu: Pull to PC, Delete, Rename
+
+Thumbnail preview for images (via ADB pull to temp cache)
+
+F5 — Clipboard Sync
+
+Copy text on PC → auto-paste available on phone via ADB
+
+Copy text on phone → available in PC clipboard
+
+Toggle on/off in Settings
+
+F6 — Status Dashboard
+
+Real-time status: ADB state, Device connected/disconnected, USB Debugging status
+
+Live terminal log with timestamps
+
+Network quality indicator (latency display)
+
+F7 — Settings Panel
+
+Video: bitrate, resolution, max FPS
+
+Connection: prefer USB / prefer WiFi / auto
+
+File Transfer: default paths for push/pull
+
+Startup: launch on boot, minimize to tray
+
+OBS integration: auto-configure scene
+
+
+
+
+
+
+SECTION 2 — SYSTEM REQUIREMENTS DOCUMENT (SRD)
+
+2.1  System Architecture Overview
+
+StremFusion v2.0 follows a layered architecture consisting of three main layers: the Frontend UI layer (React + Electron renderer), the Electron Main Process layer (Node.js backend, IPC bridge, ADB orchestration), and the Native Engine layer (scrcpy binary, ADB platform tools, bundled within the app).
+
+
+
+Layer
+
+Technology
+
+Responsibility
+
+UI / Frontend
+
+React 19, Vite, Tailwind CSS, TypeScript
+
+All user-facing screens, drag-drop UI, status panels
+
+Desktop Shell
+
+Electron 39+, Node.js
+
+Window management, IPC, system tray, OS integration
+
+ADB Controller
+
+Node.js child_process, adb-kit or raw ADB binary
+
+Device detection, pairing, push/pull, shell commands
+
+Mirror Engine
+
+scrcpy 3.3.3 binary (bundled)
+
+Video capture, stream, input control
+
+mDNS Scanner
+
+Node.js mdns or bonjour library
+
+Auto-discover Android devices on LAN
+
+File Transfer Engine
+
+ADB push/pull via Node subprocess
+
+Bidirectional file transfer with progress tracking
+
+Clipboard Bridge
+
+Electron clipboard API + ADB shell
+
+Two-way clipboard sync between PC and phone
+
+
+
+2.2  Component Communication
+
+All communication between the React frontend and Electron main process uses Electron IPC (ipcMain / ipcRenderer) via a secure contextBridge. The main process controls all ADB and scrcpy subprocess calls. The renderer never spawns processes directly.
+
+IPC Channel
+
+Direction
+
+Purpose
+
+adb:scan-devices
+
+Renderer → Main
+
+Trigger device scan
+
+adb:device-list
+
+Main → Renderer
+
+Push discovered device list
+
+adb:pair
+
+Renderer → Main
+
+Initiate wireless pairing
+
+adb:connect
+
+Renderer → Main
+
+Connect to trusted device
+
+stream:start
+
+Renderer → Main
+
+Launch scrcpy subprocess
+
+stream:stop
+
+Renderer → Main
+
+Kill scrcpy process
+
+file:push
+
+Renderer → Main
+
+Push file to phone
+
+file:pull
+
+Renderer → Main
+
+Pull file from phone
+
+file:ls
+
+Renderer → Main
+
+List phone directory
+
+clipboard:sync
+
+Bidirectional
+
+Sync clipboard content
+
+log:entry
+
+Main → Renderer
+
+Push log lines to terminal panel
+
+
+
+2.3  Wi-Fi Auto-Connection Flow
+
+The wireless connection flow is the most critical new system in v2.0. It relies on Android 11+ Wireless Debugging (ADB mDNS) and eliminates the need for a USB cable after the initial one-time pairing.
+
+App starts → begins mDNS scan for _adb-tls-pairing._tcp and _adb-tls-connect._tcp services on LAN
+
+Discovered devices shown in UI with IP address and Android model name
+
+User taps 'Pair New Device' → app shows 6-digit pairing code
+
+User enables Wireless Debugging on phone → taps 'Pair with pairing code' → enters code
+
+App calls: adb pair [IP]:[PORT] [CODE] → pairing succeeds
+
+Device fingerprint saved to trusted-devices.json in app data directory
+
+App calls: adb connect [IP]:5555 → device becomes available
+
+scrcpy launched against the Wi-Fi connected device
+
+On next launch → mDNS finds same device → auto-connects in < 10 seconds → no user action needed
+
+
+
+2.4  Drag & Drop File Transfer — System Design
+
+Drag-and-drop from PC to phone:
+
+User drags file from PC filesystem onto the scrcpy mirroring window
+
+Electron intercepts dragover and drop events on the window
+
+File path extracted from the drop event
+
+IPC call: file:push with { localPath, devicePath: '/sdcard/StremFusion/' }
+
+Main process executes: adb push [localPath] [devicePath]
+
+Progress streamed via stdout parsing, shown in UI as a progress bar
+
+Completion notification shown in app
+
+
+
+Drag-and-drop from phone to PC:
+
+User selects file in the Phone File Explorer panel
+
+User drags it to any PC folder (via Electron's native drag-out API)
+
+IPC call: file:pull with { devicePath, localDestination }
+
+Main process executes: adb pull [devicePath] [localDestination]
+
+Progress tracked and displayed, file lands in destination folder
+
+
+
+2.5  Hardware & Software Requirements
+
+PC Requirements
+
+Component
+
+Minimum
+
+Recommended
+
+OS
+
+Windows 10 64-bit
+
+Windows 11 64-bit
+
+CPU
+
+Intel i3 / Ryzen 3
+
+Intel i5 / Ryzen 5+
+
+RAM
+
+4 GB
+
+8 GB+
+
+Storage
+
+500 MB free
+
+1 GB+ free
+
+Network
+
+Wi-Fi 802.11n (2.4GHz)
+
+Wi-Fi 802.11ac (5GHz)
+
+USB (fallback)
+
+USB 2.0
+
+USB 3.0+
+
+
+
+Android Requirements
+
+Requirement
+
+For USB Mode
+
+For Wi-Fi Auto Mode
+
+Android Version
+
+5.0 (API 21)+
+
+11.0 (API 30)+
+
+USB Debugging
+
+Required
+
+Not needed
+
+Wireless Debugging
+
+Not needed
+
+Required
+
+Same Wi-Fi network
+
+Not needed
+
+Required
+
+Permanent app install
+
+Not required
+
+Not required
+
+
+
+
+
+
+SECTION 3 — DETAILED REQUIREMENTS
+
+3.1  Functional Requirements
+
+ID
+
+Requirement
+
+Priority
+
+Category
+
+FR-01
+
+App auto-discovers Android 11+ devices on same LAN via ADB mDNS
+
+P0
+
+Connectivity
+
+FR-02
+
+First-time wireless pairing via 6-digit code — no USB required
+
+P0
+
+Connectivity
+
+FR-03
+
+Trusted devices persist across app restarts; auto-connect on launch
+
+P0
+
+Connectivity
+
+FR-04
+
+USB connection supported as fallback with auto-detection
+
+P0
+
+Connectivity
+
+FR-05
+
+Real-time screen mirroring via scrcpy engine
+
+P0
+
+Mirroring
+
+FR-06
+
+Mouse and keyboard input forwarded to device
+
+P0
+
+Mirroring
+
+FR-07
+
+Drag file from PC to mirrored window → push to phone via ADB
+
+P0
+
+File Transfer
+
+FR-08
+
+Drag file from Phone File Explorer to PC → pull via ADB
+
+P0
+
+File Transfer
+
+FR-09
+
+Phone File Explorer panel — browse, rename, delete files via ADB shell
+
+P1
+
+File Explorer
+
+FR-10
+
+Bidirectional clipboard sync between PC and phone
+
+P1
+
+Clipboard
+
+FR-11
+
+File transfer progress bar with speed indicator
+
+P1
+
+File Transfer
+
+FR-12
+
+Settings panel: video quality, default paths, connection mode
+
+P1
+
+Settings
+
+FR-13
+
+Live terminal/log panel with timestamps and log levels
+
+P1
+
+Monitoring
+
+FR-14
+
+System tray integration with quick-connect menu
+
+P2
+
+UX
+
+FR-15
+
+OBS auto-configure scene for phone mirroring
+
+P2
+
+Integration
+
+FR-16
+
+Screenshot capture from mirrored device
+
+P2
+
+Mirroring
+
+
+
+3.2  Non-Functional Requirements
+
+ID
+
+Category
+
+Requirement
+
+NFR-01
+
+Performance — Latency
+
+Mirroring latency < 70ms on USB, < 100ms on Wi-Fi (LAN)
+
+NFR-02
+
+Performance — Startup
+
+App fully loaded and device scan started within 3 seconds of launch
+
+NFR-03
+
+Performance — File Transfer
+
+File push/pull speed >= 10 MB/s on USB 3.0, >= 3 MB/s on Wi-Fi
+
+NFR-04
+
+Reliability
+
+Crash rate < 0.5%; auto-reconnect after network drop within 15 seconds
+
+NFR-05
+
+Usability
+
+New user connects phone and starts mirroring within 2 minutes, no tutorial needed
+
+NFR-06
+
+Security
+
+All processing local; no network calls outside LAN; no telemetry without consent
+
+NFR-07
+
+Portability
+
+Single .exe, < 120 MB, runs without installation on Windows 10/11
+
+NFR-08
+
+Compatibility
+
+Works with Android 5.0+ via USB; Android 11+ via Wi-Fi auto-mode
+
+NFR-09
+
+Accessibility
+
+High-contrast UI mode, keyboard-navigable UI, readable font sizes (min 12pt)
+
+
+
+3.3  UI/UX Requirements
+
+Dark theme default (matching v1.0 branding) with light theme option
+
+Main window: sidebar for device list, top status bar, central mirroring viewport, right panel for file explorer
+
+Mirroring window: floating, resizable, maintains phone aspect ratio, always-on-top toggle
+
+Drag targets clearly indicated with visual highlighting on hover
+
+All status indicators use colored dot indicators (green/yellow/red) — same as v1.0
+
+Onboarding flow: first-launch wizard walks user through pairing in 3 steps
+
+Responsive layout: works on screen resolutions from 1366x768 upward
+
+
+
+
+
+
+SECTION 4 — TECHNICAL ARCHITECTURE
+
+4.1  Full System Architecture
+
+The architecture follows the Electron main/renderer process split with a controlled IPC bridge. All privileged operations (ADB, subprocess management, file system access) happen in the main process. The renderer (React UI) is fully sandboxed.
+
+
+
+  ARCHITECTURE OVERVIEW
+
+  ┌─────────────────────────────────────────────────────┐
+
+  │            ELECTRON DESKTOP SHELL                   │
+
+  │  ┌────────────┐    IPC    ┌────────────────────────┐ │
+
+  │  │ React UI   │◄──────►│  Main Process          │ │
+
+  │  │ Vite+TS   │        │  ADB Controller        │ │
+
+  │  │ Tailwind  │        │  mDNS Scanner          │ │
+
+  │  │           │        │  File Transfer Mgr     │ │
+
+  │  │           │        │  Clipboard Bridge      │ │
+
+  │  │           │        │  Device Trust Store    │ │
+
+  │  └────────────┘        └──────────┬─────────────┘ │
+
+  │                                   │               │
+
+  │                    ┌──────────────┴────────────┐  │
+
+  │                    │  NATIVE ENGINES (bundled) │  │
+
+  │                    │  scrcpy.exe               │  │
+
+  │                    │  adb.exe + AdbWinApi.dll  │  │
+
+  │                    └───────────────────────────┘  │
+
+  └─────────────────────────────────────────────────────┘
+
+
+
+4.2  Technology Stack
+
+Component
+
+Technology / Version
+
+Rationale
+
+Desktop Shell
+
+Electron 39+
+
+Cross-platform, Node.js native access, IPC, tray, drag events
+
+UI Framework
+
+React 19 + TypeScript
+
+Component model, type safety, existing v1.0 codebase
+
+Build Tool
+
+Vite 6
+
+Fast HMR in dev, optimized prod bundle
+
+Styling
+
+Tailwind CSS
+
+Utility-first, consistent design, existing v1.0 patterns
+
+Mirror Engine
+
+scrcpy 3.3.3
+
+Best-in-class open-source Android mirroring, actively maintained
+
+ADB Control
+
+ADB Platform Tools (bundled)
+
+Official Android Debug Bridge, handles all device communication
+
+Device Discovery
+
+mdns-js or bonjour (npm)
+
+Pure Node.js mDNS — no system dependencies
+
+Trust Storage
+
+electron-store (JSON)
+
+Lightweight persistent key-value store with encryption option
+
+State Management
+
+Zustand
+
+Simple, performant, minimal boilerplate vs Redux
+
+Packaging
+
+Antigravity + electron-builder
+
+AI-powered build + portable .exe generation
+
+
+
+4.3  File Structure
+
+The project structure for v2.0 extends the v1.0 base with new modules:
+
+stremfusion/
+  ├── electron/                 # Main process
+  │   ├── main.ts               # App entry point
+  │   ├── adb/
+  │   │   ├── AdbController.ts  # Device management
+  │   │   ├── DeviceScanner.ts  # mDNS + USB detection
+  │   │   ├── PairingManager.ts # Wi-Fi pairing logic
+  │   │   └── TrustStore.ts     # Trusted device storage
+  │   ├── transfer/
+  │   │   ├── FileTransfer.ts   # Push/pull logic
+  │   │   └── FileExplorer.ts   # ADB shell file listing
+  │   ├── mirror/
+  │   │   └── ScrcpyManager.ts  # Launch/stop scrcpy
+  │   ├── clipboard/
+  │   │   └── ClipboardBridge.ts# Bidirectional sync
+  │   └── ipc/
+  │       └── handlers.ts       # All IPC channel handlers
+  ├── src/                      # React frontend
+  │   ├── components/
+  │   │   ├── DevicePanel/      # Device list + status
+  │   │   ├── MirrorView/       # Mirror window + drag zone
+  │   │   ├── FileExplorer/     # Phone file browser
+  │   │   ├── TransferProgress/ # Upload/download bars
+  │   │   ├── PairingWizard/    # Onboarding flow
+  │   │   ├── StatusBar/        # Top status indicators
+  │   │   ├── Terminal/         # Log output panel
+  │   │   └── Settings/         # Settings panel
+  │   ├── store/                # Zustand state
+  │   └── App.tsx
+  ├── resources/               # Bundled binaries
+  │   ├── scrcpy/              # scrcpy.exe + deps
+  │   └── adb/                 # adb.exe + AdbWinApi.dll
+  ├── package.json
+  └── electron-builder.json    # Build config
+
+
+
+4.4  Security Architecture
+
+contextIsolation: true — renderer process cannot access Node.js APIs directly
+
+nodeIntegration: false — all Node.js calls go through contextBridge
+
+ADB auth: devices must explicitly authorize the PC (Android security layer)
+
+Trusted device list stored in encrypted electron-store with machine-specific key
+
+No internet connections; all file transfers are local LAN only
+
+Firewall note: port 5555 (ADB TCP) and dynamic mDNS ports must be allowed on local network
+
+
+
+
+
+
+SECTION 5 — EXECUTION PLAN
+
+5.1  Development Phases
+
+The development is structured in 4 sprints, each 2 weeks long. Total estimated duration: 8 weeks to working .exe.
+
+
+
+Sprint
+
+Name
+
+Deliverables
+
+Duration
+
+Sprint 1
+
+Foundation
+
+Project setup, Electron scaffold, ADB bundling, USB device detection, basic UI shell
+
+2 Weeks
+
+Sprint 2
+
+Wi-Fi Core
+
+mDNS scanner, wireless pairing wizard, trust store, auto-connect on launch, scrcpy Wi-Fi launch
+
+2 Weeks
+
+Sprint 3
+
+Features
+
+Drag-drop file transfer (both directions), Phone File Explorer, clipboard sync, transfer progress UI
+
+2 Weeks
+
+Sprint 4
+
+Polish + Build
+
+Settings panel, system tray, OBS integration, onboarding flow, Antigravity .exe build, testing
+
+2 Weeks
+
+
+
+5.2  Sprint 1 — Foundation (Weeks 1–2)
+
+Tasks
+
+Clone and restructure v1.0 codebase to v2.0 architecture
+
+Configure Electron 39 with contextBridge and IPC skeleton
+
+Bundle scrcpy 3.3.3 and ADB platform tools into /resources/
+
+Implement USB device detection: poll adb devices every 2 seconds
+
+Build basic React UI: status bar, device panel, terminal log
+
+Implement stream:start / stream:stop via scrcpy subprocess
+
+Verify mirroring works over USB — baseline working
+
+Set up Vite + TypeScript build pipeline
+
+Deliverable
+
+Working app that mirrors Android via USB — identical to v1.0 but on the new architecture.
+
+
+
+5.3  Sprint 2 — Wi-Fi Core (Weeks 3–4)
+
+Tasks
+
+Implement mDNS scanner using mdns-js: discover _adb-tls-pairing._tcp services
+
+Build PairingWizard component: shows pairing code, scans for device, calls adb pair
+
+Implement TrustStore: save paired device IPs and fingerprints to electron-store
+
+Implement auto-connect on launch: if trusted device found on mDNS → adb connect automatically
+
+Add connection mode selector: Auto / USB / Wi-Fi preferred
+
+Handle Android < 11 fallback: show USB-only instructions
+
+Test pairing reliability across different Android OEMs and versions
+
+Deliverable
+
+User can pair phone over Wi-Fi once, and all future launches auto-connect without any user action.
+
+
+
+5.4  Sprint 3 — Features (Weeks 5–6)
+
+Tasks
+
+Implement drag-drop PC → Phone: intercept Electron drop events on mirror window → adb push
+
+Implement drag-drop Phone → PC: drag from File Explorer panel → adb pull via Electron's startDrag API
+
+Build FileExplorer component: adb shell ls, display tree, right-click context menu
+
+Implement progress tracking: parse adb push/pull stdout for byte counts → progress bar
+
+Implement clipboard bridge: polling PC clipboard → adb shell am broadcast; phone clipboard via adb
+
+Add transfer notifications: desktop notification on completion/failure
+
+Add network quality indicator in status bar (ADB round-trip latency)
+
+Deliverable
+
+Full drag-drop and file management working. App is feature-complete.
+
+
+
+5.5  Sprint 4 — Polish & Build (Weeks 7–8)
+
+Tasks
+
+Build Settings panel: video bitrate/resolution, file paths, connection mode, startup options
+
+Add system tray: minimize to tray, quick-connect from tray menu
+
+Implement onboarding wizard for first-launch (3 steps: enable wireless debug, scan, pair)
+
+OBS auto-configure: create scrcpy window capture source in OBS via OBS WebSocket
+
+Screenshot feature: adb exec-out screencap -p → save PNG to PC
+
+Full testing: USB + Wi-Fi on Android 11, 12, 13, 14, 15
+
+Build with electron-builder for Windows x64 portable .exe
+
+Package with Antigravity → final .exe output
+
+Write INSTALL.md, TROUBLESHOOTING.md updates
+
+Deliverable
+
+Signed, portable StremFusion-v2.0.exe — single file, no installation required, < 120 MB.
+
+
+
+5.6  Risk Register
+
+Risk
+
+Probability
+
+Impact
+
+Mitigation
+
+Android OEM blocks mDNS discovery
+
+Medium
+
+High
+
+Fallback: manual IP entry + USB pairing flow
+
+scrcpy Wi-Fi latency too high
+
+Low
+
+Medium
+
+Tune bitrate/fps; offer USB fallback
+
+Windows Firewall blocks ADB port 5555
+
+Medium
+
+High
+
+Auto-add firewall rule at first run with admin prompt
+
+ADB trust expires after reboot
+
+Low
+
+Medium
+
+TrustStore reconnects via adb connect; if expired, pairing wizard relaunches
+
+Antigravity .exe size bloat
+
+Low
+
+Low
+
+Audit electron-builder config; exclude dev deps
+
+
+
+
+
+
+SECTION 6 — BUILD, PACKAGING & DEPLOYMENT
+
+6.1  Development Environment Setup
+
+Install Node.js 20 LTS
+
+Clone repository: git clone https://github.com/MilannSharma/stremfusion.git
+
+Run: npm install
+
+Download scrcpy 3.3.3 release for Windows → extract to /resources/scrcpy/
+
+Download ADB Platform Tools for Windows → extract to /resources/adb/
+
+Run dev mode: npm run electron:dev
+
+
+
+6.2  Antigravity Build Process
+
+Antigravity is the AI-powered build tool used to package this app as a standalone Windows .exe. The following steps are performed by Antigravity:
+
+Reads electron-builder.json configuration
+
+Runs Vite production build: npm run build
+
+Compiles Electron main process TypeScript
+
+Bundles /resources/ (scrcpy + adb binaries) into the package
+
+Generates portable Windows x64 .exe (no installation required)
+
+Optionally signs the .exe with a code signing certificate
+
+Outputs: StremFusion-v2.0-Setup.exe (installer) and StremFusion-v2.0-Portable.exe
+
+
+
+6.3  electron-builder Configuration
+
+{
+  "appId": "com.milansharma.stremfusion",
+  "productName": "StremFusion",
+  "files": ["dist/**", "resources/**"],
+  "extraResources": [
+    { "from": "resources/scrcpy", "to": "scrcpy" },
+    { "from": "resources/adb", "to": "adb" }
+  ],
+  "win": {
+    "target": ["nsis", "portable"],
+    "icon": "assets/icon.ico"
+  },
+  "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
+  "portable": { "artifactName": "StremFusion-v2.0-Portable.exe" }
+}
+
+
+
+6.4  Release Checklist
+
+All Sprint 4 tasks marked complete
+
+App tested on Windows 10 and Windows 11
+
+Tested with Android 11, 12, 13, 14
+
+Wi-Fi auto-connect tested on multiple OEMs (Samsung, Xiaomi, OnePlus, Stock Android)
+
+Drag-drop tested with: images, videos, documents, APKs
+
+Clipboard sync tested: English + Unicode text
+
+File Explorer: browse, pull, delete — all verified
+
+Exe size confirmed < 120 MB
+
+No antivirus false positives (test with Windows Defender)
+
+GitHub Release created with installer + portable .exe
+
+README.md updated to reflect v2.0 features
+
+
+
+
+
+6.5  Credits & Acknowledgements
+
+StremFusion v2.0 is built on the following open-source projects. Credit must be given to all respective developers as per their licenses:
+
+Project
+
+License
+
+Credit
+
+scrcpy
+
+Apache 2.0
+
+Genymobile / scrcpy contributors — github.com/Genymobile/scrcpy
+
+Electron
+
+MIT
+
+OpenJS Foundation — electronjs.org
+
+React
+
+MIT
+
+Meta Open Source — react.dev
+
+ADB Tools
+
+Apache 2.0
+
+Google / Android Open Source Project
+
+Vite
+
+MIT
+
+Evan You and Vite contributors — vitejs.dev
+
+Tailwind CSS
+
+MIT
+
+Tailwind Labs — tailwindcss.com
+
+electron-store
+
+MIT
+
+Sindre Sorhus — github.com/sindresorhus/electron-store
+
+Zustand
+
+MIT
+
+pmndrs — github.com/pmndrs/zustand
+
+
+
+— End of Document —
+
+StremFusion v2.0  |  Milan Sharma  |  MIT License  |  March 2026
+
+	Milan Sharma  |  MIT License	Page

@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+electron-dist/
+release/
+*.exe
+*.zip
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary files
+tmp/
+Frontend/tsc_back.log
+Frontend/tsc_back_utf8.log
+Frontend/tsc_errors.txt
+Frontend/tsc_front.log
+Frontend/tsc_front_utf8.log
+Frontend/tsc_output.txt

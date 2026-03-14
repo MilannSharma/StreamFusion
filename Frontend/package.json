@@ -1,0 +1,40 @@
+{
+  "name": "stremfusion",
+  "private": true,
+  "version": "1.2.0",
+  "type": "module",
+  "main": "electron-dist/electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "tsc --noEmit",
+    "preview": "vite preview",
+    "electron:compile": "tsc -p tsconfig.electron.json",
+    "electron:dev": "concurrently -k \"vite --port 5173\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "portable": "vite build && tsc -p tsconfig.electron.json && electron-builder --win portable"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "electron-store": "^11.0.2",
+    "mdns-js": "^1.0.3",
+    "obs-websocket-js": "^5.0.7",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.27",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^39.2.6",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "wait-on": "^8.0.3"
+  }
+}
