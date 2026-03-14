@@ -4,16 +4,27 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+adb_out.txt
+adb_err.txt
 
 # Node modules
 node_modules/
-
-# Build outputs
+.vite/
 dist/
+dist-ssr/
 electron-dist/
 release/
-*.exe
-*.zip
+build/
+bin/
+obj/
+*.local
+
+# Temporary archives and test apps
+scrcpy-win64-v5.0.1.zip
+scrcpy-win64-v5.0.1/
+.dotnet/
+.testapp/
 
 # Environment variables
 .env
