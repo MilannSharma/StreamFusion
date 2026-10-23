@@ -13,25 +13,21 @@
     "start": "electron .",
     "build": "vite build",
     "build:exe": "vite build && electron-builder --win",
-    "build:portable": "vite build && electron-builder --win portable",
     "preview": "vite preview"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "lucide-react": "^0.475.0",
-    "open": "^10.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "ws": "^8.18.0"
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "@types/ws": "^8.5.14",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "electron": "^34.2.0",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   },
@@ -50,17 +46,18 @@
       "public/**/*",
       "StreamFusion.ico",
       "StreamFusion.png",
-      "package.json"
+      "package.json",
+      "!**/*.map",
+      "!node_modules/**/{test,tests,docs,*.md}"
     ],
     "extraResources": [
       {
         "from": "scrcpy-bin",
         "to": "scrcpy-bin"
-      },
-      {
-        "from": "saved_devices.json",
-        "to": "saved_devices.json"
       }
+    ],
+    "electronLanguages": [
+      "en"
     ],
     "win": {
       "icon": "StreamFusion.ico",
@@ -70,21 +67,17 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "dir",
-          "arch": [
-            "x64"
-          ]
         }
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "StreamFusion v2.0.0"
+      "shortcutName": "StreamFusion v2.0.0",
+      "runAfterFinish": true
     }
   }
 }

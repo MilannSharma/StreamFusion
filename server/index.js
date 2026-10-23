@@ -11,13 +11,21 @@ const rootDir = path.resolve(__dirname, '..');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Locate scrcpy-bin (works in dev and packaged Electron app)
+// Security: reject external network / LAN connections
+app.use((req, res, next) => {
+  const host = req.headers.host || '';
+  if (!host.startsWith('127.0.0.1') && !host.startsWith('localhost')) {
+    return res.status(403).json({ error: 'Local connections only' });
+  }
+  next();
+});
+
+// Locate scrcpy-bin (supports dev, env vars, and packaged Electron app)
 const candidateDirs = [
+  process.env.SF_RESOURCES ? path.join(process.env.SF_RESOURCES, 'scrcpy-bin') : null,
   process.resourcesPath ? path.join(process.resourcesPath, 'scrcpy-bin') : null,
   path.join(rootDir, 'scrcpy-bin'),
-  path.join(rootDir, 'scrcpy-win64-v5.0.1', 'scrcpy-win64-v5.0.1'),
   path.join(rootDir, 'build', 'StreamFusion-Standalone-v1.0.0', 'scrcpy-bin')
 ].filter(Boolean);
 
@@ -35,6 +43,17 @@ for (const dir of candidateDirs) {
 }
 
 console.log(`[StreamFusion Server] scrcpy binaries located at: ${scrcpyBin}`);
+
+// Instant health check (no adb spawn, instant response for Electron readiness)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    version: '2.0.0',
+    adb: fs.existsSync(adbExe),
+    scrcpy: fs.existsSync(scrcpyExe),
+    binDir: scrcpyBin
+  });
+});
 
 // Recordings directory
 const homeDir = os.homedir();
@@ -54,10 +73,13 @@ let activeDevice = null;
 let isRecording = false;
 let activeRecordingFile = null;
 
-// Persistent Wi-Fi Devices Storage
-const savedDevicesFile = process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'saved_devices.json'))
-  ? path.join(process.resourcesPath, 'saved_devices.json')
-  : path.join(rootDir, 'saved_devices.json');
+// Persistent Wi-Fi Devices Storage in userData
+const dataDir = process.env.SF_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'StreamFusion') : rootDir);
+if (!fs.existsSync(dataDir)) {
+  try { fs.mkdirSync(dataDir, { recursive: true }); } catch (e) {}
+}
+const savedDevicesFile = path.join(dataDir, 'saved_devices.json');
+
 function getSavedDevices() {
   try {
     if (fs.existsSync(savedDevicesFile)) {
@@ -612,23 +634,31 @@ app.get('/api/recordings/list', handleGetRecordings);
 app.use('/recordings-media', express.static(defaultRecordDir));
 app.use('/screenshot-media', express.static(defaultScreenshotDir));
 
+function isSafeMediaPath(targetPath) {
+  if (!targetPath || typeof targetPath !== 'string') return false;
+  const resolved = path.resolve(targetPath);
+  const safeRecord = path.resolve(defaultRecordDir);
+  const safeScreen = path.resolve(defaultScreenshotDir);
+  return resolved.startsWith(safeRecord) || resolved.startsWith(safeScreen);
+}
+
 app.post('/api/recordings/play', (req, res) => {
   const { filePath } = req.body;
-  if (filePath && fs.existsSync(filePath)) {
-    exec(`start "" "${filePath}"`, { shell: 'cmd.exe' }, () => {});
+  if (isSafeMediaPath(filePath) && fs.existsSync(filePath)) {
+    execFile('cmd.exe', ['/c', 'start', '""', filePath], () => {});
     return res.json({ success: true });
   }
-  res.json({ success: false, message: 'File not found' });
+  res.json({ success: false, message: 'Invalid or missing file' });
 });
 
 app.post('/api/recordings/open-folder', (req, res) => {
-  exec(`explorer.exe "${defaultRecordDir}"`, () => {});
+  execFile('explorer.exe', [defaultRecordDir], () => {});
   res.json({ success: true });
 });
 
 app.delete('/api/recordings', (req, res) => {
   const { filePath } = req.body;
-  if (filePath && fs.existsSync(filePath)) {
+  if (isSafeMediaPath(filePath) && fs.existsSync(filePath)) {
     try {
       fs.unlinkSync(filePath);
       return res.json({ success: true });
@@ -636,7 +666,7 @@ app.delete('/api/recordings', (req, res) => {
       return res.json({ success: false, message: e.message });
     }
   }
-  res.json({ success: false, message: 'File not found' });
+  res.json({ success: false, message: 'Invalid or missing file' });
 });
 
 // 12. ADB restart
@@ -665,8 +695,8 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`[StreamFusion Server] Backend API and UI running at http://localhost:${PORT}`);
+const PORT = parseInt(process.env.SF_PORT || '3001', 10);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`[StreamFusion Server] Backend API and UI running at http://127.0.0.1:${PORT}`);
 });
 

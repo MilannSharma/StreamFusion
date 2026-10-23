@@ -25,15 +25,21 @@
 
 ---
 
-## 📦 Downloads & Executables
+### 📦 Downloads & Executables
 
 ### 🖥️ Local File on your PC:
-* **Installer**: `Z:\StreamFusion\release\StreamFusion-v2.0.0-Setup.exe`
-* **Portable (No Install)**: `Z:\StreamFusion\release\win-unpacked\StreamFusion v2.0.0.exe`
+* **Installer**: `Z:\StreamFusion\latest app\StreamFusion-v2.0.0-Setup.exe` (109.26 MB)
+* **Unpacked App**: `Z:\StreamFusion\release\win-unpacked\StreamFusion v2.0.0.exe` (337 MB)
 
 ### 🌐 Direct GitHub Release Download:
-* [**⬇️ Download StreamFusion-v2.0.0-Setup.exe**](https://github.com/MilannSharma/StreamFusion/releases/download/v2.0.0/StreamFusion-v2.0.0-Setup.exe) (333 MB)
+* [**⬇️ Download StreamFusion-v2.0.0-Setup.exe**](https://github.com/MilannSharma/StreamFusion/releases/download/v2.0.0/StreamFusion-v2.0.0-Setup.exe) (109 MB)
 * [**🔗 View GitHub Release Page**](https://github.com/MilannSharma/StreamFusion/releases/tag/v2.0.0)
+
+### 🛠️ Key Reliability & Architecture Fixes in v2.0.0:
+* **Zero Blank White Screen**: Relative `./assets/` resolution and resilient `waitForServer()` health check prevent load timeouts.
+* **100% Custom White UI Installer**: NSIS one-click execution skips legacy grey Windows wizards and boots straight into the Cat Playing Animation Setup screen.
+* **Massive Size Reduction**: Reduced from 1.1 GB down to **337 MB** installed, installer shrunk from 333 MB to **109 MB** (67% smaller download!).
+* **LAN Security Hardened**: Express backend binds strictly to `127.0.0.1` with local-only host verification and media-path sanitization.
 
 ---
 

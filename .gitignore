@@ -18,7 +18,9 @@ latest app/
 scrcpy-win64-v5.0.1.zip
 scrcpy-win64-v5.0.1/
 .dotnet/
+.dotnet.zip
 .testapp/
+saved_devices.json
 
 # Logs and ADB outputs
 *.log

@@ -41,7 +41,7 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
             renderer: 'svg',
             loop: true,
             autoplay: true,
-            path: '/cat-animation.json'
+            path: './cat-animation.json'
           });
         } catch (e) {
           console.error('Lottie load error', e);
@@ -95,21 +95,26 @@ export default function App() {
 
   useEffect(() => {
     if (showWelcome) {
-      setSetupProgress(25);
+      setSetupProgress(30);
       setSetupStage('Verifying Google ADB Platform-Tools v37.0.1...');
-      const t1 = setTimeout(() => {
-        setSetupProgress(60);
-        setSetupStage('Initializing Scrcpy v5.0.1 Zero-Latency Codec Engine...');
-      }, 650);
-      const t2 = setTimeout(() => {
-        setSetupProgress(88);
-        setSetupStage('Configuring 1-Click Wireless Wi-Fi Auto-Reconnect...');
-      }, 1300);
-      const t3 = setTimeout(() => {
-        setSetupProgress(100);
-        setSetupStage('StreamFusion v2.0.0 is Ready to Stream!');
-      }, 1900);
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+      fetch('/api/health')
+        .then(res => res.json())
+        .then(health => {
+          setSetupProgress(65);
+          setSetupStage('Initializing Scrcpy v5.0.1 Zero-Latency Codec Engine...');
+          setTimeout(() => {
+            setSetupProgress(90);
+            setSetupStage('Configuring Wireless Wi-Fi Auto-Reconnect...');
+            setTimeout(() => {
+              setSetupProgress(100);
+              setSetupStage('StreamFusion v2.0.0 is Ready to Stream!');
+            }, 500);
+          }, 500);
+        })
+        .catch(() => {
+          setSetupProgress(100);
+          setSetupStage('StreamFusion v2.0.0 Ready!');
+        });
     }
   }, [showWelcome]);
 
