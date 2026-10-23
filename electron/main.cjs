@@ -73,6 +73,33 @@ function createWindow() {
     if (targetPath) shell.openPath(targetPath);
   });
 
+  ipcMain.handle('create-shortcuts', async () => {
+    try {
+      const os = require('os');
+      const { exec } = require('child_process');
+      const exePath = process.execPath;
+      const desktopPath = path.join(os.homedir(), 'Desktop', 'StreamFusion v2.0.0.lnk');
+      const startMenuDir = path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+      const startMenuPath = path.join(startMenuDir, 'StreamFusion v2.0.0.lnk');
+
+      const psCmd = `
+        $WshShell = New-Object -comObject WScript.Shell;
+        $Shortcut = $WshShell.CreateShortcut("${desktopPath.replace(/\\/g, '\\\\')}");
+        $Shortcut.TargetPath = "${exePath.replace(/\\/g, '\\\\')}";
+        $Shortcut.IconLocation = "${exePath.replace(/\\/g, '\\\\')},0";
+        $Shortcut.Save();
+        $Shortcut2 = $WshShell.CreateShortcut("${startMenuPath.replace(/\\/g, '\\\\')}");
+        $Shortcut2.TargetPath = "${exePath.replace(/\\/g, '\\\\')}";
+        $Shortcut2.IconLocation = "${exePath.replace(/\\/g, '\\\\')},0";
+        $Shortcut2.Save();
+      `;
+      exec(`powershell -NoProfile -Command "${psCmd.replace(/\n/g, ' ')}"`, () => {});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  });
+
   // Load URL with intelligent fallback: Dev (5173) -> Server (3001) -> Prod file
   const tryLoad = () => {
     // 1. Try Vite dev server first

@@ -16,6 +16,7 @@ declare global {
       close: () => void;
       openExternal: (url: string) => void;
       openPath: (path: string) => void;
+      createShortcuts?: () => Promise<boolean>;
     };
     lottie?: any;
   }
@@ -114,6 +115,7 @@ export default function App() {
 
   const dismissWelcome = () => {
     try {
+      window.electronAPI?.createShortcuts?.();
       localStorage.setItem('streamfusion_v2_setup_complete', 'true');
     } catch (e) {}
     setShowWelcome(false);

@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
-  openPath: (path) => ipcRenderer.send('open-path', path)
+  openPath: (path) => ipcRenderer.send('open-path', path),
+  createShortcuts: () => ipcRenderer.invoke('create-shortcuts')
 });
