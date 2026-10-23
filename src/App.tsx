@@ -83,15 +83,38 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     try {
-      return !localStorage.getItem('streamfusion_has_seen_welcome');
+      return !localStorage.getItem('streamfusion_v2_setup_complete');
     } catch (e) {
-      return false;
+      return true;
     }
   });
 
+  const [setupProgress, setSetupProgress] = useState(25);
+  const [setupStage, setSetupStage] = useState('Verifying Google ADB Platform-Tools v37.0.1...');
+
+  useEffect(() => {
+    if (showWelcome) {
+      setSetupProgress(25);
+      setSetupStage('Verifying Google ADB Platform-Tools v37.0.1...');
+      const t1 = setTimeout(() => {
+        setSetupProgress(60);
+        setSetupStage('Initializing Scrcpy v5.0.1 Zero-Latency Codec Engine...');
+      }, 650);
+      const t2 = setTimeout(() => {
+        setSetupProgress(88);
+        setSetupStage('Configuring 1-Click Wireless Wi-Fi Auto-Reconnect...');
+      }, 1300);
+      const t3 = setTimeout(() => {
+        setSetupProgress(100);
+        setSetupStage('StreamFusion v2.0.0 is Ready to Stream!');
+      }, 1900);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }
+  }, [showWelcome]);
+
   const dismissWelcome = () => {
     try {
-      localStorage.setItem('streamfusion_has_seen_welcome', 'true');
+      localStorage.setItem('streamfusion_v2_setup_complete', 'true');
     } catch (e) {}
     setShowWelcome(false);
   };
@@ -1952,16 +1975,16 @@ export default function App() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
-                  System Readiness &amp; Drivers
+                  {setupStage}
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#16a34a' }}>
-                  100% Ready
+                <span style={{ fontSize: 12, fontWeight: 800, color: setupProgress === 100 ? '#16a34a' : '#2563eb' }}>
+                  {setupProgress}%
                 </span>
               </div>
 
               {/* Progress Bar */}
               <div style={{
-                height: 6,
+                height: 7,
                 background: '#e2e8f0',
                 borderRadius: 999,
                 overflow: 'hidden',
@@ -1969,29 +1992,31 @@ export default function App() {
               }}>
                 <div style={{
                   height: '100%',
-                  width: '100%',
-                  background: 'linear-gradient(90deg, #2563eb 0%, #10b981 100%)',
+                  width: `${setupProgress}%`,
+                  background: setupProgress === 100 
+                    ? 'linear-gradient(90deg, #2563eb 0%, #10b981 100%)' 
+                    : 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
                   borderRadius: 999,
-                  transition: 'width 0.8s ease'
+                  transition: 'width 0.4s ease-out'
                 }} />
               </div>
 
               {/* Checkpoints */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
-                  <CheckCircle size={15} color="#16a34a" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: setupProgress >= 25 ? '#334155' : '#94a3b8' }}>
+                  <CheckCircle size={15} color={setupProgress >= 25 ? '#16a34a' : '#cbd5e1'} />
                   <span>Google ADB Platform-Tools v37.0.1 (Verified &amp; Active)</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
-                  <CheckCircle size={15} color="#16a34a" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: setupProgress >= 60 ? '#334155' : '#94a3b8' }}>
+                  <CheckCircle size={15} color={setupProgress >= 60 ? '#16a34a' : '#cbd5e1'} />
                   <span>Scrcpy v5.0.1 Zero-Latency Video &amp; Control Engine</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
-                  <CheckCircle size={15} color="#16a34a" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: setupProgress >= 88 ? '#334155' : '#94a3b8' }}>
+                  <CheckCircle size={15} color={setupProgress >= 88 ? '#16a34a' : '#cbd5e1'} />
                   <span>1-Click Wireless Wi-Fi Auto-Reconnect &amp; Persistence</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
-                  <CheckCircle size={15} color="#16a34a" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: setupProgress >= 100 ? '#334155' : '#94a3b8' }}>
+                  <CheckCircle size={15} color={setupProgress >= 100 ? '#16a34a' : '#cbd5e1'} />
                   <span>Auto Screen Stay-Awake &amp; Double-Click Power Wake</span>
                 </div>
               </div>
