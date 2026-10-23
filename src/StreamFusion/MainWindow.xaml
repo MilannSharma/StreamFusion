@@ -1,0 +1,1073 @@
+<Window x:Class="StreamFusion.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StreamFusion - Mobile Mirroring &amp; Control"
+        Height="780" Width="1180"
+        MinHeight="680" MinWidth="980"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Background="#090A13"
+        AllowDrop="True"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="46" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <!-- Outer Glass Border -->
+    <Border Background="{StaticResource BrushBgDeep}"
+            BorderBrush="{StaticResource BrushBorderSubtle}"
+            BorderThickness="1"
+            CornerRadius="12">
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- Title Bar -->
+                <RowDefinition Height="46" />
+                <!-- Main Workspace -->
+                <RowDefinition Height="*" />
+                <!-- Status Bar -->
+                <RowDefinition Height="34" />
+            </Grid.RowDefinitions>
+
+            <!-- ========================================== -->
+            <!-- 1. CUSTOM TITLE BAR                       -->
+            <!-- ========================================== -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource BrushBgPanel}"
+                    BorderBrush="{StaticResource BrushBorderSubtle}"
+                    BorderThickness="0,0,0,1"
+                    CornerRadius="12,12,0,0"
+                    MouseDown="TitleBar_MouseDown">
+                <Grid Margin="14,0,10,0">
+                    <Grid.ColumnDefinitions>
+                        <!-- App Logo + Title -->
+                        <ColumnDefinition Width="Auto" />
+                        <!-- Status Badges -->
+                        <ColumnDefinition Width="*" />
+                        <!-- Window Controls -->
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- App Logo & Title -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image x:Name="ImgAppLogo" Width="26" Height="26" Margin="0,0,10,0" />
+                        <TextBlock Text="StreamFusion"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource BrushAccentGradient}"
+                                   VerticalAlignment="Center" />
+                        <Border Background="#1E2442" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="v1.0 · scrcpy 5.0" FontSize="11" Foreground="{StaticResource BrushCyan}" FontWeight="SemiBold" />
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Center Status Badges -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- Active Device Badge -->
+                        <Border x:Name="BadgeActiveDevice" Background="#161B30" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="14" Padding="12,4" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="DotDeviceStatus" Width="8" Height="8" Fill="{StaticResource BrushYellow}" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TxtActiveDeviceTitle" Text="Scanning devices..." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" FontWeight="Medium" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Live Mirroring Badge -->
+                        <Border x:Name="BadgeMirrorStatus" Background="#161B30" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="14" Padding="12,4" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="8" Height="8" Fill="{StaticResource BrushRed}" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TxtMirrorStatusTitle" Text="MIRROR ACTIVE" FontSize="11" Foreground="#FCA5A5" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Window Control Buttons (Min, Max, Close) -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Click="BtnMinimize_Click" Width="36" Height="30" Background="Transparent" BorderThickness="0" Foreground="{StaticResource BrushTextSecondary}" FontSize="14" Content="─" Cursor="Hand" />
+                        <Button Click="BtnMaximize_Click" Width="36" Height="30" Background="Transparent" BorderThickness="0" Foreground="{StaticResource BrushTextSecondary}" FontSize="13" Content="□" Cursor="Hand" />
+                        <Button Click="BtnClose_Click" Width="36" Height="30" Background="Transparent" BorderThickness="0" Foreground="#F87171" FontSize="15" FontWeight="Bold" Content="✕" Cursor="Hand" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ========================================== -->
+            <!-- 2. MAIN BODY (Sidebar + Content View)     -->
+            <!-- ========================================== -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <!-- Left Navigation Sidebar -->
+                    <ColumnDefinition Width="220" />
+                    <!-- Content Panels Area -->
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Navigation Bar -->
+                <Border Grid.Column="0"
+                        Background="{StaticResource BrushBgPanel}"
+                        BorderBrush="{StaticResource BrushBorderSubtle}"
+                        BorderThickness="0,0,1,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Nav Tabs List -->
+                        <StackPanel Grid.Row="0" Margin="10,14,10,0">
+                            <!-- Nav 1: Devices & Mirror -->
+                            <RadioButton x:Name="NavDevices"
+                                         GroupName="NavGroup"
+                                         IsChecked="True"
+                                         Checked="Nav_Checked"
+                                         Tag="Devices"
+                                         Height="44"
+                                         Margin="0,0,0,6"
+                                         Cursor="Hand">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="navBorder" Background="Transparent" CornerRadius="8" Padding="14,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="📱" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Mirror &amp; Devices" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" x:Name="navText" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#1C2344" />
+                                                <Setter TargetName="navBorder" Property="BorderBrush" Value="{StaticResource BrushCyan}" />
+                                                <Setter TargetName="navBorder" Property="BorderThickness" Value="1,0,0,0" />
+                                                <Setter TargetName="navText" Property="Foreground" Value="{StaticResource BrushCyan}" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#171C35" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                            </RadioButton>
+
+                            <!-- Nav 2: Remote Controls -->
+                            <RadioButton x:Name="NavControls"
+                                         GroupName="NavGroup"
+                                         Checked="Nav_Checked"
+                                         Tag="Controls"
+                                         Height="44"
+                                         Margin="0,0,0,6"
+                                         Cursor="Hand">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="navBorder" Background="Transparent" CornerRadius="8" Padding="14,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="⚡" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Remote Controls" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" x:Name="navText" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#1C2344" />
+                                                <Setter TargetName="navBorder" Property="BorderBrush" Value="{StaticResource BrushCyan}" />
+                                                <Setter TargetName="navBorder" Property="BorderThickness" Value="1,0,0,0" />
+                                                <Setter TargetName="navText" Property="Foreground" Value="{StaticResource BrushCyan}" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#171C35" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                            </RadioButton>
+
+                            <!-- Nav 3: File Transfer -->
+                            <RadioButton x:Name="NavFiles"
+                                         GroupName="NavGroup"
+                                         Checked="Nav_Checked"
+                                         Tag="Files"
+                                         Height="44"
+                                         Margin="0,0,0,6"
+                                         Cursor="Hand">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="navBorder" Background="Transparent" CornerRadius="8" Padding="14,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="📁" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="File Transfer" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" x:Name="navText" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#1C2344" />
+                                                <Setter TargetName="navBorder" Property="BorderBrush" Value="{StaticResource BrushCyan}" />
+                                                <Setter TargetName="navBorder" Property="BorderThickness" Value="1,0,0,0" />
+                                                <Setter TargetName="navText" Property="Foreground" Value="{StaticResource BrushCyan}" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#171C35" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                            </RadioButton>
+
+                            <!-- Nav 4: Audio & Recording -->
+                            <RadioButton x:Name="NavAudio"
+                                         GroupName="NavGroup"
+                                         Checked="Nav_Checked"
+                                         Tag="Audio"
+                                         Height="44"
+                                         Margin="0,0,0,6"
+                                         Cursor="Hand">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="navBorder" Background="Transparent" CornerRadius="8" Padding="14,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="🎙️" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Audio &amp; Record" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" x:Name="navText" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#1C2344" />
+                                                <Setter TargetName="navBorder" Property="BorderBrush" Value="{StaticResource BrushCyan}" />
+                                                <Setter TargetName="navBorder" Property="BorderThickness" Value="1,0,0,0" />
+                                                <Setter TargetName="navText" Property="Foreground" Value="{StaticResource BrushCyan}" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#171C35" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                            </RadioButton>
+
+                            <!-- Nav 5: Settings -->
+                            <RadioButton x:Name="NavSettings"
+                                         GroupName="NavGroup"
+                                         Checked="Nav_Checked"
+                                         Tag="Settings"
+                                         Height="44"
+                                         Margin="0,0,0,6"
+                                         Cursor="Hand">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="navBorder" Background="Transparent" CornerRadius="8" Padding="14,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="⚙️" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Settings &amp; Presets" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" x:Name="navText" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#1C2344" />
+                                                <Setter TargetName="navBorder" Property="BorderBrush" Value="{StaticResource BrushCyan}" />
+                                                <Setter TargetName="navBorder" Property="BorderThickness" Value="1,0,0,0" />
+                                                <Setter TargetName="navText" Property="Foreground" Value="{StaticResource BrushCyan}" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#171C35" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                            </RadioButton>
+
+                            <!-- Nav 6: Guide -->
+                            <RadioButton x:Name="NavGuide"
+                                         GroupName="NavGroup"
+                                         Checked="Nav_Checked"
+                                         Tag="Guide"
+                                         Height="44"
+                                         Margin="0,0,0,6"
+                                         Cursor="Hand">
+                                <RadioButton.Template>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="navBorder" Background="Transparent" CornerRadius="8" Padding="14,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="📖" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="In-App Guide" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" x:Name="navText" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#1C2344" />
+                                                <Setter TargetName="navBorder" Property="BorderBrush" Value="{StaticResource BrushCyan}" />
+                                                <Setter TargetName="navBorder" Property="BorderThickness" Value="1,0,0,0" />
+                                                <Setter TargetName="navText" Property="Foreground" Value="{StaticResource BrushCyan}" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="navBorder" Property="Background" Value="#171C35" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </RadioButton.Template>
+                            </RadioButton>
+                        </StackPanel>
+
+                        <!-- Bottom Device Quick Info Panel -->
+                        <Border Grid.Row="1" Background="#14182E" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="0,1,0,0" Padding="14,12">
+                            <StackPanel>
+                                <TextBlock Text="SELECTED DEVICE" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BrushTextMuted}" Margin="0,0,0,4" />
+                                <TextBlock x:Name="TxtSidebarDeviceName" Text="None selected" FontSize="12" FontWeight="SemiBold" Foreground="#FFFFFF" TextTrimming="CharacterEllipsis" />
+                                <TextBlock x:Name="TxtSidebarDeviceDetails" Text="Connect via USB or WiFi" FontSize="11" Foreground="{StaticResource BrushTextMuted}" Margin="0,2,0,8" />
+
+                                <Button x:Name="BtnQuickMirror"
+                                        Click="BtnQuickMirror_Click"
+                                        Style="{StaticResource StylePrimaryButton}"
+                                        Content="▶ Start Mirror"
+                                        FontSize="12"
+                                        Padding="10,7"
+                                        HorizontalAlignment="Stretch"
+                                        IsEnabled="False" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- ========================================== -->
+                <!-- CONTENT PANELS CONTAINER                  -->
+                <!-- ========================================== -->
+                <Grid Grid.Column="1" Background="{StaticResource BrushBgDeep}">
+
+                    <!-- VIEW 1: DEVICES & MIRROR -->
+                    <Grid x:Name="PanelDevices" Visibility="Visible" Margin="24,20,24,20">
+                        <Grid.RowDefinitions>
+                            <!-- Header Action Bar -->
+                            <RowDefinition Height="Auto" />
+                            <!-- Device Cards / List -->
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Action Bar -->
+                        <Grid Grid.Row="0" Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Devices &amp; Screen Mirroring" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" />
+                                <TextBlock Text="Connect via USB cable or wireless Wi-Fi to start high-fps low-latency mirroring" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Click="BtnRefreshDevices_Click" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🔄" Margin="0,0,6,0" />
+                                        <TextBlock Text="Refresh" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Click="BtnOpenWifiModal_Click" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="📶" Margin="0,0,6,0" />
+                                        <TextBlock Text="Connect Wi-Fi (IP)" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Device Cards View -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- If No Devices Found -->
+                                <Border x:Name="CardNoDevices" Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="30" Margin="0,10,0,0" Visibility="Collapsed">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="📱" FontSize="46" HorizontalAlignment="Center" Margin="0,0,0,12" />
+                                        <TextBlock Text="No Android Devices Detected" FontSize="18" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Make sure USB Debugging is turned ON in phone Developer Options and connect via USB." FontSize="13" Foreground="{StaticResource BrushTextSecondary}" HorizontalAlignment="Center" Margin="0,6,0,18" TextAlignment="Center" MaxWidth="480" />
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <Button Click="BtnOpenGuide_Click" Style="{StaticResource StyleSecondaryButton}" Content="📖 Open USB Debugging Guide" Margin="0,0,12,0" />
+                                            <Button Click="BtnRefreshDevices_Click" Style="{StaticResource StylePrimaryButton}" Content="🔄 Check Again" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Device Items List -->
+                                <ItemsControl x:Name="ListDevices">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,0,14">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <!-- Icon -->
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <!-- Info -->
+                                                        <ColumnDefinition Width="*" />
+                                                        <!-- Controls -->
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Icon & Badge -->
+                                                    <Border Grid.Column="0" Width="56" Height="56" Background="#161B33" BorderBrush="{StaticResource BrushCyan}" BorderThickness="1" CornerRadius="12" VerticalAlignment="Center" Margin="0,0,18,0">
+                                                        <TextBlock Text="{Binding IsWifi, Converter={x:Null}, FallbackValue='📱'}" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+
+                                                    <!-- Device Details -->
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,0,10,0" />
+                                                            <Border Background="{StaticResource BrushAccentGradient}" CornerRadius="4" Padding="8,2" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding ConnectionTypeBadge}" FontSize="10" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                            </Border>
+                                                            <Border Background="#1C2340" CornerRadius="4" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding BatteryDisplay, StringFormat='🔋 {0}'}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource BrushCyan}" />
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <TextBlock Text="{Binding Serial, StringFormat='Serial: {0}'}" FontSize="12" Foreground="{StaticResource BrushTextMuted}" Margin="0,0,16,0" />
+                                                            <TextBlock Text="{Binding AndroidVersion}" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,16,0" />
+                                                            <TextBlock Text="{Binding Resolution, StringFormat='Screen: {0}'}" FontSize="12" Foreground="{StaticResource BrushTextMuted}" />
+                                                        </StackPanel>
+
+                                                        <!-- IP Address if available -->
+                                                        <TextBlock Text="{Binding IpAddress, StringFormat='IP: {0}'}" FontSize="11" Foreground="{StaticResource BrushCyan}" />
+                                                    </StackPanel>
+
+                                                    <!-- Action Buttons -->
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <!-- Switch to Wi-Fi Button (only visible for USB devices) -->
+                                                        <Button Tag="{Binding}" Click="BtnDeviceSwitchWifi_Click" Style="{StaticResource StyleSecondaryButton}" Content="⚡ Switch to Wi-Fi" Margin="0,0,10,0" />
+                                                        <!-- Start Mirror Button -->
+                                                        <Button Tag="{Binding}" Click="BtnDeviceMirror_Click" Style="{StaticResource StylePrimaryButton}" Content="▶ Start Mirror" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Active Stream Controls Card (Visible when mirroring is active) -->
+                                <Border x:Name="CardActiveMirroring" Background="#161A33" BorderBrush="{StaticResource BrushCyan}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,10,0,0" Visibility="Collapsed">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Ellipse Width="10" Height="10" Fill="{StaticResource BrushRed}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="Active Screen Mirroring Session" FontSize="15" FontWeight="Bold" Foreground="#FFFFFF" />
+                                            </StackPanel>
+                                            <TextBlock x:Name="TxtActiveMirrorInfo" Text="Mirroring active: Samsung Galaxy S24" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Click="BtnTakeScreenshot_Click" Style="{StaticResource StyleSecondaryButton}" Content="📷 Screenshot" Margin="0,0,8,0" />
+                                            <Button Click="BtnToggleRecording_Click" x:Name="BtnQuickRecord" Style="{StaticResource StyleSecondaryButton}" Content="⏺️ Record Session" Margin="0,0,8,0" />
+                                            <Button Click="BtnStopMirror_Click" Style="{StaticResource StyleDangerButton}" Content="⏹ Stop Mirror" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- VIEW 2: REMOTE CONTROLS -->
+                    <Grid x:Name="PanelControls" Visibility="Collapsed" Margin="24,20,24,20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                            <TextBlock Text="Remote Device Control &amp; Shell" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" />
+                            <TextBlock Text="Control your mobile phone remotely with virtual buttons, clipboard sync, and ADB terminal" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0" />
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="380" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Left Column: Virtual Phone Controls -->
+                                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                    <!-- Virtual Navigation Keypad -->
+                                    <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,14">
+                                        <StackPanel>
+                                            <TextBlock Text="VIRTUAL NAVIGATION" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,12" />
+                                            <UniformGrid Columns="3" Margin="0,0,0,10">
+                                                <Button Click="BtnKeyBack_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="◀ Back" Height="42" />
+                                                <Button Click="BtnKeyHome_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="● Home" Height="42" />
+                                                <Button Click="BtnKeyRecents_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="■ Apps" Height="42" />
+                                            </UniformGrid>
+
+                                            <!-- Volume and Power -->
+                                            <TextBlock Text="HARDWARE BUTTONS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,8,0,12" />
+                                            <UniformGrid Columns="3" Margin="0,0,0,10">
+                                                <Button Click="BtnVolumeUp_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="🔊 Vol +" Height="42" />
+                                                <Button Click="BtnVolumeDown_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="🔉 Vol -" Height="42" />
+                                                <Button Click="BtnPowerToggle_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="⚡ Power" Height="42" />
+                                            </UniformGrid>
+
+                                            <!-- Utilities -->
+                                            <TextBlock Text="SYSTEM SHORTCUTS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,8,0,12" />
+                                            <UniformGrid Columns="2">
+                                                <Button Click="BtnExpandNotifs_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="🔔 Notifications" Height="40" />
+                                                <Button Click="BtnTakeScreenshot_Click" Style="{StaticResource StyleSecondaryButton}" Margin="4" Content="📷 Screenshot" Height="40" />
+                                            </UniformGrid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Quick Text / URL Sender -->
+                                    <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18">
+                                        <StackPanel>
+                                            <TextBlock Text="TYPE / PASTE ON PHONE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,10" />
+                                            <TextBox x:Name="TxtSendPhoneInput" Margin="0,0,0,8" />
+                                            <Button Click="BtnSendTextToPhone_Click" Style="{StaticResource StylePrimaryButton}" Content="Send Text to Active Phone Field" Margin="0,0,0,14" />
+
+                                            <TextBlock Text="OPEN URL IN PHONE BROWSER" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,6,0,10" />
+                                            <TextBox x:Name="TxtSendUrlInput" Text="https://google.com" Margin="0,0,0,8" />
+                                            <Button Click="BtnOpenUrlOnPhone_Click" Style="{StaticResource StyleSecondaryButton}" Content="Open Website on Phone" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Right Column: Interactive ADB Shell Terminal -->
+                                <Border Grid.Column="1" Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                            <TextBlock Text="ADB SHELL TERMINAL" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" />
+                                            <TextBlock Text="Execute custom Android shell commands directly on the connected phone." FontSize="11" Foreground="{StaticResource BrushTextMuted}" Margin="0,2,0,0" />
+                                        </StackPanel>
+
+                                        <!-- Terminal Output Box -->
+                                        <TextBox x:Name="TxtTerminalOutput"
+                                                 Grid.Row="1"
+                                                 Background="#0C0E1A"
+                                                 Foreground="#38BDF8"
+                                                 FontFamily="Consolas, Courier New"
+                                                 FontSize="12"
+                                                 IsReadOnly="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 HorizontalScrollBarVisibility="Auto"
+                                                 Text="StreamFusion ADB Shell Ready. Enter a command below (e.g. 'getprop ro.build.version.release', 'pm list packages -3').&#x0a;" />
+
+                                        <!-- Command Input Bar -->
+                                        <Grid Grid.Row="2" Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBox x:Name="TxtTerminalInput" Grid.Column="0" KeyDown="TxtTerminalInput_KeyDown" Margin="0,0,8,0" />
+                                            <Button Click="BtnRunShellCommand_Click" Grid.Column="1" Style="{StaticResource StylePrimaryButton}" Content="Execute" />
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- VIEW 3: FILE TRANSFER & DRAG-AND-DROP -->
+                    <Grid x:Name="PanelFiles" Visibility="Collapsed" Margin="24,20,24,20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="120" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                            <TextBlock Text="File Transfer &amp; Drag &amp; Drop" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" />
+                            <TextBlock Text="Drag files from your computer to transfer to mobile, or browse phone files and download to PC." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0" />
+                        </StackPanel>
+
+                        <!-- Drag and Drop Dropzone -->
+                        <Border Grid.Row="1"
+                                Background="#141933"
+                                BorderBrush="{StaticResource BrushCyan}"
+                                BorderThickness="2"
+                                CornerRadius="12"
+                                Margin="0,0,0,14"
+                                AllowDrop="True"
+                                DragOver="DropZone_DragOver"
+                                Drop="DropZone_Drop">
+                            <Grid>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="📤 DRAG &amp; DROP FILES OR APKs HERE" FontSize="15" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Files will be pushed to /sdcard/Download/ · Drop an .apk file to auto-install app" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                                    <!-- Progress text -->
+                                    <TextBlock x:Name="TxtFileTransferProgress" Text="" FontSize="11" Foreground="{StaticResource BrushGreen}" HorizontalAlignment="Center" Margin="0,6,0,0" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Device File Browser -->
+                        <Border Grid.Row="2" Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <!-- Navigation & Shortcuts Bar -->
+                                    <RowDefinition Height="Auto" />
+                                    <!-- Files Table -->
+                                    <RowDefinition Height="*" />
+                                    <!-- Action Bar -->
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Navigation Bar -->
+                                <Grid Grid.Row="0" Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Quick Folders -->
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                        <Button Click="BtnFolderDownload_Click" Style="{StaticResource StyleSecondaryButton}" Content="📥 Downloads" Margin="0,0,6,0" Padding="8,4" FontSize="11" />
+                                        <Button Click="BtnFolderDCIM_Click" Style="{StaticResource StyleSecondaryButton}" Content="📷 DCIM (Camera)" Margin="0,0,6,0" Padding="8,4" FontSize="11" />
+                                        <Button Click="BtnFolderPictures_Click" Style="{StaticResource StyleSecondaryButton}" Content="🖼️ Pictures" Margin="0,0,6,0" Padding="8,4" FontSize="11" />
+                                        <Button Click="BtnFolderDocuments_Click" Style="{StaticResource StyleSecondaryButton}" Content="📄 Documents" Margin="0,0,6,0" Padding="8,4" FontSize="11" />
+                                        <Button Click="BtnFolderRoot_Click" Style="{StaticResource StyleSecondaryButton}" Content="💾 /sdcard" Margin="0,0,12,0" Padding="8,4" FontSize="11" />
+                                    </StackPanel>
+
+                                    <!-- Current Path Breadcrumb -->
+                                    <TextBox x:Name="TxtCurrentRemotePath" Grid.Column="1" Text="/sdcard/Download/" IsReadOnly="True" Margin="0,0,8,0" Height="30" />
+
+                                    <!-- Refresh & Up Buttons -->
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                        <Button Click="BtnFolderUp_Click" Style="{StaticResource StyleSecondaryButton}" Content="⬆ Up" Margin="0,0,6,0" Padding="10,4" />
+                                        <Button Click="BtnRefreshFiles_Click" Style="{StaticResource StyleSecondaryButton}" Content="🔄 Refresh" Padding="10,4" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- File List DataGrid / ListView -->
+                                <ListView x:Name="ListRemoteFiles"
+                                          Grid.Row="1"
+                                          Background="#0D1021"
+                                          BorderBrush="{StaticResource BrushBorderSubtle}"
+                                          BorderThickness="1"
+                                          Foreground="#E2E8F0"
+                                          MouseDoubleClick="ListRemoteFiles_MouseDoubleClick">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn Header="Name" Width="380">
+                                                <GridViewColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding IconKind}" Margin="0,0,8,0" FontSize="14" VerticalAlignment="Center" />
+                                                            <TextBlock Text="{Binding Name}" Foreground="#FFFFFF" FontWeight="Medium" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </GridViewColumn.CellTemplate>
+                                            </GridViewColumn>
+                                            <GridViewColumn Header="Size" Width="100" DisplayMemberBinding="{Binding SizeDisplay}" />
+                                            <GridViewColumn Header="Date Modified" Width="160" DisplayMemberBinding="{Binding ModifiedTime}" />
+                                            <GridViewColumn Header="Permissions" Width="120" DisplayMemberBinding="{Binding Permissions}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+
+                                <!-- Bottom Action Bar -->
+                                <Grid Grid.Row="2" Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock x:Name="TxtFileBrowserStatus" Grid.Column="0" Text="Select a file and click Download to save it to your computer." FontSize="12" Foreground="{StaticResource BrushTextMuted}" VerticalAlignment="Center" />
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button Click="BtnUploadFileFromExplorer_Click" Style="{StaticResource StyleSecondaryButton}" Content="Upload Local Files..." Margin="0,0,8,0" />
+                                        <Button Click="BtnDownloadSelectedFile_Click" Style="{StaticResource StylePrimaryButton}" Content="⬇ Download to PC" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- VIEW 4: AUDIO & SCREEN RECORDING -->
+                    <Grid x:Name="PanelAudio" Visibility="Collapsed" Margin="24,20,24,20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                            <TextBlock Text="Audio Streaming &amp; Screen Recording" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" />
+                            <TextBlock Text="Configure mobile audio forwarding to PC speakers, screen recording studio, and video gallery." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0" />
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="420" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Left Column: Audio Controls & Recording Studio -->
+                                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                    <!-- Audio Streaming Hub -->
+                                    <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <TextBlock Text="MOBILE AUDIO FORWARDING" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,12" />
+
+                                            <CheckBox x:Name="ChkAudioEnabled" Content="Enable Audio Forwarding (Stream sound to PC)" IsChecked="True" Margin="0,0,0,12" />
+                                            <CheckBox x:Name="ChkAudioOnly" Content="Audio-Only Mode (Stream sound without video window)" IsChecked="False" Margin="0,0,0,14" />
+
+                                            <!-- Codec Picker -->
+                                            <TextBlock Text="Audio Codec:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                            <ComboBox x:Name="CmbAudioCodec" SelectedIndex="0" Margin="0,0,0,12">
+                                                <ComboBoxItem Content="opus (Recommended - Ultra low latency)" Tag="opus" />
+                                                <ComboBoxItem Content="aac (High compatibility)" Tag="aac" />
+                                                <ComboBoxItem Content="flac (Lossless quality)" Tag="flac" />
+                                                <ComboBoxItem Content="raw (Uncompressed PCM)" Tag="raw" />
+                                            </ComboBox>
+
+                                            <!-- Audio Source -->
+                                            <TextBlock Text="Audio Source:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                            <ComboBox x:Name="CmbAudioSource" SelectedIndex="0" Margin="0,0,0,12">
+                                                <ComboBoxItem Content="output (All media &amp; games audio)" Tag="output" />
+                                                <ComboBoxItem Content="playback (App audio only)" Tag="playback" />
+                                                <ComboBoxItem Content="mic (Forward phone microphone to PC)" Tag="mic" />
+                                            </ComboBox>
+
+                                            <!-- Audio Bitrate -->
+                                            <TextBlock Text="Audio Bitrate (Kbps):" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                            <ComboBox x:Name="CmbAudioBitrate" SelectedIndex="1">
+                                                <ComboBoxItem Content="64 Kbps" Tag="64" />
+                                                <ComboBoxItem Content="128 Kbps (Standard)" Tag="128" />
+                                                <ComboBoxItem Content="192 Kbps (High)" Tag="192" />
+                                                <ComboBoxItem Content="256 Kbps (Studio)" Tag="256" />
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Screen Recording Studio -->
+                                    <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18">
+                                        <StackPanel>
+                                            <TextBlock Text="SCREEN RECORDING STUDIO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,12" />
+
+                                            <TextBlock Text="Recording Format:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                            <ComboBox x:Name="CmbRecordFormat" SelectedIndex="0" Margin="0,0,0,12">
+                                                <ComboBoxItem Content="MP4 (MPEG-4 Part 14 - Default)" Tag="mp4" />
+                                                <ComboBoxItem Content="MKV (Matroska Video Container)" Tag="mkv" />
+                                                <ComboBoxItem Content="WebM (Open Web Video)" Tag="webm" />
+                                            </ComboBox>
+
+                                            <TextBlock Text="Save Folder:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                            <Grid Margin="0,0,0,16">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="TxtRecordFolder" Grid.Column="0" IsReadOnly="True" Margin="0,0,8,0" />
+                                                <Button Click="BtnBrowseRecordFolder_Click" Grid.Column="1" Style="{StaticResource StyleSecondaryButton}" Content="Browse" />
+                                            </Grid>
+
+                                            <!-- Start/Stop Recording Button -->
+                                            <Button x:Name="BtnRecordStudio"
+                                                    Click="BtnToggleRecording_Click"
+                                                    Style="{StaticResource StylePrimaryButton}"
+                                                    Content="⏺️ Start Mirror &amp; Record"
+                                                    Height="42" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Right Column: Recording Gallery -->
+                                <Border Grid.Column="1" Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+
+                                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="CAPTURED RECORDINGS GALLERY" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" />
+                                                <TextBlock Text="Past screen recordings saved on this PC." FontSize="11" Foreground="{StaticResource BrushTextMuted}" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                            <Button Click="BtnOpenRecordingsFolder_Click" Grid.Column="1" Style="{StaticResource StyleSecondaryButton}" Content="📂 Open Videos Folder" />
+                                        </Grid>
+
+                                        <!-- Recordings List -->
+                                        <ListBox x:Name="ListRecordings"
+                                                 Grid.Row="1"
+                                                 Background="#0D1021"
+                                                 BorderBrush="{StaticResource BrushBorderSubtle}"
+                                                 BorderThickness="1">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#161A30" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,4,0,4">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <TextBlock Grid.Column="0" Text="🎬" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" />
+
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding FileName}" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                                    <TextBlock Text="{Binding FileSize}" FontSize="11" Foreground="{StaticResource BrushCyan}" Margin="0,0,12,0" />
+                                                                    <TextBlock Text="{Binding DateDisplay}" FontSize="11" Foreground="{StaticResource BrushTextMuted}" />
+                                                                </StackPanel>
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <Button Tag="{Binding}" Click="BtnPlayRecording_Click" Style="{StaticResource StyleSecondaryButton}" Content="▶ Play" Margin="0,0,6,0" Padding="8,4" />
+                                                                <Button Tag="{Binding}" Click="BtnDeleteRecording_Click" Style="{StaticResource StyleDangerButton}" Content="🗑️" Padding="8,4" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- VIEW 5: SETTINGS & PRESETS -->
+                    <Grid x:Name="PanelSettings" Visibility="Collapsed" Margin="24,20,24,20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                            <TextBlock Text="Settings &amp; Performance Profiles" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" />
+                            <TextBlock Text="Fine-tune video quality, frame rates, window controls, and latency for your needs." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0" />
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- Profiles Selection Bar -->
+                                <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Text="ONE-CLICK PERFORMANCE PROFILES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,12" />
+                                        <WrapPanel>
+                                            <Button Click="BtnPreset_Click" Tag="Balanced" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,8" Content="⚖️ Balanced (1080p · 60fps · 8M)" />
+                                            <Button Click="BtnPreset_Click" Tag="Gaming (120 FPS)" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,8" Content="🎮 Gaming (1080p · 120fps · 16M)" />
+                                            <Button Click="BtnPreset_Click" Tag="Ultra Quality" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,8" Content="📺 Ultra Quality (Native · 24M)" />
+                                            <Button Click="BtnPreset_Click" Tag="Ultra Low Latency" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,8" Content="⚡ Ultra Low Latency (720p · 4M)" />
+                                            <Button Click="BtnPreset_Click" Tag="Wireless Smooth" Style="{StaticResource StyleSecondaryButton}" Margin="0,0,10,8" Content="📶 Wireless Smooth (720p · 30fps)" />
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Video Engine Settings -->
+                                <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Text="VIDEO STREAMING CONFIGURATION" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,14" />
+
+                                        <UniformGrid Columns="2" Margin="0,0,0,12">
+                                            <!-- Resolution Presets -->
+                                            <StackPanel Margin="0,0,12,0">
+                                                <TextBlock Text="Resolution Limit:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                                <ComboBox x:Name="CmbResolution" SelectionChanged="CmbResolution_SelectionChanged">
+                                                    <ComboBoxItem Content="1080p Full HD (1920x1080)" Tag="1080" />
+                                                    <ComboBoxItem Content="720p HD (1280x720) - Fast" Tag="720" />
+                                                    <ComboBoxItem Content="480p SD - Ultra Fast" Tag="480" />
+                                                    <ComboBoxItem Content="Native / No Cap" Tag="0" />
+                                                </ComboBox>
+                                            </StackPanel>
+
+                                            <!-- Max Frame Rate -->
+                                            <StackPanel Margin="12,0,0,0">
+                                                <TextBlock Text="Max Frame Rate (FPS):" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                                <ComboBox x:Name="CmbFps">
+                                                    <ComboBoxItem Content="30 FPS (Low CPU)" Tag="30" />
+                                                    <ComboBoxItem Content="60 FPS (Smooth Standard)" Tag="60" />
+                                                    <ComboBoxItem Content="90 FPS" Tag="90" />
+                                                    <ComboBoxItem Content="120 FPS (High Refresh Gaming)" Tag="120" />
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </UniformGrid>
+
+                                        <UniformGrid Columns="2">
+                                            <!-- Video Bitrate -->
+                                            <StackPanel Margin="0,0,12,0">
+                                                <TextBlock x:Name="TxtBitrateLabel" Text="Video Bitrate: 8 Mbps" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                                <Slider x:Name="SliderBitrate" Minimum="1" Maximum="32" Value="8" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SliderBitrate_ValueChanged" />
+                                            </StackPanel>
+
+                                            <!-- Video Codec -->
+                                            <StackPanel Margin="12,0,0,0">
+                                                <TextBlock Text="Video Codec:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                                <ComboBox x:Name="CmbVideoCodec">
+                                                    <ComboBoxItem Content="H.264 (AVC - Maximum Compatibility)" Tag="h264" />
+                                                    <ComboBoxItem Content="H.265 (HEVC - Higher Quality per bit)" Tag="h265" />
+                                                    <ComboBoxItem Content="AV1 (Next-Gen Compression)" Tag="av1" />
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </UniformGrid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Window & Hardware Controls -->
+                                <Border Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Text="WINDOW &amp; DEVICE BEHAVIOR" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushCyan}" Margin="0,0,0,12" />
+
+                                        <UniformGrid Columns="2">
+                                            <CheckBox x:Name="ChkAlwaysOnTop" Content="Always on Top (Keep window pinned)" Margin="0,0,0,10" />
+                                            <CheckBox x:Name="ChkTurnScreenOff" Content="Turn Phone Screen OFF during Mirror (Saves Battery)" Margin="0,0,0,10" />
+                                            <CheckBox x:Name="ChkStayAwake" Content="Stay Awake (Prevent device from going to sleep)" IsChecked="True" Margin="0,0,0,10" />
+                                            <CheckBox x:Name="ChkShowTouches" Content="Show Touches (Render physical tap circles)" Margin="0,0,0,10" />
+                                            <CheckBox x:Name="ChkBorderless" Content="Borderless Window (No titlebar on mirror)" Margin="0,0,0,10" />
+                                            <CheckBox x:Name="ChkFullscreen" Content="Start in Fullscreen Mode" Margin="0,0,0,10" />
+                                        </UniformGrid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Save Settings Action -->
+                                <Button Click="BtnSaveSettings_Click" Style="{StaticResource StylePrimaryButton}" Content="💾 Save Settings" Width="180" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- VIEW 6: IN-APP GUIDE -->
+                    <Grid x:Name="PanelGuide" Visibility="Collapsed" Margin="24,20,24,20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                            <TextBlock Text="StreamFusion Complete User Guide" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" />
+                            <TextBlock Text="Illustrated step-by-step instructions for USB Debugging, wireless connections, and troubleshooting." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0" />
+                        </StackPanel>
+
+                        <!-- Guide Split View (Article List on Left, Content on Right) -->
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="280" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Articles Sidebar -->
+                            <Border Grid.Column="0" Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="10" Margin="0,0,16,0">
+                                <ListBox x:Name="ListGuideArticles"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         SelectionChanged="ListGuideArticles_SelectionChanged">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border CornerRadius="8" Padding="10,8" Margin="0,2,0,2">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Icon}" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="#FFFFFF" TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding Category}" FontSize="10" Foreground="{StaticResource BrushCyan}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+
+                            <!-- Article Content Viewer -->
+                            <Border Grid.Column="1" Background="{StaticResource BrushCardGradient}" BorderBrush="{StaticResource BrushBorderSubtle}" BorderThickness="1" CornerRadius="12" Padding="24">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <TextBox x:Name="TxtGuideContent"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Foreground="#E2E8F0"
+                                             FontSize="13"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap" />
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- TOAST NOTIFICATION OVERLAY -->
+                    <Border x:Name="ToastBanner"
+                            Background="#16223A"
+                            BorderBrush="{StaticResource BrushCyan}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="16,10"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,24,20"
+                            Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="TxtToastIcon" Text="ℹ️" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center" />
+                            <TextBlock x:Name="TxtToastMessage" Text="Action succeeded." FontSize="13" Foreground="#FFFFFF" FontWeight="Medium" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- WI-FI CONNECT MODAL DIALOG OVERLAY -->
+                    <Grid x:Name="ModalWifiConnect" Background="#B0000000" Visibility="Collapsed">
+                        <Border Width="440" Background="#14182E" BorderBrush="{StaticResource BrushCyan}" BorderThickness="1" CornerRadius="14" Padding="26" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock Text="📶" FontSize="20" Margin="0,0,10,0" />
+                                    <TextBlock Text="Connect via Wi-Fi (Wireless)" FontSize="18" FontWeight="Bold" Foreground="#FFFFFF" />
+                                </StackPanel>
+                                <TextBlock Text="Enter your phone's local IP address. Both PC and Phone must be connected to the same Wi-Fi router." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" TextWrapping="Wrap" Margin="0,0,0,16" />
+
+                                <TextBlock Text="Phone IP Address:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                <TextBox x:Name="TxtWifiIpInput" Margin="0,0,0,12" />
+
+                                <TextBlock Text="ADB Port:" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4" />
+                                <TextBox x:Name="TxtWifiPortInput" Text="5555" Margin="0,0,0,18" />
+
+                                <!-- Action Buttons -->
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Click="BtnCancelWifiModal_Click" Style="{StaticResource StyleSecondaryButton}" Content="Cancel" Margin="0,0,10,0" />
+                                    <Button Click="BtnSubmitWifiConnect_Click" Style="{StaticResource StylePrimaryButton}" Content="Connect Device" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                </Grid>
+            </Grid>
+
+            <!-- ========================================== -->
+            <!-- 3. BOTTOM STATUS BAR                      -->
+            <!-- ========================================== -->
+            <Border Grid.Row="2"
+                    Background="{StaticResource BrushBgPanel}"
+                    BorderBrush="{StaticResource BrushBorderSubtle}"
+                    BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,12,12"
+                    Padding="14,0">
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: ADB Status -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Ellipse Width="7" Height="7" Fill="{StaticResource BrushGreen}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TxtStatusAdb" Text="ADB Server: Ready (Port 5037)" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Center: Active Profile Info -->
+                    <TextBlock x:Name="TxtStatusProfile" Grid.Column="1" Text="Profile: Balanced (1080p · 60fps · 8M)" FontSize="11" Foreground="{StaticResource BrushCyan}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                    <!-- Right: Quick actions -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Click="BtnRestartAdb_Click" Background="Transparent" BorderThickness="0" Foreground="{StaticResource BrushTextMuted}" FontSize="11" Cursor="Hand" Content="Restart ADB Server" Margin="0,0,14,0" />
+                        <TextBlock x:Name="TxtStatusVersion" Text="StreamFusion 1.0" FontSize="11" Foreground="{StaticResource BrushTextMuted}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Border>
+</Window>

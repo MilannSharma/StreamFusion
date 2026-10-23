@@ -1,0 +1,90 @@
+{
+  "name": "streamfusion",
+  "version": "2.0.0",
+  "description": "StreamFusion v2.0.0 - Premium Android Mobile Mirroring, Wireless Streaming, File Transfer & Control powered by scrcpy",
+  "author": "Milann Sharma <https://github.com/Milannsharma>",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n \"SERVER,CLIENT,ELECTRON\" -c \"cyan,magenta,yellow\" \"node --watch server/index.js\" \"vite\" \"electron .\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "vite",
+    "dev:electron": "electron .",
+    "start": "electron .",
+    "build": "vite build",
+    "build:exe": "vite build && electron-builder --win",
+    "build:portable": "vite build && electron-builder --win portable",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "lucide-react": "^0.475.0",
+    "open": "^10.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/ws": "^8.5.14",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^34.2.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "build": {
+    "appId": "com.milannsharma.streamfusion",
+    "productName": "StreamFusion v2.0.0",
+    "artifactName": "StreamFusion-v2.0.0-Setup.${ext}",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*",
+      "public/**/*",
+      "StreamFusion.ico",
+      "StreamFusion.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "scrcpy-bin",
+        "to": "scrcpy-bin"
+      },
+      {
+        "from": "saved_devices.json",
+        "to": "saved_devices.json"
+      }
+    ],
+    "win": {
+      "icon": "StreamFusion.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "StreamFusion v2.0.0"
+    }
+  }
+}
