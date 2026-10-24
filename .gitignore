@@ -8,7 +8,10 @@ node_modules/
 dist/
 dist-ssr/
 release/
-build/
+build/*
+!build/installer.nsh
+!build/CatSetupProgress.exe
+!build/installer-cat.gif
 bin/
 obj/
 latest app/
@@ -42,5 +45,6 @@ Thumbs.db
 *.sln
 *.sw?
 *.exe
+!build/CatSetupProgress.exe
 *.zip
 scratch/

@@ -4,6 +4,10 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { createSettingsRouter } from './routes/settings.js';
+import { createFilesRouter } from './routes/files.js';
+import { createDiagnosticsRouter } from './routes/diagnostics.js';
+import { createNotificationsRouter } from './routes/notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,7 +52,7 @@ console.log(`[StreamFusion Server] scrcpy binaries located at: ${scrcpyBin}`);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '2.0.0',
+    version: '3.1.0',
     adb: fs.existsSync(adbExe),
     scrcpy: fs.existsSync(scrcpyExe),
     binDir: scrcpyBin
@@ -67,11 +71,9 @@ if (!fs.existsSync(defaultScreenshotDir)) {
   try { fs.mkdirSync(defaultScreenshotDir, { recursive: true }); } catch (e) {}
 }
 
-// Active mirror process state
-let activeScrcpy = null;
-let activeDevice = null;
-let isRecording = false;
-let activeRecordingFile = null;
+// Active multi-device mirror state (serial -> mirror session object)
+const activeMirrors = new Map();
+let basePortCounter = 27183;
 
 // Persistent Wi-Fi Devices Storage in userData
 const dataDir = process.env.SF_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'StreamFusion') : rootDir);
@@ -79,6 +81,11 @@ if (!fs.existsSync(dataDir)) {
   try { fs.mkdirSync(dataDir, { recursive: true }); } catch (e) {}
 }
 const savedDevicesFile = path.join(dataDir, 'saved_devices.json');
+
+// Mount centralized routers
+app.use('/api/settings', createSettingsRouter(dataDir));
+app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
+app.use('/api/notifications', createNotificationsRouter({ runAdb }));
 
 function getSavedDevices() {
   try {
@@ -294,10 +301,19 @@ app.delete('/api/wifi/saved', (req, res) => {
 
 // 2. POST /api/mirror/start
 app.post('/api/mirror/start', (req, res) => {
-  const { serial, model, deviceName, config = {}, recordFile } = req.body;
+  const { serial, model, deviceName, config = {}, recordFile, mode = 'mirror' } = req.body;
+  if (!serial) return res.json({ success: false, message: 'No serial provided' });
 
-  if (activeScrcpy && !activeScrcpy.killed) {
-    return res.json({ success: false, message: 'A mirror session is already running. Please stop it first.' });
+  // If this device is already mirroring, terminate its existing session first
+  if (activeMirrors.has(serial)) {
+    const existing = activeMirrors.get(serial);
+    if (existing && existing.proc && !existing.proc.killed) {
+      try {
+        existing.proc.kill('SIGTERM');
+        exec(`taskkill /F /T /PID ${existing.proc.pid}`, () => {});
+      } catch (e) {}
+    }
+    activeMirrors.delete(serial);
   }
 
   // Force screen stay awake during mirror session (works on both USB & Wi-Fi)
@@ -307,10 +323,34 @@ app.post('/api/mirror/start', (req, res) => {
   }
 
   const titleName = deviceName || model || serial;
+  const currentPort = basePortCounter++;
+  if (basePortCounter > 27195) basePortCounter = 27183;
+
   const args = [
     '-s', serial,
-    `--window-title=StreamFusion - ${titleName}`
+    `--port=${currentPort}:${currentPort + 5}`
   ];
+
+  // Mode: Webcam Studio, Virtual Display, or Standard Mirror
+  if (mode === 'webcam' || config.isWebcam) {
+    args.push(
+      '--video-source=camera',
+      `--camera-facing=${config.cameraFacing || 'back'}`,
+      `--camera-size=${config.cameraSize || '1920x1080'}`,
+      `--camera-fps=${config.cameraFps || 60}`,
+      `--window-title=StreamFusion HD Webcam - ${titleName}`
+    );
+  } else if (mode === 'virtual-display' || config.isVirtualDisplay) {
+    args.push(
+      `--new-display=${config.virtualDisplaySize || '1920x1080/420'}`,
+      `--window-title=StreamFusion Virtual Display - ${titleName}`
+    );
+    if (config.startApp) {
+      args.push(`--start-app=${config.startApp}`);
+    }
+  } else {
+    args.push(`--window-title=StreamFusion - ${titleName}`);
+  }
 
   // Video settings
   if (config.maxSize && config.maxSize > 0) args.push(`--max-size=${config.maxSize}`);
@@ -319,16 +359,18 @@ app.post('/api/mirror/start', (req, res) => {
   if (config.videoCodec) args.push(`--video-codec=${config.videoCodec}`);
   if (config.lockOrientation >= 0 && config.lockOrientation <= 3) args.push(`--lock-video-orientation=${config.lockOrientation}`);
 
-  // Window flags
+  // Window flags & Power optimizations (Phase 1.1)
   if (config.alwaysOnTop) args.push('--always-on-top');
   if (config.borderless) args.push('--window-borderless');
   if (config.fullscreen) args.push('--fullscreen');
   if (config.turnScreenOff) args.push('--turn-screen-off');
   if (config.stayAwake !== false) args.push('--stay-awake');
+  if (config.powerOffOnClose) args.push('--power-off-on-close');
   if (config.showTouches) args.push('--show-touches');
+  if (config.clipboardAutoSync === false) args.push('--no-clipboard-autosync');
 
   // Audio flags
-  if (config.audioEnabled === false) {
+  if (config.audioEnabled === false || mode === 'webcam') {
     args.push('--no-audio');
   } else {
     if (config.audioCodec) args.push(`--audio-codec=${config.audioCodec}`);
@@ -339,36 +381,38 @@ app.post('/api/mirror/start', (req, res) => {
   }
 
   // Recording
+  let isDeviceRecording = false;
   if (recordFile) {
     args.push(`--record=${recordFile}`);
     if (config.recordFormat) args.push(`--record-format=${config.recordFormat}`);
-    isRecording = true;
-    activeRecordingFile = recordFile;
-  } else {
-    isRecording = false;
-    activeRecordingFile = null;
+    isDeviceRecording = true;
   }
 
   try {
     const proc = spawn(scrcpyExe, args, { cwd: scrcpyBin });
-    activeScrcpy = proc;
-    activeDevice = { serial, model };
+    const mirrorInfo = {
+      proc,
+      serial,
+      model,
+      deviceName,
+      isRecording: isDeviceRecording,
+      recordingFile: recordFile || null,
+      port: currentPort,
+      mode,
+      startedAt: new Date().toISOString()
+    };
+    activeMirrors.set(serial, mirrorInfo);
 
-    proc.stdout.on('data', (data) => console.log(`[scrcpy] ${data}`));
-    proc.stderr.on('data', (data) => console.error(`[scrcpy err] ${data}`));
+    proc.stdout.on('data', (data) => console.log(`[scrcpy ${serial}] ${data}`));
+    proc.stderr.on('data', (data) => console.error(`[scrcpy err ${serial}] ${data}`));
 
     proc.on('close', (code) => {
-      console.log(`[scrcpy exited] code ${code}`);
-      if (activeDevice && activeDevice.serial) {
-        runAdb(['-s', activeDevice.serial, 'shell', 'svc', 'power', 'stayon', 'false']);
-      }
-      activeScrcpy = null;
-      activeDevice = null;
-      isRecording = false;
-      activeRecordingFile = null;
+      console.log(`[scrcpy exited ${serial}] code ${code}`);
+      runAdb(['-s', serial, 'shell', 'svc', 'power', 'stayon', 'false']);
+      activeMirrors.delete(serial);
     });
 
-    res.json({ success: true, message: 'Mirroring launched!', pid: proc.pid });
+    res.json({ success: true, message: 'Mirroring launched!', pid: proc.pid, port: currentPort });
   } catch (err) {
     res.json({ success: false, message: `Failed to launch scrcpy: ${err.message}` });
   }
@@ -376,28 +420,55 @@ app.post('/api/mirror/start', (req, res) => {
 
 // 3. POST /api/mirror/stop
 app.post('/api/mirror/stop', (req, res) => {
-  if (activeScrcpy) {
+  const { serial } = req.body;
+  if (serial && activeMirrors.has(serial)) {
+    const session = activeMirrors.get(serial);
     try {
-      if (activeDevice && activeDevice.serial) {
-        runAdb(['-s', activeDevice.serial, 'shell', 'svc', 'power', 'stayon', 'false']);
-      }
-      activeScrcpy.kill('SIGTERM');
-      exec(`taskkill /F /T /PID ${activeScrcpy.pid}`, () => {});
+      runAdb(['-s', serial, 'shell', 'svc', 'power', 'stayon', 'false']);
+      session.proc.kill('SIGTERM');
+      exec(`taskkill /F /T /PID ${session.proc.pid}`, () => {});
     } catch (e) {}
-    activeScrcpy = null;
-    activeDevice = null;
-    isRecording = false;
+    activeMirrors.delete(serial);
+    return res.json({ success: true, message: `Mirror for ${serial} stopped` });
   }
-  res.json({ success: true, message: 'Mirror stopped' });
+
+  // If no serial specified, stop all active mirrors
+  for (const [s, session] of activeMirrors.entries()) {
+    try {
+      runAdb(['-s', s, 'shell', 'svc', 'power', 'stayon', 'false']);
+      session.proc.kill('SIGTERM');
+      exec(`taskkill /F /T /PID ${session.proc.pid}`, () => {});
+    } catch (e) {}
+  }
+  activeMirrors.clear();
+  res.json({ success: true, message: 'All mirrors stopped' });
 });
 
 // 4. GET /api/mirror/status
 app.get('/api/mirror/status', (req, res) => {
+  const { serial } = req.query;
+  const mirrorsObj = {};
+  for (const [s, m] of activeMirrors.entries()) {
+    mirrorsObj[s] = {
+      active: !m.proc.killed,
+      serial: m.serial,
+      model: m.model,
+      mode: m.mode,
+      isRecording: m.isRecording,
+      recordingFile: m.recordingFile,
+      startedAt: m.startedAt
+    };
+  }
+
+  const isSpecificMirroring = serial ? !!(activeMirrors.has(serial) && !activeMirrors.get(serial).proc.killed) : activeMirrors.size > 0;
+  const firstSession = activeMirrors.size > 0 ? Array.from(activeMirrors.values())[0] : null;
+
   res.json({
-    isMirroring: !!(activeScrcpy && !activeScrcpy.killed),
-    device: activeDevice,
-    isRecording,
-    recordingFile: activeRecordingFile
+    isMirroring: isSpecificMirroring,
+    mirrors: mirrorsObj,
+    device: firstSession ? { serial: firstSession.serial, model: firstSession.model } : null,
+    isRecording: Array.from(activeMirrors.values()).some(m => m.isRecording),
+    recordingFile: firstSession ? firstSession.recordingFile : null
   });
 });
 
@@ -463,88 +534,12 @@ app.post('/api/wifi/connect', async (req, res) => {
   }
 });
 
-// 7. GET /api/files & /api/files/list
-const handleGetFiles = async (req, res) => {
-  const { serial, path: remotePath = '/sdcard/Download/' } = req.query;
-  if (!serial) return res.json({ success: false, message: 'No serial provided' });
-
-  const cleanPath = remotePath.endsWith('/') ? remotePath : `${remotePath}/`;
-  const result = await runAdb(['-s', serial, 'shell', 'ls', '-la', cleanPath], 6000);
-
-  if (!result.success && !result.output) {
-    return res.json({ success: true, files: [] });
-  }
-
-  const lines = result.output.split(/\r?\n/).filter(l => l.trim().length > 0 && !l.startsWith('total') && !l.startsWith('Error'));
-  const files = [];
-
-  for (const line of lines) {
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 6) continue;
-
-    const perms = parts[0];
-    const isDir = perms.startsWith('d') || perms.startsWith('l');
-    let name = parts.slice(7).join(' ') || parts[parts.length - 1];
-    let sizeNum = parseInt(parts[4], 10) || 0;
-    let date = `${parts[5]} ${parts[6]}`;
-
-    if (name === '.' || name === '..') continue;
-    if (name.includes(' -> ')) name = name.split(' -> ')[0];
-
-    files.push({
-      name,
-      path: cleanPath + name,
-      isDir,
-      size: isDir ? 'Folder' : formatBytes(sizeNum),
-      sizeBytes: sizeNum,
-      sizeDisplay: isDir ? '<DIR>' : formatBytes(sizeNum),
-      date,
-      perms
-    });
-  }
-
-  files.sort((a, b) => (b.isDir ? 1 : 0) - (a.isDir ? 1 : 0) || a.name.localeCompare(b.name));
-  res.json({ success: true, files, currentPath: cleanPath });
-};
-
-app.get('/api/files', handleGetFiles);
-app.get('/api/files/list', handleGetFiles);
-
-// 8. POST /api/files/upload (Base64 file push)
-app.post('/api/files/upload', async (req, res) => {
-  const { serial, fileName, base64Data, remoteDir = '/sdcard/Download/' } = req.body;
-  if (!serial || !fileName || !base64Data) {
-    return res.json({ success: false, message: 'Missing parameters' });
-  }
-
-  const tempFilePath = path.join(os.tmpdir(), fileName);
-  try {
-    const buffer = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(tempFilePath, buffer);
-
-    if (fileName.toLowerCase().endsWith('.apk')) {
-      // Install APK
-      const installRes = await runAdb(['-s', serial, 'install', '-r', tempFilePath], 90000);
-      try { fs.unlinkSync(tempFilePath); } catch (e) {}
-
-      if (installRes.output.includes('Success')) {
-        return res.json({ success: true, message: `APK ${fileName} installed successfully!` });
-      }
-      return res.json({ success: false, message: `Install failed: ${installRes.output}` });
-    } else {
-      // Push file
-      const pushRes = await runAdb(['-s', serial, 'push', tempFilePath, remoteDir], 60000);
-      try { fs.unlinkSync(tempFilePath); } catch (e) {}
-
-      if (pushRes.success || pushRes.output.includes('file pushed')) {
-        return res.json({ success: true, message: `Uploaded ${fileName} to ${remoteDir}` });
-      }
-      return res.json({ success: false, message: pushRes.output });
-    }
-  } catch (err) {
-    res.json({ success: false, message: err.message });
-  }
-});
+// 7. Full-Featured Files Router (/api/files)
+const defaultDownloadDir = path.join(homeDir, 'Downloads', 'StreamFusion');
+if (!fs.existsSync(defaultDownloadDir)) {
+  try { fs.mkdirSync(defaultDownloadDir, { recursive: true }); } catch (e) {}
+}
+app.use('/api/files', createFilesRouter({ runAdb, defaultDownloadDir }));
 
 // 9. Controls: Key, Text, URL, Screenshot, Wake Screen
 app.post('/api/control/wake', async (req, res) => {
@@ -567,6 +562,41 @@ app.post('/api/control/text', async (req, res) => {
   const escaped = (text || '').replace(/ /g, '%s').replace(/&/g, '\\&').replace(/</g, '\\<').replace(/>/g, '\\>');
   const result = await runAdb(['-s', serial, 'shell', 'input', 'text', escaped], 3000);
   res.json(result);
+});
+
+// Phase 1.2: Bi-Directional Clipboard & Unicode text injection
+app.post('/api/control/clipboard', async (req, res) => {
+  const { serial, text, action = 'send' } = req.body;
+  if (!serial) return res.json({ success: false, message: 'No serial provided' });
+
+  if (action === 'paste') {
+    const r = await runAdb(['-s', serial, 'shell', 'input', 'keyevent', '279'], 3000); // KEYCODE_PASTE
+    return res.json({ success: r.success, message: 'Paste key injected' });
+  }
+
+  if (!text) return res.json({ success: false, message: 'No text provided' });
+
+  try {
+    // Write UTF-8 text file and push to device cache
+    const tempFile = path.join(os.tmpdir(), `sf_clip_${Date.now()}.txt`);
+    fs.writeFileSync(tempFile, text, 'utf8');
+    await runAdb(['-s', serial, 'push', tempFile, '/data/local/tmp/sf_clipboard.txt'], 5000);
+    try { fs.unlinkSync(tempFile); } catch (e) {}
+
+    // Broadcast clipper intent if helper installed
+    await runAdb(['-s', serial, 'shell', 'am', 'broadcast', '-a', 'clipper.set', '-e', 'text', text], 2000);
+
+    // If pure ASCII, also inject via adb input text directly
+    const isAscii = /^[\x20-\x7E]+$/.test(text);
+    if (isAscii && text.length < 120) {
+      const escaped = text.replace(/ /g, '%s').replace(/&/g, '\\&').replace(/</g, '\\<').replace(/>/g, '\\>');
+      await runAdb(['-s', serial, 'shell', 'input', 'text', escaped], 3000);
+    }
+
+    res.json({ success: true, message: 'Text transferred to device' });
+  } catch (err) {
+    res.json({ success: false, message: err.message });
+  }
 });
 
 app.post('/api/control/url', async (req, res) => {

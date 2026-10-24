@@ -1,50 +1,71 @@
-# 🚀 StreamFusion v3.0.0 — Official Major Release
+# 🚀 StreamFusion v3.1.0 — Official Major Release
 
 ## 🌟 Highlights & Major Changes
 
-### 🖤 Cinematic Pitch-Black Welcome Experience
-* **Pure Black (#000000) Splash**: Launches into a sleek, cinema-grade pitch black canvas.
-* **Glowing White Vector Cursive Animation**: The word "Welcome" is drawn in glowing white vector lines for the exact duration of the animation, then smoothly dissolves into the dashboard with a hardware-accelerated cubic-bezier transition.
-* **Zero Window Flash**: Window background color starts in pure black from the very first frame of OS window creation, completely eliminating white flicker.
+### 🐱 Real NSIS Cat Animation Installer (Phase 0.1)
+* **Real-time Extraction Visuals**: When you double-click `StreamFusion-v3.1.0-Setup.exe`, a borderless, pure white installer window immediately opens displaying the playing cat animation above an extraction progress bar.
+* **Native C# Companion Engine**: Compiled using native Windows compiler `csc.exe` (`CatSetupProgress.exe`, 186 KB) with embedded animated GIF (`installer-cat.gif`, 175 KB). Zero third-party runtime dependencies required.
+* **Auto-Updater Friendly**: Completely silent in background update mode (`${If} ${Silent}`), keeping differential updates seamless.
 
-### 🐱 In-Memory High-Performance Cat Playing Lottie Engine
-* **Embedded JSON Architecture**: Cat animation is bundled directly as an in-memory JSON module — eliminating all network/XHR delays, 404s, or file path resolution issues.
-* **Byte-Level Verification**: Stripped corrupted EOF control characters so Lottie parses instantly without errors.
-* **Interactive Device Setup**: 0–100% progress tracking verifying Google ADB Platform-Tools, Scrcpy codecs, Wi-Fi pairing daemon, and display wake engine.
+### 🖤 Cinema-Grade One-Time Welcome Experience (Phase 0.2 & 0.3)
+* **Single Playback & Instant Persistence**: The cursive glowing white "Welcome" animation on pure black canvas plays once (`loop: false`).
+* **Instant Settings Store**: Calls `/api/settings` immediately on animation start to record `welcomeSeen: true`, guaranteeing that mid-animation closures or restarts will never trigger duplicate splash screens.
+* **Smooth 0.8s Cubic-Bezier Dissolve**: At the `complete` event (or 9.5s fallback), the canvas gracefully fades out to reveal the dashboard.
+* **Replay Button**: A dedicated "Replay Welcome Screen" button in Settings lets you watch the animation on-demand anytime.
 
-### 📶 1-Click Persistent Wi-Fi Auto-Reconnect
-* **Zero-Wire Reconnect**: Pair your phone once via USB; safely disconnect the cable.
-* **Persistent Storage**: Saved devices are remembered locally. Next time your phone is connected to the same Wi-Fi, it shows as **Online** with an instant **Mirror** button—no USB cable required!
+### 📁 Full-Featured Mobile File Manager (Phase 0.4)
+* **Direct Fast File Push**: Direct filesystem path push via `adb push` through Electron 34 `webUtils.getPathForFile` (zero memory buffer overhead, handles 5 GB+ files easily).
+* **Category Quick Chips**: Instant navigation chips for `Internal Storage`, `Downloads`, `DCIM (Camera)`, `Pictures`, `Movies`, `Music`, and `Documents`.
+* **Breadcrumbs & Folder Navigation**: Clickable breadcrumb path bar with `Up` level button and full directory hierarchy.
+* **Full File Operations**: Upload files/folders, Download to PC (`~/Downloads/StreamFusion`), Create New Folder, Rename, Delete, and Toggle Hidden Files (`.`).
+* **Hindi & Space Handling**: Full UTF-8 support for filenames with spaces and Hindi characters (e.g. `मेरा फोटो.jpg`).
 
-### 🔋 Smart Screen Stay-Awake & Double-Click Wake
-* Automatically keeps phone display active during mirroring sessions (`svc power stayon true`).
-* Automatically restores normal power behavior when mirror window closes (`svc power stayon false`).
-* Double-click screen wake support using direct `KEYCODE_WAKEUP` command.
+### 🔄 In-App Differential Auto-Updater (Phase 0.5)
+* **Powered by `electron-updater`**: Differential `.blockmap` updates hooked directly to GitHub Releases (`MilannSharma/StreamFusion`).
+* **Settings Tab UI**: "Check for Updates" button, progress bar showing real-time download percentage, and 1-click "Restart & Install" action.
 
-### ⚡ Scrcpy v5.0.1 & Google ADB Platform-Tools v37.0.1
-* Hardware-accelerated H.264/H.265 video stream with ultra-low latency (<30ms).
-* Auto-minimize host window on mirror launch so mobile screen takes center stage.
+### 🔋 Power Mirroring & Screen-Off Mode (Phase 1.1)
+* **Turn Phone Screen Off While Mirroring**: Enables `--turn-screen-off` so the phone's physical display remains pitch black while streaming 60 FPS on your PC monitor (drastically reduces phone heat and saves battery).
+* **Stay Awake & Power Off on Close**: Controls device wake state while connected and powers off display on mirror exit.
 
-### 📁 Drag & Drop File Transfer & APK Push
-* Instantly push files and APKs to phone internal storage by dropping them directly onto the app window.
+### 📋 Bi-Directional Hindi / Unicode Clipboard Sync (Phase 1.2)
+* **Unicode & Hindi Text Bridge**: Send any text (Hindi: `नमस्ते भारत`, emojis, long URLs) directly to Android's clipboard via dedicated modal and ADB injection.
+* **Direct Paste Trigger**: 1-click "Paste on Phone" button injects Android `KEYCODE_PASTE` into whatever app is currently open on phone.
+
+### 🔔 System Tray & Device Connect Alerts (Phase 1.3)
+* **Close to Tray**: Minimizes StreamFusion into Windows notification area when closing the window.
+* **Tray Quick Menu**: Right-click to "Open StreamFusion" or "Quit".
+* **Connect Alert**: Windows desktop notification toast when your phone connects via USB or Wi-Fi.
+
+### 🛠️ 'Fix My Connection' Self-Healing Diagnostics (Phase 1.4)
+* **Automated 5-Point Health Check**: Probes ADB binary, Express backend (`127.0.0.1:3001`), device status (`device`, `unauthorized`, `offline`), and wireless port 5555.
+* **1-Click Self-Healing**: 1-click "Restart ADB Server" button cleans hung daemon processes instantly.
+* **Brand Troubleshooting Guides**: Interactive instructions for Xiaomi, Vivo/iQOO, Samsung, and Realme.
+
+### 📱 Multi-Device Concurrent Mirroring (Phase 2.1)
+* **Concurrent Streaming**: Run 2 or more Android phones on PC simultaneously!
+* **Independent Scrcpy Instances**: Dynamic ports (`--port=27183:27199`) and unique window titles (`StreamFusion - PhoneName`).
+* **Per-Device Cards**: Individual "Start Mirror" and "Stop" buttons on each connected device card.
+
+### 💬 Android Notification Mirroring (Phase 2.2)
+* **Windows Desktop Alerts**: Forwards incoming phone notifications (Messages, WhatsApp, Calls) to Windows desktop notification banners with app name and message preview.
+* **Privacy Controls**: Toggle notification forwarding on/off anytime in Settings.
+
+### 📹 Smartphone HD Webcam Studio (Phase 3.1)
+* **1080p 60FPS Webcam**: Stream your phone's primary back sensor or selfie camera as a high-definition webcam using `--video-source=camera`.
+* **OBS Virtual Camera Integration**: Step-by-step visual guide on connecting the stream into Zoom, Google Meet, and Microsoft Teams.
+
+### 🖥️ Virtual Android Desktop Display (Phase 3.2)
+* **Secondary Desktop Mode**: Uses `--new-display=1920x1080/420` to spawn an independent Android virtual display on your PC. Use apps on PC without locking or disturbing your phone screen!
 
 ---
 
-### 📦 Downloads & Executables
+### 📦 Downloads & Executables (v3.1.0)
 
-### 🖥️ Local File on your PC:
-* **Installer**: `Z:\StreamFusion\latest app\StreamFusion-v3.0.0-Setup.exe` (~87.8 MB)
-* **Unpacked App**: `Z:\StreamFusion\release\win-unpacked\StreamFusion v3.0.0.exe` (~261 MB)
-
-### 🌐 Direct GitHub Release Download:
-* [**⬇️ Download StreamFusion-v3.0.0-Setup.exe**](https://github.com/MilannSharma/StreamFusion/releases/download/v3.0.0/StreamFusion-v3.0.0-Setup.exe) (87.8 MB)
-* [**🔗 View GitHub Release Page**](https://github.com/MilannSharma/StreamFusion/releases/tag/v3.0.0)
-
-### 🛠️ Key Reliability & Architecture Fixes in v3.0.0:
-* **Ultra-Compact Binary Size**: Shrunk installer down to **87.8 MB** (73% smaller than original 333 MB build!), unpacked installation down to **261 MB** (down from 1.1+ GB).
-* **Zero Blank White Screen**: Relative `./assets/` resolution and resilient `waitForServer()` health check prevent load timeouts.
-* **100% Custom UI Installer**: NSIS one-click execution skips legacy Windows wizards and boots straight into the interactive Setup screen.
-* **LAN Security Hardened**: Express backend binds strictly to `127.0.0.1` with local-only host verification and media-path sanitization. Private device IP addresses (`saved_devices.json`) strictly gitignored.
+* **Installer**: `Z:\StreamFusion\latest app\StreamFusion-v3.1.0-Setup.exe` (~88.2 MB)
+* **Timestamped Copy**: `Z:\StreamFusion\latest app\StreamFusion-v3.1.0-Setup_[2026-10-24_12-58].exe`
+* **SHA-256**: `0667940A8FE951D0DBAA8625E4279E702B0FAAB220145948EDB146CB761B8B4F`
+* **Unpacked App**: `Z:\StreamFusion\release\win-unpacked\StreamFusion v3.1.0.exe` (~261 MB)
 
 ---
 

@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import lottie from 'lottie-web';
 import catAnimationData from './assets/cat-animation.json';
 import welcomeAnimationData from './assets/welcome-animation.json';
+import FileManager from './components/FileManager/FileManager';
+import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal';
+import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModal';
+import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell
 } from 'lucide-react';
 
 declare global {
@@ -20,6 +24,12 @@ declare global {
       openExternal: (url: string) => void;
       openPath: (path: string) => void;
       createShortcuts?: () => Promise<boolean>;
+      getPathForFile?: (file: any) => string;
+      showOpenDialog?: (options: any) => Promise<any>;
+      showNotification?: (data: { title: string; body: string }) => void;
+      checkForUpdates?: () => void;
+      restartAndInstallUpdate?: () => void;
+      onUpdaterStatus?: (cb: (status: any) => void) => () => void;
     };
     lottie?: any;
   }
@@ -29,8 +39,22 @@ declare global {
 function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFading, setIsFading] = React.useState(false);
+  const isInitializedRef = React.useRef(false);
 
   React.useEffect(() => {
+    // Persist welcomeSeen immediately to settings.json
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ welcomeSeen: true })
+    }).catch(() => {});
+    try {
+      localStorage.setItem('streamfusion_v3_welcome_seen', 'true');
+    } catch (e) {}
+
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     let anim: any = null;
     let fadeTimer: any = null;
     let finishTimer: any = null;
@@ -49,15 +73,19 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
           setIsFading(true);
           finishTimer = setTimeout(() => {
             onFinish();
-          }, 700);
+          }, 800);
         };
 
         anim.addEventListener('complete', triggerFade);
-        // Safety fallback timer if complete event does not fire
-        fadeTimer = setTimeout(triggerFade, 8500);
+        anim.addEventListener('data_failed', () => {
+          console.warn('Welcome animation data failed, fading early');
+          setTimeout(triggerFade, 1200);
+        });
+        // Safety fallback timer if complete event does not fire (8.2s anim + 1.3s buffer)
+        fadeTimer = setTimeout(triggerFade, 9500);
       } catch (e) {
         console.error('Welcome Lottie error:', e);
-        onFinish();
+        setTimeout(onFinish, 1200);
       }
     }
 
@@ -111,6 +139,7 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
 // 2. High-Performance In-Memory Cat Playing Lottie Component
 function CatPlayingLottie({ size = 220 }: { size?: number }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const [loadError, setLoadError] = React.useState(false);
 
   React.useEffect(() => {
     let anim: any = null;
@@ -123,8 +152,12 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
           autoplay: true,
           animationData: catAnimationData
         });
+        anim.addEventListener('data_failed', () => {
+          setLoadError(true);
+        });
       } catch (e) {
         console.error('Cat Lottie error:', e);
+        setLoadError(true);
       }
     }
     return () => {
@@ -135,6 +168,9 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
   return (
     <div style={{ width: size, height: size * 0.78, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {loadError && (
+        <div style={{ fontSize: 52, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.1))' }}>🐱✨</div>
+      )}
     </div>
   );
 }
@@ -147,14 +183,26 @@ export default function App() {
   const [mirrorStatus, setMirrorStatus] = useState({ isMirroring: false, isRecording: false, device: null as any });
   const [toast, setToast] = useState<{ message: string; icon: string; visible: boolean }>({ message: '', icon: '', visible: false });
   const [isScanning, setIsScanning] = useState(false);
-  const [showSplash, setShowSplash] = useState<boolean>(true);
-  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
-    try {
-      return !localStorage.getItem('streamfusion_v3_setup_complete');
-    } catch (e) {
-      return true;
-    }
-  });
+  const [showSplash, setShowSplash] = useState<boolean>(false);
+  const [showWelcome, setShowWelcome] = useState<boolean>(false);
+
+  // Probe centralized settings store on launch to check welcomeSeen
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(settings => {
+        if (!settings.welcomeSeen) {
+          setShowSplash(true);
+        }
+      })
+      .catch(() => {
+        try {
+          if (!localStorage.getItem('streamfusion_v3_welcome_seen')) {
+            setShowSplash(true);
+          }
+        } catch (e) {}
+      });
+  }, []);
 
   const [setupProgress, setSetupProgress] = useState(25);
   const [setupStage, setSetupStage] = useState('Verifying Google ADB Platform-Tools v37.0.1...');
@@ -216,6 +264,76 @@ export default function App() {
     fullscreen: false,
     recordFormat: 'mp4'
   });
+
+  // Phase 1, 2, 3 Modals & Features State
+  const [isFixConnectionOpen, setIsFixConnectionOpen] = useState(false);
+  const [isClipboardSyncOpen, setIsClipboardSyncOpen] = useState(false);
+  const [isWebcamStudioOpen, setIsWebcamStudioOpen] = useState(false);
+
+  // Auto-Updater State (Phase 0.5)
+  const [updaterStatus, setUpdaterStatus] = useState<any>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  // Centralized Settings (/api/settings)
+  const [appSettings, setAppSettings] = useState({
+    welcomeSeen: true,
+    closeToTray: true,
+    screenOffMirror: false,
+    stayAwake: true,
+    clipboardSync: true,
+    notificationMirroring: false,
+    autoUpdateCheck: true
+  });
+
+  // Load centralized settings and auto-updater listener on mount
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.settings) {
+          setAppSettings(prev => ({ ...prev, ...data.settings }));
+          setConfig(prev => ({
+            ...prev,
+            stayAwake: data.settings.stayAwake !== false,
+            turnScreenOff: !!data.settings.screenOffMirror
+          }));
+        }
+      })
+      .catch(() => {});
+
+    if (window.electronAPI?.onUpdaterStatus) {
+      const cleanup = window.electronAPI.onUpdaterStatus((statusData: any) => {
+        setUpdaterStatus(statusData);
+        setIsCheckingUpdate(false);
+      });
+      return cleanup;
+    }
+  }, []);
+
+  const updateAppSetting = async (key: string, value: any) => {
+    const next = { ...appSettings, [key]: value };
+    setAppSettings(next);
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value })
+      });
+    } catch (e) {}
+  };
+
+  const handleCheckUpdates = () => {
+    setIsCheckingUpdate(true);
+    setUpdaterStatus({ status: 'checking', message: 'Checking GitHub releases for StreamFusion updates...' });
+    if (window.electronAPI?.checkForUpdates) {
+      window.electronAPI.checkForUpdates();
+    } else {
+      setTimeout(() => {
+        setUpdaterStatus({ status: 'not-available', message: 'StreamFusion v3.1.0 is currently the latest version!' });
+        setIsCheckingUpdate(false);
+      }, 1500);
+    }
+  };
 
   // Wireless Mirror Modal State
   const [wirelessModalOpen, setWirelessModalOpen] = useState(false);
@@ -343,6 +461,54 @@ export default function App() {
     } catch (e) {}
   };
 
+  // Helper to determine if a specific device serial is mirroring
+  const isDeviceMirroring = (serial: string) => {
+    if (!serial || !mirrorStatus) return false;
+    if (mirrorStatus.mirrors && mirrorStatus.mirrors[serial]) {
+      return mirrorStatus.mirrors[serial].active;
+    }
+    return mirrorStatus.isMirroring && mirrorStatus.device?.serial === serial;
+  };
+
+  // Background Android notification forwarding to Desktop (Phase 2.2)
+  useEffect(() => {
+    if (!appSettings.notificationMirroring || devices.length === 0) return;
+    const targetSerial = selectedDevice?.serial || devices[0]?.serial;
+    if (!targetSerial) return;
+
+    const notifInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/notifications?serial=${targetSerial}`);
+        const data = await res.json();
+        if (data.success && data.notifications) {
+          data.notifications.forEach((n: any) => {
+            if (n.isNew) {
+              window.electronAPI?.showNotification?.({
+                title: `Phone (${n.pkg.split('.').pop()}): ${n.title}`,
+                body: n.text
+              });
+            }
+          });
+        }
+      } catch (e) {}
+    }, 8000);
+
+    return () => clearInterval(notifInterval);
+  }, [appSettings.notificationMirroring, selectedDevice, devices]);
+
+  // Alert on phone plug-in / connection (Phase 1.3)
+  const prevDeviceCountRef = React.useRef(0);
+  useEffect(() => {
+    if (devices.length > prevDeviceCountRef.current && prevDeviceCountRef.current > 0) {
+      const newest = devices[devices.length - 1];
+      window.electronAPI?.showNotification?.({
+        title: 'StreamFusion: Phone Connected!',
+        body: `${getDeviceName(newest)} is ready for mirroring.`
+      });
+    }
+    prevDeviceCountRef.current = devices.length;
+  }, [devices]);
+
   useEffect(() => {
     fetchDevices();
     fetchMirrorStatus();
@@ -433,9 +599,19 @@ export default function App() {
     }
   };
 
-  // Start Screen Mirroring
-  const startMirror = async (record = false, targetSerial?: string) => {
-    const serialToUse = targetSerial || selectedDevice?.serial;
+  // Start Screen Mirroring (Multi-Device & Power Flags enabled)
+  const startMirror = async (param1?: any, param2?: any) => {
+    let serialToUse = selectedDevice?.serial || selectedSerial;
+    let record = false;
+
+    if (typeof param1 === 'string') {
+      serialToUse = param1;
+      record = !!param2;
+    } else if (typeof param1 === 'boolean') {
+      record = param1;
+      if (typeof param2 === 'string') serialToUse = param2;
+    }
+
     const deviceObj = devices.find(d => d.serial === serialToUse) || selectedDevice;
 
     if (!serialToUse || !deviceObj) {
@@ -456,15 +632,18 @@ export default function App() {
           model: deviceObj.model,
           config: {
             ...config,
+            turnScreenOff: appSettings.screenOffMirror,
+            stayAwake: appSettings.stayAwake,
+            clipboardAutoSync: appSettings.clipboardSync,
             recordSession: record
           }
         })
       });
       const data = await res.json();
       if (data.success) {
-        setMirrorStatus({ isMirroring: true, isRecording: record, device: deviceObj });
         showToast(`Mirroring active: ${friendlyName}`, '✨');
         if (wirelessModalOpen) setWirelessModalOpen(false);
+        fetchMirrorStatus();
 
         // Auto-minimize StreamFusion so phone mirror window is visible on desktop!
         if (window.electronAPI && typeof window.electronAPI.minimize === 'function') {
@@ -473,19 +652,23 @@ export default function App() {
           }, 600);
         }
       } else {
-        showToast(`Could not start mirror: ${data.error}`, '❌');
+        showToast(`Could not start mirror: ${data.message || data.error}`, '❌');
       }
     } catch (err: any) {
       showToast(`Error: ${err.message}`, '❌');
     }
   };
 
-  // Stop Mirroring
-  const stopMirror = async () => {
+  // Stop Mirroring (supports stopping single device or all)
+  const stopMirror = async (serialToStop?: string) => {
     try {
-      await fetch('/api/mirror/stop', { method: 'POST' });
-      setMirrorStatus({ isMirroring: false, isRecording: false, device: null });
-      showToast('Mirroring ended', '⏹️');
+      await fetch('/api/mirror/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial: typeof serialToStop === 'string' ? serialToStop : undefined })
+      });
+      showToast(serialToStop ? 'Stopped device mirror' : 'Mirroring ended', '⏹️');
+      fetchMirrorStatus();
       if (activeTab === 'recordings') loadRecordings();
     } catch (err: any) {
       showToast(`Failed: ${err.message}`, '❌');
@@ -930,21 +1113,48 @@ export default function App() {
                   <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Project and control your Android phone on your computer screen.</p>
                 </div>
 
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setIsFixConnectionOpen(true)}
+                    className="btn-secondary"
+                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title="Self-healing diagnostic assistant for ADB and drivers"
+                  >
+                    <Wrench size={13} color="#2563eb" />
+                    <span>Fix Connection</span>
+                  </button>
+                  <button
+                    onClick={() => setIsClipboardSyncOpen(true)}
+                    className="btn-secondary"
+                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title="Send Hindi/English text and sync clipboard with phone"
+                  >
+                    <Clipboard size={13} color="#2563eb" />
+                    <span>Clipboard Sync</span>
+                  </button>
+                  <button
+                    onClick={() => setIsWebcamStudioOpen(true)}
+                    className="btn-secondary"
+                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title="Use phone as HD PC Webcam or secondary Virtual Display"
+                  >
+                    <Camera size={13} color="#2563eb" />
+                    <span>Webcam & Display</span>
+                  </button>
                   <button
                     onClick={fetchDevices}
                     className="btn-secondary"
-                    style={{ padding: '8px 16px', fontSize: 13 }}
+                    style={{ padding: '8px 14px', fontSize: 12 }}
                   >
-                    <RefreshCw size={14} className={isScanning ? 'pulse' : ''} />
-                    <span>Scan Devices</span>
+                    <RefreshCw size={13} className={isScanning ? 'pulse' : ''} />
+                    <span>Scan</span>
                   </button>
                   <button
                     onClick={() => openWirelessMirrorModal()}
                     className="btn-primary"
-                    style={{ padding: '8px 18px', fontSize: 13 }}
+                    style={{ padding: '8px 16px', fontSize: 12 }}
                   >
-                    <Wifi size={14} />
+                    <Wifi size={13} />
                     <span>Wireless Mirror</span>
                   </button>
                 </div>
@@ -1150,7 +1360,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                         {!dev.isWifi && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openWirelessMirrorModal(dev); }}
@@ -1160,12 +1370,30 @@ export default function App() {
                             <Wifi size={14} /> Make Wireless
                           </button>
                         )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedSerial(dev.serial); startMirror(false, dev.serial); }}
-                          className="btn-primary"
-                        >
-                          <Play size={14} /> Start Mirror
-                        </button>
+                        {isDeviceMirroring(dev.serial) ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a' }} className="pulse" />
+                              Mirroring
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); stopMirror(dev.serial); }}
+                              className="btn-danger"
+                              style={{ padding: '7px 14px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                              title="Stop mirror for this device"
+                            >
+                              <Square size={12} /> Stop
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedSerial(dev.serial); startMirror(dev.serial, false); }}
+                            className="btn-primary"
+                            style={{ padding: '8px 16px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <Play size={14} /> Start Mirror
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1206,126 +1434,12 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 2: FILE TRANSFER */}
+          {/* TAB 2: FULL-FEATURED MOBILE FILE MANAGER */}
           {activeTab === 'files' && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <div>
-                  <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)' }}>Send Files to Phone</h1>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Drag and drop photos, videos, documents, or apps directly to your phone.</p>
-                </div>
-              </div>
-
-              {/* Drag and Drop Box */}
-              <div
-                className="glass-panel"
-                style={{
-                  padding: 36,
-                  textAlign: 'center',
-                  border: '2px dashed #93c5fd',
-                  background: '#f8fafc',
-                  marginBottom: 24,
-                  cursor: 'pointer'
-                }}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => {
-                  e.preventDefault();
-                  handleFileUpload(e.dataTransfer.files);
-                }}
-                onClick={() => document.getElementById('file-upload-input')?.click()}
-              >
-                <input
-                  id="file-upload-input"
-                  type="file"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={e => handleFileUpload(e.target.files)}
-                />
-                <Upload size={40} style={{ color: '#2563eb', margin: '0 auto 12px' }} />
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-main)', marginBottom: 6 }}>
-                  {isUploading ? uploadStatus : 'Click or Drag Files Here to Send to Phone'}
-                </h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Files will be saved in your phone's <strong>Downloads</strong> folder
-                </p>
-              </div>
-
-              {/* Phone Files List */}
-              <div className="glass-panel" style={{ padding: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Folder size={18} style={{ color: '#2563eb' }} />
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-main)' }}>Files on Phone:</span>
-                    <span style={{ fontSize: 12, background: '#f1f5f9', padding: '3px 8px', borderRadius: 6, color: '#334155', fontFamily: 'monospace' }}>
-                      {currentRemotePath}
-                    </span>
-                    {currentRemotePath !== '/sdcard/Download/' && (
-                      <button
-                        onClick={() => loadRemoteFiles('/sdcard/Download/')}
-                        className="btn-secondary"
-                        style={{ padding: '3px 8px', fontSize: 11 }}
-                      >
-                        ⬆ Back to Downloads
-                      </button>
-                    )}
-                  </div>
-                  <button onClick={() => loadRemoteFiles(currentRemotePath)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: 11 }}>
-                    <RefreshCw size={12} /> Refresh
-                  </button>
-                </div>
-
-                {!selectedDevice ? (
-                  <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                    Please connect or select your phone to browse files
-                  </div>
-                ) : remoteFiles.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                    No files found in {currentRemotePath}
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {remoteFiles.map((file, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          if (file.isDir) {
-                            loadRemoteFiles(file.path.endsWith('/') ? file.path : `${file.path}/`);
-                          }
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '10px 14px',
-                          background: '#ffffff',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 8,
-                          cursor: file.isDir ? 'pointer' : 'default',
-                          transition: 'all 0.15s'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          {file.isDir ? (
-                            <Folder size={16} style={{ color: '#2563eb' }} />
-                          ) : (
-                            <FileText size={16} style={{ color: '#64748b' }} />
-                          )}
-                          <span style={{ fontSize: 13, fontWeight: file.isDir ? 700 : 600, color: file.isDir ? '#1d4ed8' : 'var(--text-main)' }}>
-                            {file.name}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          {file.date && <span style={{ fontSize: 11, color: '#94a3b8' }}>{file.date}</span>}
-                          <span className={file.isDir ? 'badge badge-cyan' : ''} style={{ fontSize: 11, color: file.isDir ? undefined : 'var(--text-muted)' }}>
-                            {file.size}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <FileManager
+              serial={selectedDevice?.serial || selectedSerial}
+              onToast={(msg, icon) => showToast(msg, icon)}
+            />
           )}
 
           {/* TAB 3: RECORDINGS & GALLERY */}
@@ -1418,13 +1532,16 @@ export default function App() {
 
               {/* Behavior Switches */}
               <div className="glass-panel" style={{ padding: 22 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 14 }}>DISPLAY PREFERENCES</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 14 }}>DISPLAY &amp; SYSTEM PREFERENCES</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={config.stayAwake}
-                      onChange={e => setConfig(prev => ({ ...prev, stayAwake: e.target.checked }))}
+                      onChange={e => {
+                        setConfig(prev => ({ ...prev, stayAwake: e.target.checked }));
+                        updateAppSetting('stayAwake', e.target.checked);
+                      }}
                     />
                     Keep Phone Screen Awake (Prevents phone from locking while mirroring)
                   </label>
@@ -1432,10 +1549,40 @@ export default function App() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
                     <input
                       type="checkbox"
-                      checked={config.turnScreenOff}
-                      onChange={e => setConfig(prev => ({ ...prev, turnScreenOff: e.target.checked }))}
+                      checked={appSettings.screenOffMirror}
+                      onChange={e => {
+                        setConfig(prev => ({ ...prev, turnScreenOff: e.target.checked }));
+                        updateAppSetting('screenOffMirror', e.target.checked);
+                      }}
                     />
-                    Turn Off Phone Screen While Mirroring (Saves phone battery)
+                    Turn Off Phone Screen While Mirroring (Saves phone battery &amp; eliminates heat)
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={appSettings.closeToTray}
+                      onChange={e => updateAppSetting('closeToTray', e.target.checked)}
+                    />
+                    Close to System Tray (Keep running in background when window is closed)
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={appSettings.notificationMirroring}
+                      onChange={e => updateAppSetting('notificationMirroring', e.target.checked)}
+                    />
+                    Mirror Phone Notifications to Windows Desktop Alerts
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={appSettings.clipboardSync}
+                      onChange={e => updateAppSetting('clipboardSync', e.target.checked)}
+                    />
+                    Bi-Directional Clipboard Sync (Automatic copy &amp; paste sync between PC and phone)
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
@@ -1456,6 +1603,79 @@ export default function App() {
                     Open Mirroring Window in Fullscreen Mode
                   </label>
                 </div>
+              </div>
+
+              {/* Software Updates (Phase 0.5) */}
+              <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>
+                  SOFTWARE UPDATES · STREAMFUSION v3.1.0
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
+                  StreamFusion includes built-in differential background updates powered by GitHub Releases.
+                </p>
+
+                {updaterStatus && (
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      background: updaterStatus.status === 'downloaded' ? '#f0fdf4' : '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      marginBottom: 14,
+                      fontSize: 13
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#0f172a' }}>
+                      {updaterStatus.status === 'downloaded' ? <CheckCircle size={16} color="#16a34a" /> : <RefreshCw size={15} color="#2563eb" className={isCheckingUpdate ? 'spin' : ''} />}
+                      <span>{updaterStatus.message || 'StreamFusion is up to date!'}</span>
+                    </div>
+
+                    {updaterStatus.status === 'downloading' && typeof updaterStatus.percent === 'number' && (
+                      <div style={{ marginTop: 8, width: '100%', height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ width: `${updaterStatus.percent}%`, height: '100%', background: '#2563eb', transition: 'width 0.3s' }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={handleCheckUpdates}
+                    disabled={isCheckingUpdate}
+                    className="btn-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontWeight: 600 }}
+                  >
+                    <RefreshCw size={14} className={isCheckingUpdate ? 'spin' : ''} />
+                    <span>{isCheckingUpdate ? 'Checking GitHub...' : 'Check for Updates'}</span>
+                  </button>
+
+                  {updaterStatus?.status === 'downloaded' && (
+                    <button
+                      onClick={() => window.electronAPI?.restartAndInstallUpdate?.()}
+                      className="btn-primary"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontWeight: 600 }}
+                    >
+                      <Sparkles size={14} />
+                      <span>Restart &amp; Install Update</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Welcome Experience */}
+              <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>WELCOME EXPERIENCE</div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
+                  Replay the cinema-grade pitch black Welcome animation with glowing white vector lines anytime.
+                </p>
+                <button
+                  onClick={() => setShowSplash(true)}
+                  className="btn-secondary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontWeight: 600 }}
+                >
+                  <Sparkles size={15} color="#2563eb" />
+                  <span>Replay Welcome Screen</span>
+                </button>
               </div>
             </div>
           )}
@@ -2198,7 +2418,7 @@ export default function App() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <span>Launch StreamFusion v3.0.0</span>
+              <span>Launch StreamFusion v3.1.0</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -2209,6 +2429,31 @@ export default function App() {
       {showSplash && (
         <WelcomeSplash onFinish={() => setShowSplash(false)} />
       )}
+
+      {/* 8. Fix Connection Self-Healing Diagnostics Modal (Phase 1.4) */}
+      <FixConnectionModal
+        isOpen={isFixConnectionOpen}
+        onClose={() => setIsFixConnectionOpen(false)}
+        onRefreshDevices={fetchDevices}
+        onToast={showToast}
+      />
+
+      {/* 9. Bi-Directional Clipboard & Hindi Unicode Text Bridge (Phase 1.2) */}
+      <ClipboardSyncModal
+        isOpen={isClipboardSyncOpen}
+        onClose={() => setIsClipboardSyncOpen(false)}
+        serial={selectedDevice?.serial || selectedSerial}
+        onToast={showToast}
+      />
+
+      {/* 10. Smartphone HD Webcam Studio & Virtual Android Display Modal (Phase 3) */}
+      <WebcamStudioModal
+        isOpen={isWebcamStudioOpen}
+        onClose={() => setIsWebcamStudioOpen(false)}
+        serial={selectedDevice?.serial || selectedSerial}
+        isMirroring={mirrorStatus.isMirroring}
+        onToast={showToast}
+      />
     </div>
   );
 }

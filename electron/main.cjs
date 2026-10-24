@@ -1,12 +1,15 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const { fork } = require('child_process');
+const { initAutoUpdater } = require('./updater.cjs');
 
 let mainWindow = null;
 let serverProcess = null;
 let logFd = null;
+let tray = null;
+let isQuitting = false;
 
 const PORT = 3001;
 const isDev = !app.isPackaged;
@@ -171,6 +174,20 @@ function createWindow() {
     return true;
   });
 
+  ipcMain.handle('show-open-dialog', async (event, options) => {
+    return dialog.showOpenDialog(mainWindow, options || {});
+  });
+
+  ipcMain.on('show-notification', (event, { title, body }) => {
+    if (Notification.isSupported()) {
+      new Notification({
+        title: title || 'StreamFusion',
+        body: body || '',
+        icon: path.join(__dirname, '../StreamFusion.png')
+      }).show();
+    }
+  });
+
   // Load URL based on environment
   if (isDev) {
     // Development mode: Probe Vite dev server first
@@ -188,9 +205,71 @@ function createWindow() {
     });
   }
 
+  // Phase 1.3: Close to Tray
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      let closeToTray = true;
+      try {
+        const settingsFile = path.join(app.getPath('userData'), 'settings.json');
+        if (fs.existsSync(settingsFile)) {
+          const cfg = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+          if (cfg.closeToTray === false) closeToTray = false;
+        }
+      } catch (e) {}
+
+      if (closeToTray) {
+        event.preventDefault();
+        mainWindow.hide();
+        return;
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    const iconPath = path.join(__dirname, '../StreamFusion.png');
+    tray = new Tray(iconPath);
+    tray.setToolTip('StreamFusion v3.1.0');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open StreamFusion',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit StreamFusion',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+
+    tray.setContextMenu(contextMenu);
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.focus();
+        } else {
+          mainWindow.show();
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('[StreamFusion] Tray creation failed:', e);
+  }
 }
 
 function cleanExit() {
@@ -205,13 +284,25 @@ function cleanExit() {
 app.whenReady().then(async () => {
   await startBackendIfNeeded();
   createWindow();
+  createTray();
+
+  if (!isDev) {
+    try {
+      initAutoUpdater(mainWindow);
+    } catch (e) {
+      console.warn('[StreamFusion] Auto-updater failed to initialize:', e);
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('before-quit', cleanExit);
+app.on('before-quit', () => {
+  isQuitting = true;
+  cleanExit();
+});
 
 app.on('window-all-closed', () => {
   cleanExit();
