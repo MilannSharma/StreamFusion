@@ -1,7 +1,7 @@
 {
   "name": "streamfusion",
-  "version": "3.1.0",
-  "description": "StreamFusion v3.1.0 - Premium Android Mobile Mirroring, Wireless Streaming, File Transfer & Control powered by scrcpy",
+  "version": "3.1.1",
+  "description": "StreamFusion v3.1.1 - Premium Android Mobile Mirroring, Wireless Streaming, File Transfer & Control powered by scrcpy",
   "author": "Milann Sharma <https://github.com/Milannsharma>",
   "main": "electron/main.cjs",
   "type": "module",
@@ -35,8 +35,8 @@
   },
   "build": {
     "appId": "com.milannsharma.streamfusion",
-    "productName": "StreamFusion v3.1.0",
-    "artifactName": "StreamFusion-v3.1.0-Setup.${ext}",
+    "productName": "StreamFusion v3.1.1",
+    "artifactName": "StreamFusion-v3.1.1-Setup.${ext}",
     "asar": false,
     "publish": [
       {
@@ -86,7 +86,7 @@
       "include": "build/installer.nsh",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "StreamFusion v3.1.0",
+      "shortcutName": "StreamFusion v3.1.1",
       "runAfterFinish": true
     }
   }

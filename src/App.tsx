@@ -6,6 +6,7 @@ import FileManager from './components/FileManager/FileManager';
 import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal';
 import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModal';
 import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
+import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
@@ -73,23 +74,32 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
           setIsFading(true);
           finishTimer = setTimeout(() => {
             onFinish();
-          }, 800);
+          }, 600);
         };
 
         anim.addEventListener('complete', triggerFade);
         anim.addEventListener('data_failed', () => {
           console.warn('Welcome animation data failed, fading early');
-          setTimeout(triggerFade, 1200);
+          setTimeout(triggerFade, 800);
         });
-        // Safety fallback timer if complete event does not fire (8.2s anim + 1.3s buffer)
-        fadeTimer = setTimeout(triggerFade, 9500);
+        // Safety fallback timer if complete event does not fire (3.5s anim + buffer)
+        fadeTimer = setTimeout(triggerFade, 3800);
       } catch (e) {
         console.error('Welcome Lottie error:', e);
-        setTimeout(onFinish, 1200);
+        setTimeout(onFinish, 800);
       }
     }
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        setIsFading(true);
+        setTimeout(onFinish, 200);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
+      window.removeEventListener('keydown', handleKeyDown);
       if (fadeTimer) clearTimeout(fadeTimer);
       if (finishTimer) clearTimeout(finishTimer);
       if (anim) anim.destroy();
@@ -98,7 +108,7 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
 
   const handleSkip = () => {
     setIsFading(true);
-    setTimeout(onFinish, 300);
+    setTimeout(onFinish, 200);
   };
 
   return (
@@ -110,15 +120,16 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
         backgroundColor: '#000000',
         zIndex: 99999,
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         opacity: isFading ? 0 : 1,
-        transition: 'opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
         pointerEvents: isFading ? 'none' : 'auto',
         cursor: 'pointer',
         userSelect: 'none'
       }}
-      title="Click to skip"
+      title="Click or press Esc to continue"
     >
       <div
         ref={containerRef}
@@ -132,6 +143,17 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
           filter: 'drop-shadow(0 0 25px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 50px rgba(255, 255, 255, 0.25))'
         }}
       />
+      <div style={{
+        position: 'absolute',
+        bottom: 32,
+        fontSize: 12,
+        color: '#64748b',
+        letterSpacing: '0.05em',
+        fontWeight: 500,
+        opacity: 0.85
+      }}>
+        Click anywhere or press Esc to continue ➔
+      </div>
     </div>
   );
 }
@@ -221,13 +243,13 @@ export default function App() {
             setSetupStage('Configuring Wireless Wi-Fi Auto-Reconnect...');
             setTimeout(() => {
               setSetupProgress(100);
-              setSetupStage('StreamFusion v3.0.0 is Ready to Stream!');
+              setSetupStage('StreamFusion v3.1.1 is Ready to Stream!');
             }, 500);
           }, 500);
         })
         .catch(() => {
           setSetupProgress(100);
-          setSetupStage('StreamFusion v3.0.0 Ready!');
+          setSetupStage('StreamFusion v3.1.1 Ready!');
         });
     }
   }, [showWelcome]);
@@ -269,6 +291,7 @@ export default function App() {
   const [isFixConnectionOpen, setIsFixConnectionOpen] = useState(false);
   const [isClipboardSyncOpen, setIsClipboardSyncOpen] = useState(false);
   const [isWebcamStudioOpen, setIsWebcamStudioOpen] = useState(false);
+  const [virtualScreenDevice, setVirtualScreenDevice] = useState<any>(null);
 
   // Auto-Updater State (Phase 0.5)
   const [updaterStatus, setUpdaterStatus] = useState<any>(null);
@@ -329,7 +352,7 @@ export default function App() {
       window.electronAPI.checkForUpdates();
     } else {
       setTimeout(() => {
-        setUpdaterStatus({ status: 'not-available', message: 'StreamFusion v3.1.0 is currently the latest version!' });
+        setUpdaterStatus({ status: 'not-available', message: 'StreamFusion v3.1.1 is currently the latest version!' });
         setIsCheckingUpdate(false);
       }, 1500);
     }
@@ -1133,13 +1156,25 @@ export default function App() {
                     <span>Clipboard Sync</span>
                   </button>
                   <button
+                    onClick={() => {
+                      const target = devices.find(d => d.serial === selectedSerial) || devices[0];
+                      setVirtualScreenDevice(target || { serial: '', name: 'Selected Device' });
+                    }}
+                    className="btn-secondary"
+                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#3b82f6', color: '#2563eb' }}
+                    title="Launch independent second Android display window on PC"
+                  >
+                    <Monitor size={13} color="#2563eb" />
+                    <span>Virtual Screen</span>
+                  </button>
+                  <button
                     onClick={() => setIsWebcamStudioOpen(true)}
                     className="btn-secondary"
                     style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    title="Use phone as HD PC Webcam or secondary Virtual Display"
+                    title="Use phone as HD PC Webcam"
                   >
                     <Camera size={13} color="#2563eb" />
-                    <span>Webcam & Display</span>
+                    <span>HD Webcam</span>
                   </button>
                   <button
                     onClick={fetchDevices}
@@ -1361,6 +1396,14 @@ export default function App() {
                       </div>
 
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setVirtualScreenDevice(dev); }}
+                          className="btn-secondary"
+                          style={{ padding: '8px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#3b82f6', color: '#2563eb', fontWeight: 600 }}
+                          title="Open independent second Android display window on PC"
+                        >
+                          <Monitor size={14} color="#2563eb" /> Virtual Screen
+                        </button>
                         {!dev.isWifi && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openWirelessMirrorModal(dev); }}
@@ -1608,7 +1651,7 @@ export default function App() {
               {/* Software Updates (Phase 0.5) */}
               <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>
-                  SOFTWARE UPDATES · STREAMFUSION v3.1.0
+                  SOFTWARE UPDATES · STREAMFUSION v3.1.1
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
                   StreamFusion includes built-in differential background updates powered by GitHub Releases.
@@ -2234,7 +2277,7 @@ export default function App() {
               letterSpacing: 0.3
             }}>
               <Sparkles size={13} />
-              <span>StreamFusion v3.0.0 • Setup &amp; Installation</span>
+              <span>StreamFusion v3.1.1 • Setup &amp; Installation</span>
             </div>
 
             {/* Title & Subtitle */}
@@ -2245,7 +2288,7 @@ export default function App() {
               marginBottom: 6,
               letterSpacing: -0.6
             }}>
-              Welcome to StreamFusion v3.0.0
+              Welcome to StreamFusion v3.1.1
             </h2>
             <p style={{
               fontSize: 13,
@@ -2418,7 +2461,7 @@ export default function App() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <span>Launch StreamFusion v3.1.0</span>
+              <span>Launch StreamFusion v3.1.1</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -2454,6 +2497,18 @@ export default function App() {
         isMirroring={mirrorStatus.isMirroring}
         onToast={showToast}
       />
+
+      {/* 11. Dedicated Virtual Screen & Mobile Developer Options Guide Modal */}
+      {virtualScreenDevice && (
+        <VirtualScreenModal
+          isOpen={!!virtualScreenDevice}
+          onClose={() => setVirtualScreenDevice(null)}
+          serial={virtualScreenDevice.serial}
+          deviceName={getDeviceName(virtualScreenDevice)}
+          isMirroring={isDeviceMirroring(virtualScreenDevice.serial)}
+          onToast={showToast}
+        />
+      )}
     </div>
   );
 }

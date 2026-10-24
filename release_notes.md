@@ -1,4 +1,22 @@
-# 🚀 StreamFusion v3.1.0 — Official Major Release
+# 🚀 StreamFusion v3.1.1 — Virtual Screen & Stability Update
+
+## 🌟 What's New in v3.1.1
+
+### 🖥️ Direct Virtual Screen on Every Device Card
+* **One-Click Virtual Screen**: Placed a prominent `[🖥️ Virtual Screen]` button directly onto each phone card in the Devices tab next to "Start Mirror" and "Make Wireless", as well as in the top header toolbar.
+* **Never Blank Canvas Fix**: When launching Virtual Screen, scrcpy now automatically launches an app (defaulting to Android Settings `com.android.settings` or any selected app) so the virtual display window on PC never displays an empty blank gray screen.
+* **Popular App Quick Pills**: 1-click launchers for ⚙️ Settings, 🌐 Chrome, 📺 YouTube, 💬 WhatsApp, 🤖 ChatGPT, or select from all installed phone apps queried via ADB.
+* **1-Click ADB Phone Auto-Config**: A dedicated button in the modal executes `settings put global force_desktop_mode_on_external_displays 1`, `enable_freeform_support 1`, and `force_resizable_activities 1` directly on the phone.
+* **Illustrated Mobile Developer Options Guide**: Step-by-step visual instructions in clear Hindi and English explaining what to enable in Android Developer Options (`Force activities to be resizable`, `Enable freeform windows`, brand tips for Vivo/iQOO, Xiaomi, Samsung).
+
+### ✨ Welcome Screen Bug Fix
+* **Eliminated Blank Black Screen Freeze**: Fixed `welcome-animation.json` which previously had a stroke-erasing keyframe (`tm.s`) that erased the cursive word "Welcome" halfway through playback, leaving a pitch-black screen.
+* **Refined Duration & Fallbacks**: Capped animation duration at 220 frames (~3.5 seconds) and reduced fallback timeout from 9.5s to 3.8s so it transitions smoothly into the dashboard.
+* **Instant Skip**: Added a visible `"Click anywhere or press Esc to continue ➔"` skip indicator with instant `Escape` key handling.
+
+---
+
+# 🚀 StreamFusion v3.1.0 — Major Release
 
 ## 🌟 Highlights & Major Changes
 

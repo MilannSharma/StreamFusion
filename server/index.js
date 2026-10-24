@@ -52,7 +52,7 @@ console.log(`[StreamFusion Server] scrcpy binaries located at: ${scrcpyBin}`);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.1.0',
+    version: '3.1.1',
     adb: fs.existsSync(adbExe),
     scrcpy: fs.existsSync(scrcpyExe),
     binDir: scrcpyBin
@@ -343,11 +343,12 @@ app.post('/api/mirror/start', (req, res) => {
   } else if (mode === 'virtual-display' || config.isVirtualDisplay) {
     args.push(
       `--new-display=${config.virtualDisplaySize || '1920x1080/420'}`,
-      `--window-title=StreamFusion Virtual Display - ${titleName}`
+      `--window-title=StreamFusion Virtual Display - ${titleName}`,
+      '--no-vd-destroy-content'
     );
-    if (config.startApp) {
-      args.push(`--start-app=${config.startApp}`);
-    }
+    // Ensure an app is launched so virtual display never renders a blank empty canvas
+    const targetApp = (config.startApp && config.startApp.trim()) ? config.startApp.trim() : 'com.android.settings';
+    args.push(`--start-app=${targetApp}`);
   } else {
     args.push(`--window-title=StreamFusion - ${titleName}`);
   }
@@ -470,6 +471,61 @@ app.get('/api/mirror/status', (req, res) => {
     isRecording: Array.from(activeMirrors.values()).some(m => m.isRecording),
     recordingFile: firstSession ? firstSession.recordingFile : null
   });
+});
+
+// 4.1 GET /api/devices/:serial/apps (Query launchable apps for Virtual Display)
+app.get('/api/devices/:serial/apps', async (req, res) => {
+  const { serial } = req.params;
+  try {
+    const { output } = await runAdb(['-s', serial, 'shell', 'cmd', 'package', 'query-activities', '--brief', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER'], 6000);
+    const lines = output.split('\n');
+    const apps = [];
+    const seenPackages = new Set();
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (line.includes('/') && !line.startsWith('Activity') && !line.startsWith('priority') && !line.includes('match=')) {
+        const [pkg, act] = line.split('/');
+        if (pkg && !seenPackages.has(pkg)) {
+          seenPackages.add(pkg);
+          const parts = pkg.split('.');
+          let label = parts[parts.length - 1];
+          label = label.charAt(0).toUpperCase() + label.slice(1);
+          apps.push({
+            package: pkg,
+            activity: act,
+            label
+          });
+        }
+      }
+    }
+
+    apps.sort((a, b) => a.label.localeCompare(b.label));
+    res.json({ success: true, apps });
+  } catch (e) {
+    res.json({
+      success: false,
+      apps: [
+        { package: 'com.android.settings', label: 'Settings' },
+        { package: 'com.android.chrome', label: 'Chrome' },
+        { package: 'com.google.android.youtube', label: 'YouTube' }
+      ],
+      message: e.message
+    });
+  }
+});
+
+// 4.2 POST /api/devices/:serial/desktop-mode (Auto-configure secondary display settings via ADB)
+app.post('/api/devices/:serial/desktop-mode', async (req, res) => {
+  const { serial } = req.params;
+  try {
+    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_desktop_mode_on_external_displays', '1'], 3000);
+    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'enable_freeform_support', '1'], 3000);
+    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_resizable_activities', '1'], 3000);
+    res.json({ success: true, message: 'Desktop Mode & Freeform settings enabled on phone!' });
+  } catch (e) {
+    res.json({ success: false, message: e.message });
+  }
 });
 
 // 5. POST /api/wifi/switch & /api/wifi/enable
