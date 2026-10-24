@@ -52,7 +52,7 @@ console.log(`[StreamFusion Server] scrcpy binaries located at: ${scrcpyBin}`);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.1.1',
+    version: '3.1.2',
     adb: fs.existsSync(adbExe),
     scrcpy: fs.existsSync(scrcpyExe),
     binDir: scrcpyBin
@@ -341,11 +341,19 @@ app.post('/api/mirror/start', (req, res) => {
       `--window-title=StreamFusion HD Webcam - ${titleName}`
     );
   } else if (mode === 'virtual-display' || config.isVirtualDisplay) {
+    const displaySize = config.virtualDisplaySize || '1080x2400/420';
     args.push(
-      `--new-display=${config.virtualDisplaySize || '1920x1080/420'}`,
+      `--new-display=${displaySize}`,
       `--window-title=StreamFusion Virtual Display - ${titleName}`,
       '--no-vd-destroy-content'
     );
+    if (config.flexDisplay) {
+      args.push('-x');
+    }
+    // Auto-scale vertical mobile screen so 2400px height never gets cut off by monitor bounds!
+    const maxSize = config.maxSize || 900;
+    args.push(`--max-size=${maxSize}`);
+
     // Ensure an app is launched so virtual display never renders a blank empty canvas
     const targetApp = (config.startApp && config.startApp.trim()) ? config.startApp.trim() : 'com.android.settings';
     args.push(`--start-app=${targetApp}`);
@@ -354,7 +362,7 @@ app.post('/api/mirror/start', (req, res) => {
   }
 
   // Video settings
-  if (config.maxSize && config.maxSize > 0) args.push(`--max-size=${config.maxSize}`);
+  if (mode !== 'virtual-display' && config.maxSize && config.maxSize > 0) args.push(`--max-size=${config.maxSize}`);
   if (config.bitrateMbps && config.bitrateMbps > 0) args.push(`--video-bit-rate=${config.bitrateMbps}M`);
   if (config.maxFps && config.maxFps > 0) args.push(`--max-fps=${config.maxFps}`);
   if (config.videoCodec) args.push(`--video-codec=${config.videoCodec}`);
@@ -611,6 +619,19 @@ app.post('/api/control/key', async (req, res) => {
   const { serial, keycode } = req.body;
   const result = await runAdb(['-s', serial, 'shell', 'input', 'keyevent', String(keycode)], 3000);
   res.json(result);
+});
+
+// Expand Android notification shade or quick settings
+app.post('/api/control/statusbar', async (req, res) => {
+  const { serial, action = 'notifications' } = req.body;
+  if (!serial) return res.json({ success: false, message: 'No serial provided' });
+  try {
+    const cmd = action === 'settings' ? 'expand-settings' : 'expand-notifications';
+    await runAdb(['-s', serial, 'shell', 'cmd', 'statusbar', cmd], 3000);
+    res.json({ success: true, message: `Status bar ${cmd} triggered` });
+  } catch (e) {
+    res.json({ success: false, message: e.message });
+  }
 });
 
 app.post('/api/control/text', async (req, res) => {

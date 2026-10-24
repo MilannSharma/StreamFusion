@@ -1,19 +1,19 @@
-# 🚀 StreamFusion v3.0.0 — Next-Gen Android Mirroring & Wireless Control
+# 🚀 StreamFusion v3.1.2 — Next-Gen Android Mirroring & Wireless Control
 
 <div align="center">
 
 ![StreamFusion Banner](public/StreamFusion.png)
 
-[![Release](https://img.shields.io/badge/Release-v3.0.0-blue.svg?style=for-the-badge&logo=electron)](https://github.com/MilannSharma/StreamFusion/releases)
+[![Release](https://img.shields.io/badge/Release-v3.1.2-blue.svg?style=for-the-badge&logo=electron)](https://github.com/MilannSharma/StreamFusion/releases)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg?style=for-the-badge&logo=windows)](https://github.com/MilannSharma/StreamFusion)
 [![Scrcpy](https://img.shields.io/badge/Powered%20By-Scrcpy%20v5.0.1-orange.svg?style=for-the-badge)](https://github.com/Genymobile/scrcpy)
 [![ADB](https://img.shields.io/badge/Google%20ADB-v37.0.1-green.svg?style=for-the-badge&logo=android)](https://developer.android.com/tools/adb)
 [![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite%206-61DAFB.svg?style=for-the-badge&logo=react)](https://react.dev)
 [![License](https://img.shields.io/badge/Author-Milann%20Sharma-purple.svg?style=for-the-badge&logo=github)](https://github.com/MilannSharma)
 
-**StreamFusion v3.0.0** is an enterprise-grade, ultra-low latency desktop application for projecting, controlling, and managing Android smartphones on your Windows PC with zero perceptible lag. Built on top of **scrcpy v5.0.1**, **Google ADB v37.0.1**, **Electron**, and **React 19**.
+**StreamFusion v3.1.2** is an enterprise-grade, ultra-low latency desktop application for projecting, controlling, and managing Android smartphones on your Windows PC with zero perceptible lag. Built on top of **scrcpy v5.0.1**, **Google ADB v37.0.1**, **Electron**, and **React 19**.
 
-[Download v3.0.0 Installer](https://github.com/MilannSharma/StreamFusion/releases) • [Features](#-key-features) • [Installation & Setup](#-installation--first-run-experience) • [Wi-Fi Auto-Reconnect](#-1-click-persistent-wi-fi-streaming) • [Brand Setup Guide](#-android-device-setup-guide-per-brand) • [Keyboard Shortcuts](#-keyboard--mouse-shortcuts)
+[Download v3.1.2 Installer](https://github.com/MilannSharma/StreamFusion/releases) • [Features](#-key-features) • [Installation & Setup](#-installation--first-run-experience) • [Wi-Fi Auto-Reconnect](#-1-click-persistent-wi-fi-streaming) • [Brand Setup Guide](#-android-device-setup-guide-per-brand) • [Keyboard Shortcuts](#-keyboard--mouse-shortcuts)
 
 </div>
 

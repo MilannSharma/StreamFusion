@@ -243,13 +243,13 @@ export default function App() {
             setSetupStage('Configuring Wireless Wi-Fi Auto-Reconnect...');
             setTimeout(() => {
               setSetupProgress(100);
-              setSetupStage('StreamFusion v3.1.1 is Ready to Stream!');
+              setSetupStage('StreamFusion v3.1.2 is Ready to Stream!');
             }, 500);
           }, 500);
         })
         .catch(() => {
           setSetupProgress(100);
-          setSetupStage('StreamFusion v3.1.1 Ready!');
+          setSetupStage('StreamFusion v3.1.2 Ready!');
         });
     }
   }, [showWelcome]);
@@ -352,7 +352,7 @@ export default function App() {
       window.electronAPI.checkForUpdates();
     } else {
       setTimeout(() => {
-        setUpdaterStatus({ status: 'not-available', message: 'StreamFusion v3.1.1 is currently the latest version!' });
+        setUpdaterStatus({ status: 'not-available', message: 'StreamFusion v3.1.2 is currently the latest version!' });
         setIsCheckingUpdate(false);
       }, 1500);
     }
@@ -464,14 +464,14 @@ export default function App() {
 
   // Wake screen if phone screen is off or locked
   const handleWakeScreen = async () => {
-    const dev = selectedDevice;
-    if (!dev) return;
+    const serial = mirrorStatus.device?.serial || selectedDevice?.serial || selectedSerial;
+    if (!serial) return;
     showToast('Waking up phone screen...', '💡');
     try {
       await fetch('/api/control/wake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serial: dev.serial })
+        body: JSON.stringify({ serial })
       });
     } catch (e) {}
   };
@@ -712,6 +712,32 @@ export default function App() {
       if (data.success) {
         showToast('Screenshot saved!', '🖼️');
       }
+    } catch (e) {}
+  };
+
+  const handleSendKey = async (keycode: number, label: string) => {
+    const serial = mirrorStatus.device?.serial || selectedDevice?.serial || selectedSerial;
+    if (!serial) return;
+    try {
+      await fetch('/api/control/key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial, keycode })
+      });
+      showToast(label, '⚡');
+    } catch (e) {}
+  };
+
+  const handleStatusbar = async (action: 'notifications' | 'settings') => {
+    const serial = mirrorStatus.device?.serial || selectedDevice?.serial || selectedSerial;
+    if (!serial) return;
+    try {
+      await fetch('/api/control/statusbar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial, action })
+      });
+      showToast(action === 'settings' ? 'Quick Settings opened' : 'Notifications opened', '🔔');
     } catch (e) {}
   };
 
@@ -1472,6 +1498,82 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+
+                  {/* On-Screen Remote Navigation Toolbar */}
+                  <div style={{
+                    marginTop: 16,
+                    paddingTop: 16,
+                    borderTop: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 10
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>ON-SCREEN NAV:</span>
+                      <button
+                        onClick={() => handleSendKey(4, 'Back ◀')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        title="Android Back button (Alt+B or Right-Click in window)"
+                      >
+                        ◀ Back
+                      </button>
+                      <button
+                        onClick={() => handleSendKey(3, 'Home ⚪')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        title="Android Home button (Alt+H or Middle-Click in window)"
+                      >
+                        ⚪ Home
+                      </button>
+                      <button
+                        onClick={() => handleSendKey(187, 'Recent Apps ⏹')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        title="Android Recents / App Switcher (Alt+S)"
+                      >
+                        ⏹ Recents
+                      </button>
+                      <button
+                        onClick={() => handleStatusbar('notifications')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        title="Pull down Notifications shade"
+                      >
+                        🔔 Notifications
+                      </button>
+                      <button
+                        onClick={() => handleStatusbar('settings')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        title="Pull down Quick Settings tiles"
+                      >
+                        ⚙️ Quick Tiles
+                      </button>
+                      <button
+                        onClick={() => handleSendKey(24, 'Volume Up 🔊')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 10px', fontSize: 12 }}
+                        title="Volume Up"
+                      >
+                        🔊 +
+                      </button>
+                      <button
+                        onClick={() => handleSendKey(25, 'Volume Down 🔉')}
+                        className="btn-secondary"
+                        style={{ padding: '5px 10px', fontSize: 12 }}
+                        title="Volume Down"
+                      >
+                        🔉 -
+                      </button>
+                    </div>
+
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      Mouse: <strong>Right-Click = Back</strong> · <strong>Middle-Click = Home</strong>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1651,7 +1753,7 @@ export default function App() {
               {/* Software Updates (Phase 0.5) */}
               <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>
-                  SOFTWARE UPDATES · STREAMFUSION v3.1.1
+                  SOFTWARE UPDATES · STREAMFUSION v3.1.2
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
                   StreamFusion includes built-in differential background updates powered by GitHub Releases.
@@ -2277,7 +2379,7 @@ export default function App() {
               letterSpacing: 0.3
             }}>
               <Sparkles size={13} />
-              <span>StreamFusion v3.1.1 • Setup &amp; Installation</span>
+              <span>StreamFusion v3.1.2 • Setup &amp; Installation</span>
             </div>
 
             {/* Title & Subtitle */}
@@ -2288,7 +2390,7 @@ export default function App() {
               marginBottom: 6,
               letterSpacing: -0.6
             }}>
-              Welcome to StreamFusion v3.1.1
+              Welcome to StreamFusion v3.1.2
             </h2>
             <p style={{
               fontSize: 13,
@@ -2461,7 +2563,7 @@ export default function App() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <span>Launch StreamFusion v3.1.1</span>
+              <span>Launch StreamFusion v3.1.2</span>
               <ArrowRight size={18} />
             </button>
           </div>

@@ -1,3 +1,34 @@
+# 🚀 StreamFusion v3.1.2 — Vertical Mobile Screen & On-Screen Navigation Update
+
+## 🌟 What's New in v3.1.2
+
+### 📱 Vertical Mobile Screen Ratio (Portrait by Default)
+* **True Phone Aspect Ratio**: Virtual Screen now defaults to **Vertical Mobile Portrait (1080×2400 / 420 DPI)** matching modern smartphones (9:20), instead of landscape desktop widescreen.
+* **Compact Portrait Preset**: Added **720×1600 (320 DPI)** preset for lightweight multi-tasking alongside other PC windows.
+* **Desktop Landscape Option**: Kept **1920×1080 (420 DPI)** preset for users with Samsung DeX / Motorola ReadyFor desktop mode.
+
+### 📐 Monitor Fit & Zero Cut-Off Display Fix
+* **Eliminated Screen Half-Cut**: Fixed the issue where tall vertical phone displays (2400px height) expanded downward off the bottom of 1080p laptop screens past the Windows taskbar.
+* **Auto Max-Size Scaling**: Auto-scales the display with scrcpy `--max-size` so the entire phone frame fits 100% from top to bottom on any PC display without cropping.
+* **Window Height Selector**: Quick selection for `Laptop Standard (900px)` (zero cut-off default), `Compact Side-Window (780px)`, and `Large/2K Display (1050px)`.
+* **Resizable Flex-Display**: Enabled `-x` (`--flex-display`) so you can freely resize the mirroring window on PC without black bars.
+
+### 🎮 On-Screen Remote Navigation Controls & Shortcuts
+* **Live On-Screen Navigation Bar**: Added remote buttons right inside the active session banner and Virtual Screen modal:
+  * ◀ **Back** (`KEYCODE_BACK`)
+  * ⌂ **Home** (`KEYCODE_HOME`)
+  * ▢ **Recents / App Switcher** (`KEYCODE_APP_SWITCH`)
+  * 🔔 **Pull Notifications** (ADB `expand-notifications`)
+  * ⚙️ **Quick Settings Tiles** (ADB `expand-settings`)
+  * 🔊 **Vol+** & 🔉 **Vol-**
+* **Mouse & Keyboard Shortcuts Cheatsheet**:
+  * `Right-Click`: Back
+  * `Middle-Click`: Home
+  * `Alt + B`: Back | `Alt + H`: Home | `Alt + S`: App Switcher
+  * `Alt + F`: Fullscreen toggle
+
+---
+
 # 🚀 StreamFusion v3.1.1 — Virtual Screen & Stability Update
 
 ## 🌟 What's New in v3.1.1
