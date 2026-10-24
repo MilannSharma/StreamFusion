@@ -119,7 +119,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 680,
     frame: false,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#000000',
     show: false,
     icon: path.join(__dirname, '../StreamFusion.ico'),
     webPreferences: {

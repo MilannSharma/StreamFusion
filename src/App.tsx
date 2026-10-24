@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import lottie from 'lottie-web';
+import catAnimationData from './assets/cat-animation.json';
+import welcomeAnimationData from './assets/welcome-animation.json';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
@@ -22,44 +25,109 @@ declare global {
   }
 }
 
-function CatPlayingLottie({ size = 220 }: { size?: number }) {
+// 1. Sleek Cinematic Pure Black Welcome Splash Screen
+function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const [loadError, setLoadError] = React.useState(false);
+  const [isFading, setIsFading] = React.useState(false);
 
   React.useEffect(() => {
     let anim: any = null;
-    let cancelled = false;
-    let attempts = 0;
+    let fadeTimer: any = null;
+    let finishTimer: any = null;
 
-    const tryInit = () => {
-      if (cancelled) return;
-      const lottie = window.lottie;
-      if (lottie && containerRef.current) {
-        try {
-          anim = lottie.loadAnimation({
-            container: containerRef.current,
-            renderer: 'svg',
-            loop: true,
-            autoplay: true,
-            path: './cat-animation.json'
-          });
-        } catch (e) {
-          console.error('Lottie load error', e);
-          setLoadError(true);
-        }
-      } else {
-        attempts++;
-        if (attempts < 30) {
-          setTimeout(tryInit, 100);
-        } else {
-          setLoadError(true);
-        }
+    if (containerRef.current) {
+      try {
+        anim = lottie.loadAnimation({
+          container: containerRef.current,
+          renderer: 'svg',
+          loop: false,
+          autoplay: true,
+          animationData: welcomeAnimationData
+        });
+
+        const triggerFade = () => {
+          setIsFading(true);
+          finishTimer = setTimeout(() => {
+            onFinish();
+          }, 700);
+        };
+
+        anim.addEventListener('complete', triggerFade);
+        // Safety fallback timer if complete event does not fire
+        fadeTimer = setTimeout(triggerFade, 8500);
+      } catch (e) {
+        console.error('Welcome Lottie error:', e);
+        onFinish();
       }
-    };
+    }
 
-    tryInit();
     return () => {
-      cancelled = true;
+      if (fadeTimer) clearTimeout(fadeTimer);
+      if (finishTimer) clearTimeout(finishTimer);
+      if (anim) anim.destroy();
+    };
+  }, [onFinish]);
+
+  const handleSkip = () => {
+    setIsFading(true);
+    setTimeout(onFinish, 300);
+  };
+
+  return (
+    <div
+      onClick={handleSkip}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: '#000000',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: isFading ? 0 : 1,
+        transition: 'opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1)',
+        pointerEvents: isFading ? 'none' : 'auto',
+        cursor: 'pointer',
+        userSelect: 'none'
+      }}
+      title="Click to skip"
+    >
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          height: 200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          filter: 'drop-shadow(0 0 25px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 50px rgba(255, 255, 255, 0.25))'
+        }}
+      />
+    </div>
+  );
+}
+
+// 2. High-Performance In-Memory Cat Playing Lottie Component
+function CatPlayingLottie({ size = 220 }: { size?: number }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    let anim: any = null;
+    if (containerRef.current) {
+      try {
+        anim = lottie.loadAnimation({
+          container: containerRef.current,
+          renderer: 'svg',
+          loop: true,
+          autoplay: true,
+          animationData: catAnimationData
+        });
+      } catch (e) {
+        console.error('Cat Lottie error:', e);
+      }
+    }
+    return () => {
       if (anim) anim.destroy();
     };
   }, []);
@@ -67,9 +135,6 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
   return (
     <div style={{ width: size, height: size * 0.78, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      {loadError && (
-        <div style={{ fontSize: 52, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.1))' }}>🐱✨</div>
-      )}
     </div>
   );
 }
@@ -82,6 +147,7 @@ export default function App() {
   const [mirrorStatus, setMirrorStatus] = useState({ isMirroring: false, isRecording: false, device: null as any });
   const [toast, setToast] = useState<{ message: string; icon: string; visible: boolean }>({ message: '', icon: '', visible: false });
   const [isScanning, setIsScanning] = useState(false);
+  const [showSplash, setShowSplash] = useState<boolean>(true);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     try {
       return !localStorage.getItem('streamfusion_v2_setup_complete');
@@ -2137,6 +2203,11 @@ export default function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* 7. Full-Screen Pitch Black Welcome Splash Screen with White Cursive Animation */}
+      {showSplash && (
+        <WelcomeSplash onFinish={() => setShowSplash(false)} />
       )}
     </div>
   );
