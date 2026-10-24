@@ -1,32 +1,33 @@
-# 🚀 StreamFusion v2.0.0 — Next-Gen Android Mirroring & Wireless Control
+# 🚀 StreamFusion v3.0.0 — Next-Gen Android Mirroring & Wireless Control
 
 <div align="center">
 
 ![StreamFusion Banner](public/StreamFusion.png)
 
-[![Release](https://img.shields.io/badge/Release-v2.0.0-blue.svg?style=for-the-badge&logo=electron)](https://github.com/MilannSharma/StreamFusion/releases)
+[![Release](https://img.shields.io/badge/Release-v3.0.0-blue.svg?style=for-the-badge&logo=electron)](https://github.com/MilannSharma/StreamFusion/releases)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg?style=for-the-badge&logo=windows)](https://github.com/MilannSharma/StreamFusion)
 [![Scrcpy](https://img.shields.io/badge/Powered%20By-Scrcpy%20v5.0.1-orange.svg?style=for-the-badge)](https://github.com/Genymobile/scrcpy)
 [![ADB](https://img.shields.io/badge/Google%20ADB-v37.0.1-green.svg?style=for-the-badge&logo=android)](https://developer.android.com/tools/adb)
 [![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite%206-61DAFB.svg?style=for-the-badge&logo=react)](https://react.dev)
 [![License](https://img.shields.io/badge/Author-Milann%20Sharma-purple.svg?style=for-the-badge&logo=github)](https://github.com/MilannSharma)
 
-**StreamFusion v2.0.0** is an enterprise-grade, ultra-low latency desktop application for projecting, controlling, and managing Android smartphones on your Windows PC with zero perceptible lag. Built on top of **scrcpy v5.0.1**, **Google ADB v37.0.1**, **Electron**, and **React 19**.
+**StreamFusion v3.0.0** is an enterprise-grade, ultra-low latency desktop application for projecting, controlling, and managing Android smartphones on your Windows PC with zero perceptible lag. Built on top of **scrcpy v5.0.1**, **Google ADB v37.0.1**, **Electron**, and **React 19**.
 
-[Download v2.0.0 Installer](https://github.com/MilannSharma/StreamFusion/releases) • [Features](#-key-features) • [Installation & Setup](#-installation--first-run-experience) • [Wi-Fi Auto-Reconnect](#-1-click-persistent-wi-fi-streaming) • [Brand Setup Guide](#-android-device-setup-guide-per-brand) • [Keyboard Shortcuts](#-keyboard--mouse-shortcuts)
+[Download v3.0.0 Installer](https://github.com/MilannSharma/StreamFusion/releases) • [Features](#-key-features) • [Installation & Setup](#-installation--first-run-experience) • [Wi-Fi Auto-Reconnect](#-1-click-persistent-wi-fi-streaming) • [Brand Setup Guide](#-android-device-setup-guide-per-brand) • [Keyboard Shortcuts](#-keyboard--mouse-shortcuts)
 
 </div>
 
 ---
 
-## ✨ What's New in v2.0.0
+## ✨ What's New in v3.0.0
 
-* 🐱 **Interactive White Setup & Installation Tour**: A modern, pure-white installer modal featuring a playful cat playing animation (`Cat playing animation.lottie`), real-time driver verification, and 0–100% system readiness progress.
+* 🖤 **Cinematic Pitch-Black Welcome Experience**: Pure `#000000` canvas with a glowing white cursive "Welcome" vector line animation playing for the exact duration of the intro, smoothly dissolving into the main dashboard with hardware-accelerated cubic-bezier transitions. Window creation starts in black to completely eliminate startup white flash.
+* 🐱 **In-Memory High-Performance Cat Playing Lottie**: Embedded directly as an in-memory JSON module (zero network requests, 0ms latency). Cleaned corrupted EOF bytes to ensure 100% reliable rendering on the Setup & Installation screen.
+* ⚡ **Ultra-Compact Binary Size**: Shrunk installer down to **87.8 MB** (reduced from 333+ MB) and installed app to **261 MB** (reduced from 1.1+ GB) by stripping unnecessary runtime dependencies.
+* 🛡️ **Hardened Local Security**: Express backend strictly bound to `127.0.0.1` with local-only host verification and media path validation. Private device configuration (`saved_devices.json`) is strictly gitignored.
 * 📶 **1-Click Persistent Wi-Fi Auto-Reconnect**: Pair your phone once via USB. When you unplug the cable, StreamFusion remembers your phone! The next time your PC and phone are on the same Wi-Fi, your phone shows as **Online** with an instant **Mirror** button—no USB cable required!
 * 🔋 **Smart Screen Stay-Awake & Double-Click Wake**: Automatically keeps your phone display awake during mirroring (`svc power stayon true`) and restores normal sleep behavior on disconnect (`svc power stayon false`). Double-clicking wakes up the screen via hardware `KEYCODE_WAKEUP`.
-* ⚡ **Upgraded Scrcpy v5.0.1 & ADB v37.0.1**: Replaced legacy adb binaries with Google platform-tools v37.0.1 to eliminate device detection freezes, daemon conflicts, and random disconnects.
-* 📦 **Pre-Built Windows Standalone Executables**: Available as an NSIS installer (`StreamFusion-v2.0.0-Setup.exe`) and portable standalone application (`StreamFusion v2.0.0.exe`).
-* 🎨 **Refined Floating Sidebar UI**: Removed duplicate titlebar controls and introduced an ultra-clean floating dock with instant access to Devices, Files, Recordings, Settings, and Guides.
+* 📦 **Pre-Built Windows Standalone Executables**: Available as an NSIS installer (`StreamFusion-v3.0.0-Setup.exe`).
 
 ---
 
@@ -40,7 +41,7 @@
 ### 2. 📶 1-Click Persistent Wi-Fi Streaming
 - **Connect Once with USB**: Turn on Wi-Fi mode with one click.
 - **Safe Cable Removal**: Unplug your USB cable anytime without interrupting your session.
-- **Persistent Device Memory**: StreamFusion saves your phone's Wi-Fi IP and nickname in `saved_devices.json`. Even after restarting PC or disconnecting, simply open StreamFusion and click **Mirror** directly!
+- **Persistent Device Memory**: StreamFusion saves your phone's Wi-Fi IP and nickname locally. Even after restarting PC or disconnecting, simply open StreamFusion and click **Mirror** directly!
 
 ### 3. 🎙️ High-Fidelity Audio Forwarding (Android 11+)
 - Direct internal audio routing from your smartphone into Windows speakers and headphones.
@@ -66,9 +67,9 @@
 
 ## 🎨 Installation & First-Run Experience
 
-StreamFusion v2.0.0 introduces a modern, **pure-white installer & setup modal** designed for a clean experience:
+StreamFusion v3.0.0 features an interactive setup modal designed for a clean experience:
 
-1. **Embedded Lottie Cat Animation**: Engaging, cute animation welcoming you while background drivers initialize.
+1. **Embedded Lottie Cat Animation**: Engaging, cute cat animation welcoming you while background drivers initialize.
 2. **Readiness Checkpoints**:
    - `✓ Google ADB Platform-Tools v37.0.1` (Verified & Active)
    - `✓ Scrcpy v5.0.1 Zero-Latency Codec Engine` (Configured)
@@ -82,9 +83,9 @@ StreamFusion v2.0.0 introduces a modern, **pure-white installer & setup modal** 
 
 ### Option A: Install from Release Executable (Recommended)
 
-1. Download **`StreamFusion-v2.0.0-Setup.exe`** from [Releases](https://github.com/MilannSharma/StreamFusion/releases).
+1. Download **`StreamFusion-v3.0.0-Setup.exe`** from [Releases](https://github.com/MilannSharma/StreamFusion/releases).
 2. Run the installer. It will:
-   - Install StreamFusion into `C:\Program Files\StreamFusion v2.0.0`
+   - Install StreamFusion into `C:\Program Files\StreamFusion v3.0.0`
    - Create Desktop & Start Menu shortcuts
    - Bundle all required `scrcpy` and `adb` drivers out-of-the-box (no manual installs needed)
 3. Connect your Android phone via USB cable with **USB Debugging** enabled.
@@ -180,16 +181,11 @@ StreamFusion/
 ├── src/
 │   ├── App.tsx                # Main React 19 control hub & White Installer modal
 │   ├── main.tsx               # Client entry point
-│   └── index.css              # Glassmorphic responsive styling
+│   ├── index.css              # Glassmorphic responsive styling
+│   └── assets/                # In-memory verified Lottie animations
 ├── scrcpy-bin/                # Google ADB v37.0.1 & Scrcpy v5.0.1 binaries
-├── public/
-│   ├── Cat playing animation.lottie # Source dotLottie animation
-│   ├── cat-animation.json     # Unpacked offline Lottie JSON
-│   ├── lottie.min.js          # Offline Lottie Web Player
-│   ├── StreamFusion.ico       # Application icon
-│   └── StreamFusion.png       # High-resolution logo
+├── public/                    # Static assets & icons
 ├── release/                   # Packaged output (NSIS installer & unpacked app)
-├── saved_devices.json         # Persistent wireless device registry
 ├── package.json               # Dependencies, scripts & electron-builder config
 ├── tsconfig.json              # TypeScript compiler configuration
 └── vite.config.ts             # Vite frontend bundler
@@ -209,7 +205,7 @@ npm run build
 npm run build:exe
 
 # The compiled output will be generated in:
-# release/StreamFusion-v2.0.0-Setup.exe
+# release/StreamFusion-v3.0.0-Setup.exe
 ```
 
 ---

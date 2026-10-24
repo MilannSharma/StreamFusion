@@ -1,15 +1,20 @@
-# 🚀 StreamFusion v2.0.0 — Official Release
+# 🚀 StreamFusion v3.0.0 — Official Major Release
 
 ## 🌟 Highlights & Major Changes
 
-### 🐱 Interactive White Setup & Installation Experience
-* **Pure White Modern Design**: Replaced default window chrome with an ultra-clean, minimalist white setup experience.
-* **Animated Cat Lottie Engine**: Embedded delightful Cat playing animation (`Cat playing animation.lottie` / `cat-animation.json`) running offline via local lottie renderer.
-* **Driver Readiness & Self-Check**: 0–100% interactive progress tracking verification of ADB Platform-Tools, Scrcpy codecs, Wi-Fi pairing daemon, and display wake engine.
+### 🖤 Cinematic Pitch-Black Welcome Experience
+* **Pure Black (#000000) Splash**: Launches into a sleek, cinema-grade pitch black canvas.
+* **Glowing White Vector Cursive Animation**: The word "Welcome" is drawn in glowing white vector lines for the exact duration of the animation, then smoothly dissolves into the dashboard with a hardware-accelerated cubic-bezier transition.
+* **Zero Window Flash**: Window background color starts in pure black from the very first frame of OS window creation, completely eliminating white flicker.
+
+### 🐱 In-Memory High-Performance Cat Playing Lottie Engine
+* **Embedded JSON Architecture**: Cat animation is bundled directly as an in-memory JSON module — eliminating all network/XHR delays, 404s, or file path resolution issues.
+* **Byte-Level Verification**: Stripped corrupted EOF control characters so Lottie parses instantly without errors.
+* **Interactive Device Setup**: 0–100% progress tracking verifying Google ADB Platform-Tools, Scrcpy codecs, Wi-Fi pairing daemon, and display wake engine.
 
 ### 📶 1-Click Persistent Wi-Fi Auto-Reconnect
 * **Zero-Wire Reconnect**: Pair your phone once via USB; safely disconnect the cable.
-* **Persistent Storage**: Saved devices are remembered in `saved_devices.json`. Next time your phone is connected to the same Wi-Fi, it shows as **Online** with an instant **Mirror** button—no USB cable required!
+* **Persistent Storage**: Saved devices are remembered locally. Next time your phone is connected to the same Wi-Fi, it shows as **Online** with an instant **Mirror** button—no USB cable required!
 
 ### 🔋 Smart Screen Stay-Awake & Double-Click Wake
 * Automatically keeps phone display active during mirroring sessions (`svc power stayon true`).
@@ -28,18 +33,18 @@
 ### 📦 Downloads & Executables
 
 ### 🖥️ Local File on your PC:
-* **Installer**: `Z:\StreamFusion\latest app\StreamFusion-v2.0.0-Setup.exe` (109.26 MB)
-* **Unpacked App**: `Z:\StreamFusion\release\win-unpacked\StreamFusion v2.0.0.exe` (337 MB)
+* **Installer**: `Z:\StreamFusion\latest app\StreamFusion-v3.0.0-Setup.exe` (~87.8 MB)
+* **Unpacked App**: `Z:\StreamFusion\release\win-unpacked\StreamFusion v3.0.0.exe` (~261 MB)
 
 ### 🌐 Direct GitHub Release Download:
-* [**⬇️ Download StreamFusion-v2.0.0-Setup.exe**](https://github.com/MilannSharma/StreamFusion/releases/download/v2.0.0/StreamFusion-v2.0.0-Setup.exe) (109 MB)
-* [**🔗 View GitHub Release Page**](https://github.com/MilannSharma/StreamFusion/releases/tag/v2.0.0)
+* [**⬇️ Download StreamFusion-v3.0.0-Setup.exe**](https://github.com/MilannSharma/StreamFusion/releases/download/v3.0.0/StreamFusion-v3.0.0-Setup.exe) (87.8 MB)
+* [**🔗 View GitHub Release Page**](https://github.com/MilannSharma/StreamFusion/releases/tag/v3.0.0)
 
-### 🛠️ Key Reliability & Architecture Fixes in v2.0.0:
+### 🛠️ Key Reliability & Architecture Fixes in v3.0.0:
+* **Ultra-Compact Binary Size**: Shrunk installer down to **87.8 MB** (73% smaller than original 333 MB build!), unpacked installation down to **261 MB** (down from 1.1+ GB).
 * **Zero Blank White Screen**: Relative `./assets/` resolution and resilient `waitForServer()` health check prevent load timeouts.
-* **100% Custom White UI Installer**: NSIS one-click execution skips legacy grey Windows wizards and boots straight into the Cat Playing Animation Setup screen.
-* **Massive Size Reduction**: Reduced from 1.1 GB down to **337 MB** installed, installer shrunk from 333 MB to **109 MB** (67% smaller download!).
-* **LAN Security Hardened**: Express backend binds strictly to `127.0.0.1` with local-only host verification and media-path sanitization.
+* **100% Custom UI Installer**: NSIS one-click execution skips legacy Windows wizards and boots straight into the interactive Setup screen.
+* **LAN Security Hardened**: Express backend binds strictly to `127.0.0.1` with local-only host verification and media-path sanitization. Private device IP addresses (`saved_devices.json`) strictly gitignored.
 
 ---
 

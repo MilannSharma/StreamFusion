@@ -150,7 +150,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     try {
-      return !localStorage.getItem('streamfusion_v2_setup_complete');
+      return !localStorage.getItem('streamfusion_v3_setup_complete');
     } catch (e) {
       return true;
     }
@@ -173,13 +173,13 @@ export default function App() {
             setSetupStage('Configuring Wireless Wi-Fi Auto-Reconnect...');
             setTimeout(() => {
               setSetupProgress(100);
-              setSetupStage('StreamFusion v2.0.0 is Ready to Stream!');
+              setSetupStage('StreamFusion v3.0.0 is Ready to Stream!');
             }, 500);
           }, 500);
         })
         .catch(() => {
           setSetupProgress(100);
-          setSetupStage('StreamFusion v2.0.0 Ready!');
+          setSetupStage('StreamFusion v3.0.0 Ready!');
         });
     }
   }, [showWelcome]);
@@ -187,7 +187,7 @@ export default function App() {
   const dismissWelcome = () => {
     try {
       window.electronAPI?.createShortcuts?.();
-      localStorage.setItem('streamfusion_v2_setup_complete', 'true');
+      localStorage.setItem('streamfusion_v3_setup_complete', 'true');
     } catch (e) {}
     setShowWelcome(false);
   };
@@ -2014,7 +2014,7 @@ export default function App() {
               letterSpacing: 0.3
             }}>
               <Sparkles size={13} />
-              <span>StreamFusion v2.0.0 • Setup &amp; Installation</span>
+              <span>StreamFusion v3.0.0 • Setup &amp; Installation</span>
             </div>
 
             {/* Title & Subtitle */}
@@ -2025,7 +2025,7 @@ export default function App() {
               marginBottom: 6,
               letterSpacing: -0.6
             }}>
-              Welcome to StreamFusion v2.0.0
+              Welcome to StreamFusion v3.0.0
             </h2>
             <p style={{
               fontSize: 13,
@@ -2198,7 +2198,7 @@ export default function App() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <span>Launch StreamFusion v2.0.0</span>
+              <span>Launch StreamFusion v3.0.0</span>
               <ArrowRight size={18} />
             </button>
           </div>
