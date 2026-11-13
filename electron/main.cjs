@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification, screen } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -6,6 +6,7 @@ const { fork } = require('child_process');
 const { initAutoUpdater } = require('./updater.cjs');
 
 let mainWindow = null;
+let mirrorToolbarWindow = null;
 let serverProcess = null;
 let logFd = null;
 let tray = null;
@@ -188,6 +189,21 @@ function createWindow() {
     }
   });
 
+  // Attached Floating Navigation Toolbar IPC
+  ipcMain.on('open-mirror-toolbar', (event, data) => {
+    openMirrorToolbar(data || {});
+  });
+
+  ipcMain.on('close-mirror-toolbar', () => {
+    closeMirrorToolbar();
+  });
+
+  ipcMain.on('resize-toolbar', (event, { width, height }) => {
+    if (mirrorToolbarWindow) {
+      mirrorToolbarWindow.setSize(width, height);
+    }
+  });
+
   // Load URL based on environment
   if (isDev) {
     // Development mode: Probe Vite dev server first
@@ -272,7 +288,62 @@ function createTray() {
   }
 }
 
+function openMirrorToolbar({ serial = '', title = '', orientation = 'horizontal' }) {
+  if (mirrorToolbarWindow) {
+    mirrorToolbarWindow.show();
+    mirrorToolbarWindow.focus();
+    return;
+  }
+
+  const width = orientation === 'vertical' ? 68 : 460;
+  const height = orientation === 'vertical' ? 460 : 68;
+
+  let x = 100;
+  let y = 100;
+  try {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    x = Math.round((screenWidth - width) / 2);
+    y = screenHeight - height - 20;
+  } catch (e) {}
+
+  mirrorToolbarWindow = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  const dockUrl = `http://127.0.0.1:${PORT}/nav-dock.html?serial=${encodeURIComponent(serial)}&orientation=${orientation}`;
+  mirrorToolbarWindow.loadURL(dockUrl).catch(() => {});
+
+  mirrorToolbarWindow.on('closed', () => {
+    mirrorToolbarWindow = null;
+  });
+}
+
+function closeMirrorToolbar() {
+  if (mirrorToolbarWindow) {
+    try {
+      mirrorToolbarWindow.close();
+    } catch (e) {}
+    mirrorToolbarWindow = null;
+  }
+}
+
 function cleanExit() {
+  closeMirrorToolbar();
   if (serverProcess) {
     try {
       serverProcess.kill('SIGTERM');

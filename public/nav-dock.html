@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>StreamFusion Navigation Dock</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .dock-container {
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 999px;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(37, 99, 235, 0.25);
+      display: flex;
+      align-items: center;
+      padding: 6px 10px;
+      gap: 6px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .dock-container.vertical {
+      flex-direction: column;
+      border-radius: 20px;
+      padding: 10px 6px;
+    }
+
+    .drag-handle {
+      -webkit-app-region: drag;
+      cursor: grab;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 6px;
+      transition: color 0.15s ease;
+    }
+
+    .drag-handle:hover {
+      color: #94a3b8;
+    }
+
+    .dock-btn {
+      -webkit-app-region: no-drag;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #f1f5f9;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .dock-btn:hover {
+      background: rgba(59, 130, 246, 0.3);
+      border-color: rgba(96, 165, 250, 0.5);
+      color: #60a5fa;
+      transform: scale(1.08);
+    }
+
+    .dock-btn:active {
+      transform: scale(0.92);
+      background: rgba(37, 99, 235, 0.6);
+      color: #ffffff;
+    }
+
+    .dock-btn.primary {
+      background: rgba(37, 99, 235, 0.35);
+      border-color: rgba(59, 130, 246, 0.5);
+      color: #93c5fd;
+    }
+
+    .dock-btn.primary:hover {
+      background: #2563eb;
+      color: #ffffff;
+    }
+
+    .dock-btn.danger:hover {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: rgba(248, 113, 113, 0.5);
+      color: #f87171;
+    }
+
+    .divider {
+      width: 1px;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.12);
+      margin: 0 2px;
+    }
+
+    .dock-container.vertical .divider {
+      width: 20px;
+      height: 1px;
+      margin: 2px 0;
+    }
+
+    /* Subtle Toast Indicator */
+    #statusToast {
+      position: absolute;
+      top: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #3b82f6;
+      color: #60a5fa;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      white-space: nowrap;
+    }
+
+    #statusToast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div style="position: relative;">
+    <div id="statusToast">Action</div>
+    <div class="dock-container" id="dockContainer">
+      <!-- Drag Handle -->
+      <div class="drag-handle" title="Drag to Move">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="5" r="1"></circle>
+          <circle cx="9" cy="12" r="1"></circle>
+          <circle cx="9" cy="19" r="1"></circle>
+          <circle cx="15" cy="5" r="1"></circle>
+          <circle cx="15" cy="12" r="1"></circle>
+          <circle cx="15" cy="19" r="1"></circle>
+        </svg>
+      </div>
+
+      <!-- 1. Back Button -->
+      <button class="dock-btn primary" onclick="sendKey(4, 'Back')" title="Back (Alt+B / Right-Click)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+
+      <!-- 2. Home Button -->
+      <button class="dock-btn primary" onclick="sendKey(3, 'Home')" title="Home (Alt+H / Middle-Click)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8"></circle>
+        </svg>
+      </button>
+
+      <!-- 3. Recents / App Switcher -->
+      <button class="dock-btn primary" onclick="sendKey(187, 'Recent Apps')" title="Recents / App Switcher (Alt+S)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+        </svg>
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- 4. Notifications Panel -->
+      <button class="dock-btn" onclick="sendStatusBar('notifications', 'Notifications')" title="Pull Notifications">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </button>
+
+      <!-- 5. Quick Settings -->
+      <button class="dock-btn" onclick="sendStatusBar('settings', 'Quick Tiles')" title="Quick Settings Tiles">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+
+      <!-- 6. Volume Up -->
+      <button class="dock-btn" onclick="sendKey(24, 'Volume +')" title="Volume Up">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+      </button>
+
+      <!-- 7. Volume Down -->
+      <button class="dock-btn" onclick="sendKey(25, 'Volume -')" title="Volume Down">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+      </button>
+
+      <!-- 8. Screenshot -->
+      <button class="dock-btn" onclick="takeScreenshot()" title="Take Screenshot">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+      </button>
+
+      <!-- 9. Screen Off / Power Wake -->
+      <button class="dock-btn" onclick="sendKey(26, 'Power Toggle')" title="Power / Lock Phone">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+          <line x1="12" y1="2" x2="12" y2="12"></line>
+        </svg>
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- 10. Rotate Dock Layout (Horizontal <-> Vertical) -->
+      <button class="dock-btn" onclick="toggleOrientation()" title="Rotate Dock Layout">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path>
+        </svg>
+      </button>
+
+      <!-- 11. Close / Stop Mirror -->
+      <button class="dock-btn danger" onclick="closeToolbar()" title="Close Navigation Dock">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    let serial = params.get('serial') || '';
+    let isVertical = params.get('orientation') === 'vertical';
+
+    const dockContainer = document.getElementById('dockContainer');
+    const toast = document.getElementById('statusToast');
+    let toastTimer = null;
+
+    if (isVertical) {
+      dockContainer.classList.add('vertical');
+    }
+
+    function showToast(msg) {
+      toast.innerText = msg;
+      toast.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 1400);
+    }
+
+    // Resolve serial from server if not provided in URL
+    if (!serial) {
+      fetch('http://127.0.0.1:3001/api/mirror/status')
+        .then(r => r.json())
+        .then(data => {
+          const keys = Object.keys(data || {});
+          if (keys.length > 0) serial = keys[0];
+        })
+        .catch(() => {});
+    }
+
+    async function sendKey(keycode, label) {
+      showToast(label);
+      try {
+        await fetch('http://127.0.0.1:3001/api/control/key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serial, keycode })
+        });
+      } catch (e) {}
+    }
+
+    async function sendStatusBar(action, label) {
+      showToast(label);
+      try {
+        await fetch('http://127.0.0.1:3001/api/control/statusbar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serial, action })
+        });
+      } catch (e) {}
+    }
+
+    async function takeScreenshot() {
+      showToast('Capturing...');
+      try {
+        const res = await fetch('http://127.0.0.1:3001/api/control/screenshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serial })
+        });
+        const d = await res.json();
+        showToast(d.success ? 'Screenshot Saved!' : 'Capture Failed');
+      } catch (e) {
+        showToast('Error');
+      }
+    }
+
+    function toggleOrientation() {
+      isVertical = !isVertical;
+      if (isVertical) {
+        dockContainer.classList.add('vertical');
+        if (window.electronAPI?.resizeToolbar) {
+          window.electronAPI.resizeToolbar(64, 460);
+        }
+      } else {
+        dockContainer.classList.remove('vertical');
+        if (window.electronAPI?.resizeToolbar) {
+          window.electronAPI.resizeToolbar(460, 64);
+        }
+      }
+    }
+
+    function closeToolbar() {
+      if (window.electronAPI?.closeToolbar) {
+        window.electronAPI.closeToolbar();
+      } else {
+        window.close();
+      }
+    }
+  </script>
+</body>
+</html>

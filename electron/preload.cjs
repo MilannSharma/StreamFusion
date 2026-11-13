@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showNotification: (data) => ipcRenderer.send('show-notification', data),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   restartAndInstallUpdate: () => ipcRenderer.send('restart-and-install-update'),
+  openMirrorToolbar: (data) => ipcRenderer.send('open-mirror-toolbar', data),
+  closeMirrorToolbar: () => ipcRenderer.send('close-mirror-toolbar'),
+  resizeToolbar: (width, height) => ipcRenderer.send('resize-toolbar', { width, height }),
+  closeToolbar: () => ipcRenderer.send('close-mirror-toolbar'),
   onUpdaterStatus: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('updater-status', handler);

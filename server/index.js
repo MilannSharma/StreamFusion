@@ -8,6 +8,7 @@ import { createSettingsRouter } from './routes/settings.js';
 import { createFilesRouter } from './routes/files.js';
 import { createDiagnosticsRouter } from './routes/diagnostics.js';
 import { createNotificationsRouter } from './routes/notifications.js';
+import { createEmulatorRouter } from './routes/emulator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +87,7 @@ const savedDevicesFile = path.join(dataDir, 'saved_devices.json');
 app.use('/api/settings', createSettingsRouter(dataDir));
 app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
 app.use('/api/notifications', createNotificationsRouter({ runAdb }));
+app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
 
 function getSavedDevices() {
   try {
@@ -244,6 +246,15 @@ app.get('/api/devices', async (req, res) => {
         // Priority: Owner Name -> Bluetooth Name -> Market Name -> Model Name
         dev.displayName = ownerName || btName || market || dev.model;
 
+        // Auto-detect and label StreamFusion Android Emulator
+        const isEmulator = serial.startsWith('localhost:') || serial.startsWith('127.0.0.1:') || serial.startsWith('emulator-');
+        if (isEmulator) {
+          dev.displayName = 'StreamFusion Android Emulator';
+          dev.model = 'StreamFusion Emulator';
+          dev.isEmulator = true;
+          if (dev.battery < 0) dev.battery = 100;
+        }
+
         if (verRes.success && verRes.output && !verRes.output.includes('error')) dev.androidVersion = `Android ${verRes.output}`;
 
         const batM = batRes.output.match(/level:\s*(\d+)/);
@@ -341,7 +352,7 @@ app.post('/api/mirror/start', (req, res) => {
       `--window-title=StreamFusion HD Webcam - ${titleName}`
     );
   } else if (mode === 'virtual-display' || config.isVirtualDisplay) {
-    const displaySize = config.virtualDisplaySize || '1080x2400/420';
+    const displaySize = config.virtualDisplaySize || '1080x2400/300';
     args.push(
       `--new-display=${displaySize}`,
       `--window-title=StreamFusion Virtual Display - ${titleName}`,
@@ -350,9 +361,23 @@ app.post('/api/mirror/start', (req, res) => {
     if (config.flexDisplay) {
       args.push('-x');
     }
-    // Auto-scale vertical mobile screen so 2400px height never gets cut off by monitor bounds!
-    const maxSize = config.maxSize || 900;
+    // Auto-scale vertical mobile screen so height fits cleanly within monitor work area (default 700px for laptops)
+    const maxSize = (config.maxSize && config.maxSize > 0) ? config.maxSize : 700;
     args.push(`--max-size=${maxSize}`);
+
+    // Safe top window positioning so title bar and bottom navigation remain fully visible
+    args.push('--window-y=24');
+
+
+    // Configure Android secondary display mode:
+    // If phone mode: disable forced desktop mode so apps open fullscreen without freeform window headers
+    const isDesktop = config.displayMode === 'desktop' || config.isDesktopMode === true;
+    if (isDesktop) {
+      runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_desktop_mode_on_external_displays', '1']);
+      runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'enable_freeform_support', '1']);
+    } else {
+      runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_desktop_mode_on_external_displays', '0']);
+    }
 
     // Ensure an app is launched so virtual display never renders a blank empty canvas
     const targetApp = (config.startApp && config.startApp.trim()) ? config.startApp.trim() : 'com.android.settings';
@@ -389,11 +414,20 @@ app.post('/api/mirror/start', (req, res) => {
     if (config.audioOnly) args.push('--no-video');
   }
 
-  // Recording
+  // Recording (Direct to Local PC in 12 Mbps Smooth 60 FPS)
   let isDeviceRecording = false;
-  if (recordFile) {
-    args.push(`--record=${recordFile}`);
-    if (config.recordFormat) args.push(`--record-format=${config.recordFormat}`);
+  let targetRecordFile = recordFile;
+  if (!targetRecordFile && (config.recordSession || config.isRecording || req.body.record)) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const safeName = (titleName || 'Phone').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const format = config.recordFormat || 'mp4';
+    targetRecordFile = path.join(defaultRecordDir, `StreamFusion_${safeName}_${timestamp}.${format}`);
+  }
+
+  if (targetRecordFile) {
+    args.push(`--record=${targetRecordFile}`);
+    args.push(`--record-format=${config.recordFormat || 'mp4'}`);
+    if (!config.bitrateMbps) args.push('--video-bit-rate=12M');
     isDeviceRecording = true;
   }
 
@@ -405,7 +439,7 @@ app.post('/api/mirror/start', (req, res) => {
       model,
       deviceName,
       isRecording: isDeviceRecording,
-      recordingFile: recordFile || null,
+      recordingFile: targetRecordFile || null,
       port: currentPort,
       mode,
       startedAt: new Date().toISOString()
@@ -526,13 +560,51 @@ app.get('/api/devices/:serial/apps', async (req, res) => {
 // 4.2 POST /api/devices/:serial/desktop-mode (Auto-configure secondary display settings via ADB)
 app.post('/api/devices/:serial/desktop-mode', async (req, res) => {
   const { serial } = req.params;
+  const { mode, enabled } = req.body || {};
+  const isPhone = mode === 'phone' || enabled === false;
+  const val = isPhone ? '0' : '1';
   try {
-    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_desktop_mode_on_external_displays', '1'], 3000);
-    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'enable_freeform_support', '1'], 3000);
+    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_desktop_mode_on_external_displays', val], 3000);
+    await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'enable_freeform_support', val], 3000);
     await runAdb(['-s', serial, 'shell', 'settings', 'put', 'global', 'force_resizable_activities', '1'], 3000);
-    res.json({ success: true, message: 'Desktop Mode & Freeform settings enabled on phone!' });
+    res.json({
+      success: true,
+      message: isPhone
+        ? 'Phone Mode enabled: apps will fill virtual display fullscreen without window headers!'
+        : 'Desktop Mode & Freeform settings enabled on phone!'
+    });
   } catch (e) {
     res.json({ success: false, message: e.message });
+  }
+});
+
+// 4.3 GET /api/devices/:serial/display (Query native physical display size & density)
+app.get('/api/devices/:serial/display', async (req, res) => {
+  const { serial } = req.params;
+  try {
+    const sizeRes = await runAdb(['-s', serial, 'shell', 'wm', 'size'], 3000);
+    const densRes = await runAdb(['-s', serial, 'shell', 'wm', 'density'], 3000);
+
+    const sizeMatch = sizeRes.output.match(/(\d+)x(\d+)/);
+    const densMatch = densRes.output.match(/(\d+)/);
+
+    const width = sizeMatch ? parseInt(sizeMatch[1], 10) : 1080;
+    const height = sizeMatch ? parseInt(sizeMatch[2], 10) : 2400;
+    const density = densMatch ? parseInt(densMatch[1], 10) : 420;
+
+    res.json({
+      success: true,
+      width,
+      height,
+      density,
+      virtualDisplaySize: `${width}x${height}/${density}`
+    });
+  } catch (e) {
+    res.json({
+      success: false,
+      message: e.message,
+      virtualDisplaySize: '1080x2400/420'
+    });
   }
 });
 
@@ -788,6 +860,12 @@ function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+// Serve static public assets (including nav-dock.html, icons)
+const publicPath = path.join(rootDir, 'public');
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
 }
 
 // Serve compiled frontend if present

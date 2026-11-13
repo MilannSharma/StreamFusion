@@ -23,10 +23,13 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
   onToast
 }) => {
   const [activeTab, setActiveTab] = useState<'launch' | 'guide'>('launch');
-  // Default to Vertical Mobile Portrait (9:20 ratio) matching actual smartphones
-  const [virtualDisplaySize, setVirtualDisplaySize] = useState('1080x2400/420');
-  const [maxSize, setMaxSize] = useState(900); // 900px vertical height ensures 100% fits on any laptop without cut-off!
-  const [flexDisplay, setFlexDisplay] = useState(true);
+  // Display Mode: 'phone' (Full-Screen Vertical Phone) or 'desktop' (16:9 Multi-Window)
+  const [displayMode, setDisplayMode] = useState<'phone' | 'desktop'>('phone');
+  // Default to Vertical Mobile Portrait (9:20 ratio) with balanced 300 DPI (crisp natural phone icons)
+  const [virtualDisplaySize, setVirtualDisplaySize] = useState('1080x2400/300');
+  const [maxSize, setMaxSize] = useState(700); // 700px height ensures 100% fits on any laptop without cut-off!
+  const [flexDisplay, setFlexDisplay] = useState(false); // Locked by default to prevent ratio deformation
+  const [isDetectingDisplay, setIsDetectingDisplay] = useState(false);
   const [selectedApp, setSelectedApp] = useState('com.android.settings');
   const [customApp, setCustomApp] = useState('');
   const [installedApps, setInstalledApps] = useState<{ package: string; label: string }[]>([]);
@@ -51,6 +54,29 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
         .finally(() => setIsLoadingApps(false));
     }
   }, [isOpen, serial]);
+
+  // Query connected device's exact native physical screen resolution
+  const handleMatchNativeDisplay = async () => {
+    if (!serial) {
+      onToast('Connect a phone first!', '⚠️');
+      return;
+    }
+    setIsDetectingDisplay(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:3001/api/devices/${encodeURIComponent(serial)}/display`);
+      const data = await res.json();
+      if (data.success && data.virtualDisplaySize) {
+        setVirtualDisplaySize(data.virtualDisplaySize);
+        onToast(`Matched phone screen: ${data.width}x${data.height} (${data.density} DPI)`, '📱');
+      } else {
+        onToast('Using default 1080x2400/420', 'ℹ️');
+      }
+    } catch (e: any) {
+      onToast('Failed to detect display: ' + e.message, '❌');
+    } finally {
+      setIsDetectingDisplay(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -83,6 +109,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
             virtualDisplaySize,
             maxSize,
             flexDisplay,
+            displayMode,
             startApp: appToLaunch,
             turnScreenOff,
             stayAwake
@@ -92,6 +119,13 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
       const data = await res.json();
       if (data.success) {
         onToast(`Vertical Screen launched with ${appToLaunch}!`, '📱');
+        // Open attached floating navigation dock for mirroring window
+        if ((window as any).electronAPI?.openMirrorToolbar) {
+          (window as any).electronAPI.openMirrorToolbar({
+            serial,
+            title: `StreamFusion Virtual Display - ${deviceName || serial}`
+          });
+        }
         onClose();
       } else {
         onToast('Failed to start Virtual Screen: ' + data.message, '❌');
@@ -110,6 +144,9 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serial })
       });
+      if ((window as any).electronAPI?.closeMirrorToolbar) {
+        (window as any).electronAPI.closeMirrorToolbar();
+      }
       onToast('Virtual Screen stopped', '⏹️');
     } catch (e: any) {
       onToast('Error: ' + e.message, '❌');
@@ -161,21 +198,19 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+    <div className="modal-overlay" onClick={onClose}>
       <div
-        className="glass-panel"
+        className="mac-glass-modal"
         onClick={e => e.stopPropagation()}
         style={{
-          width: '94%',
+          width: '92%',
           maxWidth: 720,
-          maxHeight: '92vh',
+          maxHeight: '90vh',
           display: 'flex',
           flexDirection: 'column',
           padding: 0,
-          overflow: 'hidden',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
-          border: '1.5px solid #3b82f6',
-          borderRadius: 16
+          borderRadius: 22,
+          border: '1.5px solid rgba(59, 130, 246, 0.5)'
         }}
       >
         {/* Modal Header */}
@@ -303,32 +338,135 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
                 </div>
               </div>
 
+              {/* Mode Selector: Phone Full-Screen vs Desktop Freeform */}
+              <div style={{
+                display: 'flex',
+                background: '#f1f5f9',
+                padding: 4,
+                borderRadius: 12,
+                gap: 6
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisplayMode('phone');
+                    setVirtualDisplaySize('1080x2400/320');
+                    setFlexDisplay(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '9px 14px',
+                    borderRadius: 9,
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    background: displayMode === 'phone' ? '#2563eb' : 'transparent',
+                    color: displayMode === 'phone' ? '#ffffff' : '#475569',
+                    boxShadow: displayMode === 'phone' ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Smartphone size={16} /> 📱 Phone Mode (Full-Screen Vertical)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisplayMode('desktop');
+                    setVirtualDisplaySize('1920x1080/420');
+                    setFlexDisplay(true);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '9px 14px',
+                    borderRadius: 9,
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    background: displayMode === 'desktop' ? '#2563eb' : 'transparent',
+                    color: displayMode === 'desktop' ? '#ffffff' : '#475569',
+                    boxShadow: displayMode === 'desktop' ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Monitor size={16} /> 🖥️ Desktop Mode (16:9 Multi-Window)
+                </button>
+              </div>
+
               {/* 1. Aspect Ratio & Resolution Presets */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 8 }}>
-                  1. Screen Shape &amp; Aspect Ratio (Vertical Phone Screen vs Landscape)
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                  {[
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                    1. Screen Shape &amp; Resolution Presets
+                  </label>
+                  {displayMode === 'phone' && (
+                    <button
+                      type="button"
+                      onClick={handleMatchNativeDisplay}
+                      disabled={isDetectingDisplay}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#2563eb',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5
+                      }}
+                    >
+                      <Zap size={12} />
+                      {isDetectingDisplay ? 'Detecting...' : 'Auto-Match My Phone Screen'}
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: displayMode === 'phone' ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 10 }}>
+                  {(displayMode === 'phone' ? [
                     {
-                      label: '📱 Phone Portrait (9:20)',
-                      val: '1080x2400/420',
+                      label: '📱 Phone Portrait (9:20 Balanced)',
+                      val: '1080x2400/320',
                       badge: 'RECOMMENDED',
-                      desc: 'Exact mobile phone shape — vertical standing window'
+                      desc: 'True modern phone shape with balanced UI (no oversized zoom)'
                     },
                     {
-                      label: '📱 Compact Mobile (Vertical)',
-                      val: '720x1600/320',
-                      badge: 'FAST',
-                      desc: 'Lightweight vertical phone screen, takes less CPU'
+                      label: '📱 Compact Low-Load (9:20)',
+                      val: '720x1600/260',
+                      badge: 'FAST & LIGHT',
+                      desc: 'Ultra-lightweight vertical phone screen, lowest CPU usage'
                     },
                     {
-                      label: '🖥️ Desktop Landscape (16:9)',
-                      val: '1920x1080/420',
-                      badge: 'WIDE',
-                      desc: 'Horizontal wide mode for YouTube & multi-window'
+                      label: '📱 Flagship Ratio (19.5:9)',
+                      val: '1080x2340/320',
+                      badge: 'SAMSUNG / 1+',
+                      desc: 'Modern flagship ratio for Samsung Galaxy & OnePlus'
                     }
-                  ].map(res => (
+                  ] : [
+                    {
+                      label: '🖥️ Desktop Full HD (16:9)',
+                      val: '1920x1080/420',
+                      badge: '1080P WIDE',
+                      desc: 'High-res desktop workspace with freeform apps'
+                    },
+                    {
+                      label: '🖥️ Desktop Standard HD',
+                      val: '1280x720/320',
+                      badge: '720P FAST',
+                      desc: 'Fast desktop layout for high performance'
+                    }
+                  ]).map(res => (
                     <div
                       key={res.val}
                       onClick={() => setVirtualDisplaySize(res.val)}
@@ -366,55 +504,96 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
                 </div>
               </div>
 
-              {/* 2. Window Scale & Monitor Fit (Fix for Half Screen Cut-Off) */}
+              {/* 2. Window Scale & Monitor Fit (Fix for Half Screen Cut-Off & Zoom) */}
               <div style={{ background: 'var(--bg-card, #f8fafc)', padding: '14px 16px', borderRadius: 12, border: '1px solid #e2e8f0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>
-                      2. Window Fit on PC Monitor (Screen Half Cut-Off Fix)
+                      2. Window Scale &amp; Monitor Fit (Zero Cut-Off)
                     </span>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                      Laptop monitor ki height ke mutabik phone window ko auto-scale karein taaki niche se screen na kate.
+                      Laptop screen height ke mutabik window auto-scale hogi. Taskbar ke neeche cut hone ka issue 100% fixed!
                     </div>
                   </div>
-                  <span className="badge badge-green">Zero Cut-Off</span>
+                  <span className="badge badge-green" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                    Zero Cut-Off
+                  </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                {/* Quick Height Presets */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   {[
-                    { label: 'Laptop Standard (900px)', val: 900, desc: 'Best fit for 1080p & 768p displays' },
-                    { label: 'Compact Side-Window (780px)', val: 780, desc: 'Small side-by-side window' },
-                    { label: 'Large / 2K Display (1050px)', val: 1050, desc: 'For large monitors' }
+                    { label: 'Laptop Fit (720px)', val: 720, badge: 'DEFAULT', desc: '100% fits 768p & 1080p laptops' },
+                    { label: 'Compact (640px)', val: 640, badge: 'SIDEBAR', desc: 'Small side-by-side window' },
+                    { label: 'Full HD (800px)', val: 800, badge: '1080P', desc: 'For 1080p at 100% scale' },
+                    { label: 'Large (950px)', val: 950, badge: '2K/4K', desc: 'For big external monitors' }
                   ].map(s => (
                     <button
                       key={s.val}
                       type="button"
                       onClick={() => setMaxSize(s.val)}
                       style={{
-                        padding: '8px 12px',
+                        padding: '8px 10px',
                         borderRadius: 8,
                         border: maxSize === s.val ? '2px solid #2563eb' : '1px solid #cbd5e1',
                         background: maxSize === s.val ? '#dbeafe' : '#ffffff',
                         cursor: 'pointer',
-                        textAlign: 'left'
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
                       }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: maxSize === s.val ? '#1e40af' : '#0f172a' }}>
-                        {s.label}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: maxSize === s.val ? '#1e40af' : '#0f172a' }}>
+                          {s.label}
+                        </span>
                       </div>
-                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{s.desc}</div>
+                      <div style={{ fontSize: 9.5, color: '#64748b', marginTop: 2 }}>{s.desc}</div>
                     </button>
                   ))}
                 </div>
 
-                <div style={{ marginTop: 10, display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: '#1e40af', fontWeight: 600 }}>
+                {/* Live Height Slider */}
+                <div style={{ marginTop: 12, padding: '10px 12px', background: '#ffffff', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: '#334155' }}>
+                      Fine-Tune Window Height:
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: 6, border: '1px solid #bfdbfe' }}>
+                      {maxSize}px Height · Width: {Math.round(maxSize * (displayMode === 'phone' ? 1080/2400 : 16/9))}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="520"
+                    max="1020"
+                    step="20"
+                    value={maxSize}
+                    onChange={e => setMaxSize(Number(e.target.value))}
+                    style={{ width: '100%', cursor: 'pointer', accentColor: '#2563eb' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                    <span>520px (Tiny)</span>
+                    <span>720px (Laptop Standard Fit)</span>
+                    <span>1020px (2K Large)</span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: '#16a34a', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={!flexDisplay}
+                      onChange={e => setFlexDisplay(!e.target.checked)}
+                    />
+                    <span>🔒 Lock Exact Phone Aspect Ratio (No Stretching, Zero Black Bars)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: '#64748b' }}>
                     <input
                       type="checkbox"
                       checked={flexDisplay}
                       onChange={e => setFlexDisplay(e.target.checked)}
                     />
-                    <span>Enable Resizable Flex-Display (-x) — Mouse se window edge kheench kar resize karein</span>
+                    <span>Enable Freeform Flex-Display (-x)</span>
                   </label>
                 </div>
               </div>

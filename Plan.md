@@ -724,5 +724,56 @@ files:
 
 ---
 
-> [!IMPORTANT]
-> **Next Step:** Review this plan and confirm to proceed with **Phase 1 — Foundation & Device Management**. All phases will be built incrementally with testing at each stage.
+## 13. Recent Implementations & Fixes (v3.2.0)
+
+### 13.1 — Issue 1 Fix: Welcome Screen Animation & Replay
+- **Bug Fixed**: In `src/assets/welcome-animation.json`, the SVG gradient stroke (`gs` + `tm`) failed to resolve gradient coordinates in Lottie-web SVG renderer, causing `data_failed` and pitch-black freeze. Replaced with solid luminous white stroke (`st`).
+- **Interaction Polishing**: Added 450ms click-guard to prevent premature dismissal, added explicit "Skip (ESC)" button, cinema-grade branding subtitle, and 800ms reveal delay after cursive text completes.
+- **Settings Replay Fixed**: Added `Play Welcome Screen` and `Replay Setup Tour` in Settings > "Welcome & Setup Experience" with `e.stopPropagation()`.
+
+### 13.2 — Issue 2 Fix: Virtual Screen Mobile Fit & DPI Scaling
+- **Fit & Zoom Bug Fixed**: Default resolution updated from `1080x2400/420` to `1080x2400/320` to prevent oversized mobile elements.
+- **Monitor Boundary Protection**: Default window `maxSize` changed from `900` to `720` with `--window-y=24` offset in `server/index.js`, preventing window cut-off behind the Windows taskbar.
+- **Scale Presets & Slider**: Added presets (`Laptop Fit 720px`, `Compact 640px`, `Full HD 800px`, `Large 950px`) and live height slider (520px - 1020px) with real-time viewport width/height calculator.
+
+### 13.3 — New Feature: StreamFusion Android Emulator Studio
+- **Engine Binaries**: Bundled standalone native Windows emulator binaries in `emulator-bin/` as `StreamFusionEmulator.exe` and `StreamFusionEngine.exe`.
+- **Packaging**: Added `emulator-bin` to `extraResources` in `package.json` for Electron-Builder.
+- **Backend Router (`server/routes/emulator.js`)**:
+  - `GET /api/emulator/status` — live detection of executable, engine process, and ADB `localhost:5555`.
+  - `POST /api/emulator/start` & `POST /api/emulator/stop` — lifecycle management.
+  - `POST /api/emulator/connect` — ADB connection sync.
+  - `POST /api/emulator/install-apk` — drag-and-drop or browse `.apk` sideloading and testing.
+  - `GET /api/emulator/apps` — lists installed 3rd party apps.
+  - `POST /api/emulator/launch-app` & `POST /api/emulator/uninstall-app` — app test execution and cleanup.
+- **Frontend Studio UI (`src/components/Emulator/EmulatorStudioModal.tsx`)**:
+  - Full modal with Start/Stop controls, 60FPS Scrcpy PC Play mode, APK test lab, installed app launcher, and engine performance specs.
+  - Branded strictly as **StreamFusion Android Emulator**.
+
+---
+
+## 14. Mac-Style Glassmorphism & Centered Architecture (v3.2.1)
+
+### 14.1 — Popups Centering & Apple Frosted Glass UI
+- **Centered Modal Fix**: Resolved missing `.modal-overlay` styling in `src/index.css` by implementing fixed fullscreen flex centering (`position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;`). All popups (Emulator, Virtual Screen, Diagnostics, Webcam, Clipboard) are now strictly, perfectly centered.
+- **Apple macOS Glassmorphism**: Implemented frosted acrylic glass backdrop blur (`backdrop-filter: blur(28px) saturate(180%)`), silky rounded corners (`22px`), 1px translucent glass borders, and smooth popup entrance animation (`cubic-bezier(0.16, 1, 0.3, 1)`).
+
+### 14.2 — Welcome Screen 10-Second Window & No Loop Replay
+- **Replay Loop Eliminated**: Memoized `onFinish` with `useRef` and locked `useEffect` to `[]` empty dependency array, completely stopping repeated restarts on 2-second device polling cycles.
+- **10-Second Window**: Replaced premature fade with a comfortable 10-second countdown ("Auto-closing in 10s"), full unclipped cursive drawing from frame 0 to 220, and a prominent **"Continue to StreamFusion ➔"** button.
+
+### 14.3 — Virtual Display 300 DPI Fit
+- Default resolution set to `1080x2400/300` DPI for natural, sharp mobile proportions (no giant zoomed-in icons).
+- Window height automatically clamped to `700px` with `--window-y=24` offset, preventing window cutoff below the Windows taskbar.
+
+### 14.4 — Smooth High-Quality Screen Recording
+- **Auto Path Generation**: Updated `server/index.js` to automatically generate timestamped `.mp4` files in `~/Videos/StreamFusion/` whenever recording is triggered.
+- **High-Bitrate 60 FPS**: Recorded at 12 Mbps for crystal-clear, smooth PC video storage.
+- Added 1-click **"Open in Explorer"** button in "My Recordings" tab to immediately view saved MP4 files.
+
+### 14.5 — StreamFusion Emulator 1-Click Install & Sidebar Tab
+- **Permanent Sidebar Tab**: Added **"Android Emulator"** to the left sidebar navigation dock.
+- **Dedicated Full-Page View**: Added `EmulatorStudioView` containing 4 sections: Control & APK Testing, Installed Apps Manager, Complete Setup & User Guide, and Engine Specs.
+- **1-Click In-App Install Flow**: Clean, automated install flow showing an Apple-style progress bar without technical jargon or external popups.
+
+

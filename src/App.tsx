@@ -7,12 +7,13 @@ import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal'
 import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModal';
 import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
+import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check, Wrench, Clipboard, Monitor, Bell
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2
 } from 'lucide-react';
 
 declare global {
@@ -36,14 +37,16 @@ declare global {
   }
 }
 
-// 1. Sleek Cinematic Pure Black Welcome Splash Screen
+// 1. Sleek Cinematic Apple-Mac Pure Black Frosted Welcome Splash Screen
 function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFading, setIsFading] = React.useState(false);
-  const isInitializedRef = React.useRef(false);
+  const [secondsRemaining, setSecondsRemaining] = React.useState(10);
+  const onFinishRef = React.useRef(onFinish);
+  onFinishRef.current = onFinish;
 
   React.useEffect(() => {
-    // Persist welcomeSeen immediately to settings.json
+    // Persist welcomeSeen immediately to settings.json & localStorage
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -53,12 +56,9 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
       localStorage.setItem('streamfusion_v3_welcome_seen', 'true');
     } catch (e) {}
 
-    if (isInitializedRef.current) return;
-    isInitializedRef.current = true;
-
     let anim: any = null;
     let fadeTimer: any = null;
-    let finishTimer: any = null;
+    let countdownInterval: any = null;
 
     if (containerRef.current) {
       try {
@@ -69,90 +69,211 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
           autoplay: true,
           animationData: welcomeAnimationData
         });
-
-        const triggerFade = () => {
-          setIsFading(true);
-          finishTimer = setTimeout(() => {
-            onFinish();
-          }, 600);
-        };
-
-        anim.addEventListener('complete', triggerFade);
-        anim.addEventListener('data_failed', () => {
-          console.warn('Welcome animation data failed, fading early');
-          setTimeout(triggerFade, 800);
-        });
-        // Safety fallback timer if complete event does not fire (3.5s anim + buffer)
-        fadeTimer = setTimeout(triggerFade, 3800);
       } catch (e) {
         console.error('Welcome Lottie error:', e);
-        setTimeout(onFinish, 800);
       }
     }
 
+    // Smooth 10s countdown window requested by user
+    countdownInterval = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Auto-advance after comfortable 10 seconds window
+    fadeTimer = setTimeout(() => {
+      handleComplete();
+    }, 10000);
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-        setIsFading(true);
-        setTimeout(onFinish, 200);
+        handleComplete();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      if (countdownInterval) clearInterval(countdownInterval);
       if (fadeTimer) clearTimeout(fadeTimer);
-      if (finishTimer) clearTimeout(finishTimer);
       if (anim) anim.destroy();
     };
-  }, [onFinish]);
+  }, []); // Run ONCE on mount to prevent repeated replay loop!
 
-  const handleSkip = () => {
+  const handleComplete = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setIsFading(true);
-    setTimeout(onFinish, 200);
+    setTimeout(() => {
+      onFinishRef.current();
+    }, 300);
   };
 
   return (
     <div
-      onClick={handleSkip}
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: '#000000',
+        backgroundColor: '#05070f',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         opacity: isFading ? 0 : 1,
-        transition: 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'opacity 0.4s ease',
         pointerEvents: isFading ? 'none' : 'auto',
-        cursor: 'pointer',
         userSelect: 'none'
       }}
-      title="Click or press Esc to continue"
     >
+      {/* Top Bar with Timer and Skip Button */}
+      <div style={{
+        position: 'absolute',
+        top: 24,
+        right: 28,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12
+      }}>
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          color: '#94a3b8',
+          padding: '6px 14px',
+          borderRadius: 20,
+          fontSize: 12,
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
+        }}>
+          <span>Auto-closing in {secondsRemaining}s</span>
+        </div>
+
+        <button
+          onClick={handleComplete}
+          style={{
+            background: 'rgba(255, 255, 255, 0.12)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            color: '#f8fafc',
+            padding: '6px 16px',
+            borderRadius: 20,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.22)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+          }}
+        >
+          <span>Skip</span>
+          <span style={{ fontSize: 10, opacity: 0.6 }}>ESC</span>
+        </button>
+      </div>
+
+      {/* Glowing Cursive Welcome Lottie Animation (Full-size, no cut-off) */}
       <div
         ref={containerRef}
         style={{
           width: '100%',
-          maxWidth: 520,
-          height: 200,
+          maxWidth: 620,
+          height: 220,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          filter: 'drop-shadow(0 0 25px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 50px rgba(255, 255, 255, 0.25))'
+          filter: 'drop-shadow(0 0 20px rgba(59, 130, 246, 0.8)) drop-shadow(0 0 45px rgba(255, 255, 255, 0.45))'
         }}
       />
+
+      {/* Cinema Subtitle */}
+      <div style={{
+        marginTop: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 6
+      }}>
+        <div style={{
+          fontSize: 14,
+          fontWeight: 800,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: '#f8fafc',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span>STREAMFUSION</span>
+          <span style={{
+            fontSize: 10,
+            padding: '2px 8px',
+            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+            borderRadius: 999,
+            color: '#ffffff',
+            fontWeight: 800
+          }}>
+            v3.2.0
+          </span>
+        </div>
+        <div style={{
+          fontSize: 12.5,
+          color: '#94a3b8',
+          letterSpacing: '0.04em'
+        }}>
+          Zero-Latency Android Screen Mirroring &amp; Wireless Studio
+        </div>
+      </div>
+
+      {/* Apple-Mac Centered Continue Button */}
+      <div style={{ marginTop: 28 }}>
+        <button
+          onClick={handleComplete}
+          style={{
+            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: 999,
+            padding: '11px 26px',
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(37, 99, 235, 0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            transition: 'transform 0.15s ease'
+          }}
+          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <span>Continue to StreamFusion</span>
+          <span>➔</span>
+        </button>
+      </div>
+
+      {/* Bottom hint */}
       <div style={{
         position: 'absolute',
-        bottom: 32,
-        fontSize: 12,
-        color: '#64748b',
+        bottom: 28,
+        fontSize: 11.5,
+        color: '#475569',
         letterSpacing: '0.05em',
-        fontWeight: 500,
-        opacity: 0.85
+        fontWeight: 500
       }}>
-        Click anywhere or press Esc to continue ➔
+        Press Esc or Space to continue
       </div>
     </div>
   );
@@ -198,7 +319,7 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide'>('devices');
+  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator'>('devices');
   const [devices, setDevices] = useState<any[]>([]);
   const [savedDevices, setSavedDevices] = useState<any[]>([]);
   const [selectedSerial, setSelectedSerial] = useState<string>('');
@@ -292,6 +413,7 @@ export default function App() {
   const [isClipboardSyncOpen, setIsClipboardSyncOpen] = useState(false);
   const [isWebcamStudioOpen, setIsWebcamStudioOpen] = useState(false);
   const [virtualScreenDevice, setVirtualScreenDevice] = useState<any>(null);
+  const [isEmulatorStudioOpen, setIsEmulatorStudioOpen] = useState(false);
 
   // Auto-Updater State (Phase 0.5)
   const [updaterStatus, setUpdaterStatus] = useState<any>(null);
@@ -653,6 +775,7 @@ export default function App() {
           serial: serialToUse,
           deviceName: friendlyName,
           model: deviceObj.model,
+          record: record,
           config: {
             ...config,
             turnScreenOff: appSettings.screenOffMirror,
@@ -1125,6 +1248,20 @@ export default function App() {
             >
               <HelpCircle size={16} /> How to Connect
             </button>
+
+            <button
+              onClick={() => setActiveTab('emulator')}
+              className={`sidebar-tab ${activeTab === 'emulator' ? 'active' : ''}`}
+              style={{
+                marginTop: 6,
+                color: activeTab === 'emulator' ? '#2563eb' : '#4338ca',
+                fontWeight: 700,
+                background: activeTab === 'emulator' ? '#e0e7ff' : 'rgba(99, 102, 241, 0.08)',
+                border: '1px solid #c7d2fe'
+              }}
+            >
+              <Gamepad2 size={16} color="#6366f1" /> Android Emulator
+            </button>
           </div>
 
           {/* Connected Phone Status Card */}
@@ -1201,6 +1338,25 @@ export default function App() {
                   >
                     <Camera size={13} color="#2563eb" />
                     <span>HD Webcam</span>
+                  </button>
+                  <button
+                    onClick={() => setIsEmulatorStudioOpen(true)}
+                    className="btn-secondary"
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: 12,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(79,70,229,0.14))',
+                      borderColor: '#a5b4fc',
+                      color: '#4338ca',
+                      fontWeight: 700
+                    }}
+                    title="Run Android Apps on Windows with StreamFusion Emulator"
+                  >
+                    <Gamepad2 size={14} color="#6366f1" />
+                    <span>Android Emulator</span>
                   </button>
                   <button
                     onClick={fetchDevices}
@@ -1307,9 +1463,26 @@ export default function App() {
                     Connect your Android phone to this computer using a <strong>USB Cable</strong>. Unlock your phone and tap <strong>Allow</strong> if a prompt appears.
                   </p>
 
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <button onClick={fetchDevices} className="btn-primary" style={{ padding: '10px 22px' }}>
                       <RefreshCw size={15} className={isScanning ? 'pulse' : ''} /> Scan for Phone
+                    </button>
+                    <button
+                      onClick={() => setIsEmulatorStudioOpen(true)}
+                      className="btn-secondary"
+                      style={{
+                        padding: '10px 20px',
+                        background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(79,70,229,0.15))',
+                        borderColor: '#a5b4fc',
+                        color: '#4338ca',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8
+                      }}
+                    >
+                      <Gamepad2 size={16} color="#6366f1" />
+                      <span>Launch Android Emulator</span>
                     </button>
                     <button onClick={() => openWirelessMirrorModal()} className="btn-secondary" style={{ padding: '10px 20px' }}>
                       <Wifi size={15} /> Setup Wireless Mirror
@@ -1422,6 +1595,16 @@ export default function App() {
                       </div>
 
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        {dev.isEmulator && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setIsEmulatorStudioOpen(true); }}
+                            className="btn-secondary"
+                            style={{ padding: '8px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#818cf8', color: '#4338ca', fontWeight: 600 }}
+                            title="Manage APKs and testing on StreamFusion Emulator"
+                          >
+                            <Gamepad2 size={14} color="#6366f1" /> APK Lab
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); setVirtualScreenDevice(dev); }}
                           className="btn-secondary"
@@ -1597,6 +1780,14 @@ export default function App() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => fetch('/api/recordings/open-folder', { method: 'POST' })}
+                    className="btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title="Open Recordings folder on your PC"
+                  >
+                    <Folder size={14} /> Open in Explorer
+                  </button>
                   <button onClick={() => startMirror(true)} className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }}>
                     <Video size={14} /> Start New Recording
                   </button>
@@ -1809,18 +2000,45 @@ export default function App() {
 
               {/* Welcome Experience */}
               <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>WELCOME EXPERIENCE</div>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
-                  Replay the cinema-grade pitch black Welcome animation with glowing white vector lines anytime.
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 8, letterSpacing: '0.05em' }}>
+                  WELCOME &amp; SETUP EXPERIENCE
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+                  Watch the cinema-grade glowing Welcome animation or replay the full interactive ADB &amp; Scrcpy setup tour anytime.
                 </p>
-                <button
-                  onClick={() => setShowSplash(true)}
-                  className="btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontWeight: 600 }}
-                >
-                  <Sparkles size={15} color="#2563eb" />
-                  <span>Replay Welcome Screen</span>
-                </button>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSplash(true);
+                    }}
+                    className="btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '9px 18px',
+                      fontWeight: 600,
+                      background: 'linear-gradient(135deg, rgba(37,99,235,0.08), rgba(59,130,246,0.15))',
+                      borderColor: '#93c5fd'
+                    }}
+                  >
+                    <Sparkles size={15} color="#2563eb" />
+                    <span>Play Welcome Screen</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowWelcome(true);
+                    }}
+                    className="btn-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontWeight: 600 }}
+                  >
+                    <PlayCircle size={15} color="#16a34a" />
+                    <span>Replay Setup Tour</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -2026,6 +2244,17 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 6: STREAMFUSION ANDROID EMULATOR (FULL PAGE DEDICATED VIEW) */}
+          {activeTab === 'emulator' && (
+            <div className="glass-panel" style={{ padding: 0, overflow: 'hidden', minHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
+              <EmulatorStudioView
+                onToast={(msg, icon) => showToast(msg, icon)}
+                onStartMirror={(serial) => startMirror(serial)}
+                isFullPageView={true}
+              />
             </div>
           )}
         </main>
@@ -2611,6 +2840,14 @@ export default function App() {
           onToast={showToast}
         />
       )}
+
+      {/* 12. StreamFusion Android Emulator Studio Modal */}
+      <EmulatorStudioModal
+        isOpen={isEmulatorStudioOpen}
+        onClose={() => setIsEmulatorStudioOpen(false)}
+        onToast={showToast}
+        onStartMirror={(serial) => startMirror(serial)}
+      />
     </div>
   );
 }
