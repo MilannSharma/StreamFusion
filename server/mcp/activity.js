@@ -5,6 +5,8 @@ import express from 'express';
 const clients = new Map(); // name -> lastSeen
 const recent = [];         // last tool calls made through MCP
 const ALIVE_MS = 25000;
+const INTERNAL = 'StreamFusion chat'; // the in-app Claude chat also talks MCP; it is not an "external" client
+export const lastWorld = () => { const r = [...recent].reverse().find(x => !/^report_/.test(x.name)); return r && /^web_/.test(r.name) ? 'web' : 'phone'; };
 
 export function createMcpActivity() {
   const router = express.Router();
@@ -24,8 +26,8 @@ export function createMcpActivity() {
   router.post('/bye', (req, res) => { clients.delete(String(req.body?.client || 'MCP client').slice(0, 40)); res.json({ success: true }); });
   router.get('/status', (req, res) => {
     const now = Date.now();
-    const live = [...clients.entries()].filter(([, t]) => now - t < ALIVE_MS).map(([n]) => n);
-    res.json({ success: true, connected: live.length > 0, clients: live, recent: recent.slice(-12).reverse() });
+    const live = [...clients.entries()].filter(([n, t]) => n !== INTERNAL && now - t < ALIVE_MS).map(([n]) => n);
+    res.json({ success: true, connected: live.length > 0, clients: live, recent: recent.filter(x => x.client !== INTERNAL).slice(-12).reverse() });
   });
   return { router, middleware };
 }

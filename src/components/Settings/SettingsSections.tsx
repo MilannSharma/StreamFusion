@@ -4,6 +4,7 @@ import { loadKey, saveKey } from '../Emulator/secrets';
 import { ResourcesCard } from '../Emulator/ResourcesCard';
 import { getShowWindow } from '../Emulator/PowerControl';
 import { getTheme, setTheme, type Theme } from './theme';
+import { ConnectOptions } from '../Emulator/ConnectOptions';
 
 const label: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10, letterSpacing: '0.04em' };
 const muted: React.CSSProperties = { fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.55 };
@@ -36,6 +37,9 @@ export const ApiSection: React.FC = () => {
   useEffect(() => { loadKey().then(setSaved); fetch('/api/mcp/config').then(r => r.json()).then(setMcp).catch(() => {}); }, []);
   const copy = (id: string, v: string) => { navigator.clipboard?.writeText(v); setCopied(id); setTimeout(() => setCopied(''), 1500); };
   return (<>
+    <Card title="CONNECT THE AI (PICK ONE)">
+      <ConnectOptions hasKey={!!saved} />
+    </Card>
     <Card title="ANTHROPIC API KEY">
       <div style={{ ...muted, marginBottom: 10 }}>Used by the built-in AI agent (Android Emulator and Web Testing). {saved ? <b style={{ color: '#16a34a' }}>Key saved.</b> : <b style={{ color: '#b91c1c' }}>Not connected.</b>}</div>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -46,7 +50,7 @@ export const ApiSection: React.FC = () => {
       <div style={{ ...muted, marginTop: 8 }}>Stored encrypted on this PC and sent only to Anthropic. Get a key at console.anthropic.com.</div>
     </Card>
     {mcp && (
-      <Card title="USE CLAUDE CODE / CLAUDE DESKTOP INSTEAD (NO KEY NEEDED HERE)">
+      <Card title="OTHER MCP CLIENTS (CLAUDE DESKTOP, CURSOR) AND LIVE STATUS">
         <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, background: live.connected ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.12)', color: live.connected ? '#15803d' : 'var(--text-muted)' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: live.connected ? '#22c55e' : '#94a3b8' }} />
           {live.connected ? 'MCP connected: ' + live.clients.join(', ') : 'No MCP client connected yet'}

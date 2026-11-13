@@ -71,15 +71,15 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
     {
       mood: 'thinking', title: 'Connect the AI (optional)',
       body: (<>
-        <p style={muted}>The AI agent needs an Anthropic API key. It is stored encrypted on this PC and sent only to Anthropic. Mirroring and the manual emulator work without it.</p>
-        <div style={{ ...stateBox(hasKey), margin: '10px 0' }}>{hasKey ? <><Check size={14} /> API key saved</> : <><KeyRound size={14} /> No API key yet</>}</div>
-        {!hasKey && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input type="password" placeholder="sk-ant-..." value={draft} onChange={e => setDraft(e.target.value)} style={{ flex: 1, width: 'auto', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 9, padding: '8px 12px', fontSize: 13, color: 'var(--text-main)', userSelect: 'text' }} />
-            <button className="btn-primary" disabled={!draft.trim()} onClick={async () => { await saveKey(draft.trim()); setDraft(''); setHasKey(true); }}>Save</button>
-          </div>
-        )}
-        <p style={{ ...muted, fontSize: 12, marginTop: 8 }}>You can change it later in Settings → AI &amp; API. Skip this step if you only want to mirror a phone.</p>
+        <p style={muted}>The AI agent can run three ways. Mirroring and the manual emulator work without any of them.</p>
+        <ol style={{ ...muted, paddingLeft: 20, margin: '6px 0' }}>
+          <li><b>Sign in with Claude</b>: easiest. Uses Claude Code on this PC, no API key.</li>
+          <li><b>API key</b>: pay-per-use key from console.anthropic.com.</li>
+          <li><b>Connect Claude Code (MCP)</b>: control StreamFusion from your own terminal.</li>
+        </ol>
+        <div style={{ ...stateBox(hasKey), margin: '8px 0' }}>{hasKey ? <><Check size={14} /> API key saved</> : <><KeyRound size={14} /> Not connected yet</>}</div>
+        <button className="btn-secondary" onClick={() => go('settings')}>Open Settings → AI &amp; API</button>
+        <p style={{ ...muted, fontSize: 12, marginTop: 8 }}>The chat also has a Connect button any time.</p>
       </>)
     },
     {

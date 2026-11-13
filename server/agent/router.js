@@ -1,9 +1,14 @@
 import express from 'express';
-import { listRuns, getRun, shotPath, buildDocx, buildPdf } from '../testmode/runs.js';
+import { listRuns, getRun, shotPath, buildDocx, buildPdf, createRun, saveShot, addCheck, finishRun } from '../testmode/runs.js';
+import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession } from './claude-cli.js';
+import { lastWorld } from '../mcp/activity.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
 
 export function createAgentRouter({ tools }) {
   const router = express.Router();
+  let current = null; // the open test-report run (in-app Test mode, or started by an external MCP client with report_begin)
+  const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
+  const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status }); };
 
   router.get('/models', (req, res) => res.json({ success: true, models: MODELS }));
 
@@ -18,6 +23,22 @@ export function createAgentRouter({ tools }) {
     const ac = new AbortController();
     res.on('close', () => ac.abort());
     const emit = (ev) => { if (!res.writableEnded) res.write(JSON.stringify(ev) + '\n'); };
+    if (b.engine === 'claude') {
+      let run = null;
+      if (b.testMode) {
+        closeRun('aborted');
+        let deviceInfo = null;
+        try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
+        run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.message).slice(0, 4000), deviceInfo });
+        current = run;
+        emit({ type: 'run_started', runId: run.id });
+      }
+      let reason = 'complete';
+      const wrap = (ev) => { if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error'; emit(ev); };
+      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), emit: wrap, signal: ac.signal });
+      if (run) { if (current === run) closeRun(reason, emit); else emit({ type: 'report_ready', runId: run.id, status: run.status }); } // the AI may have finished it itself with report_finish
+      return res.end();
+    }
     await runAgent({
       sessionId: String(b.sessionId), message: String(b.message), apiKey: b.apiKey, model: b.model, effort: b.effort,
       testMode: b.testMode ? { title: String(b.testMode.title || '').slice(0, 120), attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })) } : null,
@@ -42,6 +63,37 @@ export function createAgentRouter({ tools }) {
   });
 
   router.post('/approve', (req, res) => res.json({ success: resolveApproval(String(req.body?.id), !!req.body?.allow) }));
-  router.post('/reset', (req, res) => { resetSession(String(req.body?.sessionId)); res.json({ success: true }); });
+  router.post('/reset', (req, res) => { resetSession(String(req.body?.sessionId)); resetCliSession(String(req.body?.sessionId)); res.json({ success: true }); });
+
+  // Sign in with the installed Claude Code (no API key)
+  router.get('/claude/status', async (req, res) => res.json({ success: true, ...(await authStatus(req.query.force === '1')) }));
+  router.post('/claude/login', async (req, res) => { const st = await authStatus(true); if (!st.installed) return res.json({ success: false, message: 'Claude Code is not installed.' }); const r = startLogin({ console: !!req.body?.console }); res.json({ success: r.started, message: r.reason }); });
+  router.post('/claude/logout', async (req, res) => res.json({ success: await logout() }));
+  router.post('/claude/install-mcp', async (req, res) => { const r = await installMcp(parseInt(process.env.SF_PORT || '3001', 10)); res.json({ success: r.ok, message: r.output }); });
+
+  // Test reports written by an AI that drives StreamFusion over MCP (report_begin / report_check / report_finish)
+  router.post('/report/begin', async (req, res) => {
+    closeRun('aborted');
+    const serial = String(req.body?.serial || 'emulator-5554');
+    let deviceInfo = null;
+    try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
+    current = createRun({ title: String(req.body?.title || 'Test run').slice(0, 120), model: String(req.body?.client || 'MCP client'), serial, instructions: String(req.body?.instructions || '').slice(0, 4000), deviceInfo });
+    res.json({ ok: true, runId: current.id });
+  });
+  router.post('/report/check', async (req, res) => {
+    if (!current) return res.json({ ok: false, error: 'No open report. Call report_begin first (or turn on Test mode in StreamFusion).' });
+    const b = req.body || {};
+    const status = ['pass', 'fail', 'blocked'].includes(b.status) ? b.status : 'blocked';
+    const world = b.world === 'web' || b.world === 'phone' ? b.world : lastWorld();
+    let shot = null;
+    try { const sc = world === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial: current.serial, maxDim: 700 }); if (sc.ok) shot = saveShot(current, sc.imageBase64, status); } catch (e) {}
+    addCheck(current, { id: b.id, title: String(b.title || ''), status, evidence: String(b.evidence || ''), screenshot: shot });
+    res.json({ ok: true, recorded: current.checks.length, screenshot: !!shot });
+  });
+  router.post('/report/finish', async (req, res) => {
+    if (!current) return res.json({ ok: false, error: 'No open report.' });
+    const r = current; r.summary = String(req.body?.summary || ''); closeRun('complete');
+    res.json({ ok: true, runId: r.id, status: r.status, pdf: '/api/agent/reports/' + r.id + '/pdf', docx: '/api/agent/reports/' + r.id + '/docx' });
+  });
   return router;
 }

@@ -3,7 +3,8 @@ import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, 
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
-import { loadKey, openSettings } from './secrets';
+import { loadKey } from './secrets';
+import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref } from './ConnectOptions';
 
 interface AgentPanelProps {
   emu: EmulatorApi;
@@ -43,6 +44,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [apiKey, setApiKey] = useState('');
+  const [pref, setPref] = useState(getEnginePref());
+  const [showConnect, setShowConnect] = useState(false);
+  const { cli } = useClaudeStatus(active);
+  const engine = resolveEngine(pref, cli, !!apiKey);
+  useEffect(() => { const h = () => setPref(getEnginePref()); window.addEventListener('sf-engine-changed', h); return () => window.removeEventListener('sf-engine-changed', h); }, []);
   const [model, setModel] = useState(() => { try { return localStorage.getItem('sf_agent_model') || MODELS[0].id; } catch (e) { return MODELS[0].id; } });
   const [mode, setMode] = useState<'ask' | 'auto'>('ask');
   const [tokens, setTokens] = useState({ input: 0, output: 0, cached: 0 });
@@ -74,11 +80,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const listRef = useRef<HTMLDivElement>(null);
 
   // External AI clients (Claude Code etc.) attached through MCP
-  const [mcpLive, setMcpLive] = useState<{ connected: boolean; clients: string[]; recent: { name: string; ok: boolean }[] }>({ connected: false, clients: [], recent: [] });
+  const [mcpLive, setMcpLive] = useState<{ connected: boolean; clients: string[]; recent: { name: string; ok: boolean; client?: string }[] }>({ connected: false, clients: [], recent: [] });
   useEffect(() => {
     if (!active) return;
     let stop = false;
-    const tick = async () => { try { const j = await (await fetch('/api/mcp/live/status')).json(); if (!stop) setMcpLive({ connected: !!j.connected, clients: j.clients || [], recent: j.recent || [] }); } catch (e) {} if (!stop) setTimeout(tick, 3000); };
+    const tick = async () => { try { const j = await (await fetch('/api/mcp/live/status')).json(); if (!stop) setMcpLive({ connected: !!j.connected, clients: j.clients || [], recent: j.recent || [] }); } catch (e) {} if (!stop) setTimeout(tick, 2000); };
     tick();
     return () => { stop = true; };
   }, [active]);
@@ -173,11 +179,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const send = useCallback(async (override?: string, alreadyShown?: boolean) => {
     const text = (override ?? input).trim();
     if (!text || busy) return;
-    if (!apiKey) {
+    if (engine === 'none') {
       setMsgs(m => [...m, { kind: 'user', text }, mcpLive.connected
-        ? { kind: 'info', text: 'This chat needs an API key. Your connected AI (' + (mcpLive.clients[0] || 'MCP') + ') controls the ' + (isWeb ? 'browser' : 'phone') + ' directly, so give it the instruction there. Add a key in Settings → AI & API to use this chat as well.' }
-        : { kind: 'error', text: 'Agent is not connected. Add your Anthropic API key in Settings → AI & API, then send again.' }]);
-      setInput('');
+        ? { kind: 'info', text: 'Your connected AI (' + (mcpLive.clients[0] || 'MCP') + ') controls the ' + (isWeb ? 'browser' : 'phone') + ' directly, so give it the instruction in its own window. To chat here too, press Connect and sign in.' }
+        : { kind: 'info', text: 'Not connected yet. Pick one of the three options below, then send again.' }]);
+      setInput(''); setShowConnect(true);
       return;
     }
     setInput('');
@@ -198,7 +204,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       const res = await fetch('/api/agent/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
         body: JSON.stringify({
-          sessionId: sessionId.current, apiKey, model, serial, mode,
+          sessionId: sessionId.current, engine, ...(engine === 'api' ? { apiKey } : {}), model, serial, mode,
           message: testMode && files.length ? text + '\n\n' + files.map(f => '--- Attached file: ' + f.name + ' ---\n' + f.text).join('\n\n') : text,
           ...(testMode ? { testMode: { title: text.split('\n')[0].slice(0, 80), attachments: files.map(f => ({ name: f.name })) } } : {})
         })
@@ -213,7 +219,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     } catch (e: any) {
       if (e?.name !== 'AbortError') setMsgs(m => [...m, { kind: 'error', text: e.message || String(e) }]);
     } finally { setBusy(false); abortRef.current = null; }
-  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase, testMode, files, isWeb, mcpLive]);
+  }, [input, busy, apiKey, engine, model, serial, mode, connected, emu.phase, testMode, files, isWeb, mcpLive]);
 
   useEffect(() => {
     if (pending && connected && !busy) {
@@ -281,13 +287,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <option value="auto">Auto</option>
           </select>
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
-            {fmt(tokens.input)} in · {fmt(tokens.output)} out{tokens.cached ? ` · ${fmt(tokens.cached)} cached` : ''}
+            {engine === 'claude' ? 'Claude · signed in' : engine === 'api' ? `${fmt(tokens.input)} in · ${fmt(tokens.output)} out` : ''}
           </span>
           <button onClick={() => setChatHidden(true)} title="Hide chat" style={iconBtn}><PanelLeftClose size={14} /></button>
           <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
             style={{ ...iconBtn, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
           <button onClick={() => setShowReports(v => !v)} title="Saved test reports" style={iconBtn}><FileText size={14} /></button>
-          <button onClick={() => openSettings('ai')} title="API key and AI settings" style={iconBtn}><KeyRound size={14} /></button>
+          <button onClick={() => setShowConnect(v => !v)} title="How the AI is connected" style={iconBtn}><Plug size={14} /></button>
           <button onClick={reset} title="New chat" style={iconBtn}><Trash2 size={14} /></button>
         </div>
 
@@ -317,19 +323,26 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
         </div>
 
+        {showConnect && (
+          <div style={{ padding: 12, borderTop: border, background: 'rgba(79,70,229,0.04)', maxHeight: '55%', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}><b style={{ fontSize: 13 }}>Connect the AI</b><button onClick={() => setShowConnect(false)} style={{ ...iconBtn, marginLeft: 'auto', padding: '2px 6px' }}><X size={12} /></button></div>
+            <ConnectOptions hasKey={!!apiKey} onChanged={() => setShowConnect(false)} />
+          </div>
+        )}
         {mcpLive.connected && (
           <div style={{ padding: '8px 12px', borderTop: border, background: 'rgba(34,197,94,0.10)', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#15803d', fontWeight: 700 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e' }} /> MCP connected · {mcpLive.clients.join(', ')}
-              {!apiKey && <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>· no API key needed here</span>}
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e' }} /> {mcpLive.clients.join(', ')} is controlling StreamFusion
             </div>
-            {mcpLive.recent.length > 0 && <div style={{ color: 'var(--text-muted, #64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Recent: {mcpLive.recent.slice(0, 4).map(r => r.name + (r.ok ? '' : ' (failed)')).join(' · ')}</div>}
+            {mcpLive.recent.length > 0 && <div style={{ color: 'var(--text-muted, #64748b)', fontFamily: 'JetBrains Mono, Consolas, monospace', fontSize: 11, lineHeight: 1.5 }}>
+              {mcpLive.recent.slice(0, 5).map((r, i) => <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 1 - i * 0.15 }}><span style={{ color: r.ok ? '#16a34a' : '#dc2626' }}>{r.ok ? '✓' : '✗'}</span> {r.name}</div>)}
+            </div>}
           </div>
         )}
-        {!apiKey && !mcpLive.connected && (
+        {engine === 'none' && !mcpLive.connected && !showConnect && (
           <div style={{ padding: '8px 12px', borderTop: border, background: '#fef2f2', color: '#b91c1c', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ShieldAlert size={14} /> <b>Agent not connected.</b> <span>An Anthropic API key is needed.</span>
-            <button onClick={() => openSettings('ai')} style={{ ...iconBtn, padding: '2px 10px', fontSize: 11, marginLeft: 'auto' }}><KeyRound size={12} /> Add API key</button>
+            <ShieldAlert size={14} /> <b>Agent not connected yet.</b>
+            <button onClick={() => setShowConnect(true)} style={{ ...iconBtn, padding: '3px 12px', fontSize: 11.5, marginLeft: 'auto', background: '#4f46e5', color: '#fff', border: 'none', fontWeight: 700 }}><Plug size={12} /> Connect</button>
           </div>
         )}
         {testMode && (

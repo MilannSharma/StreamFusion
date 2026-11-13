@@ -233,13 +233,14 @@ export function createWebTools({ runAdb } = {}) {
     if (a.action === 'set') { await ctx.addCookies([{ name: a.name, value: a.value || '', url: a.url || page.url() }]); return { ok: true }; }
     return { ok: true, cookies: (await ctx.cookies()).map(c => ({ name: c.name, domain: c.domain, path: c.path, value: c.value.slice(0, 80) })) };
   });
-  def('web_tabs', 'List, open, switch to or close browser tabs.', { action: { type: 'string', enum: ['list', 'new', 'switch', 'close'] }, index: { type: 'number' }, url: { type: 'string' } }, ['action'], async (a) => {
+  def('web_tabs', 'List, open, switch to or close browser tabs (every tab and window of the connected Chrome).', { action: { type: 'string', enum: ['list', 'new', 'switch', 'close'] }, index: { type: 'number' }, url: { type: 'string' } }, ['action'], async (a) => {
     await ensure();
-    const pages = ctx.pages();
-    if (a.action === 'new') { page = await ctx.newPage(); if (a.url) await page.goto(a.url, { waitUntil: 'domcontentloaded' }); }
+    const pages = livePages();
+    if (a.action === 'new') { page = await ctx.newPage(); wirePage(page); page.__wired = true; await page.goto(a.url ? normalizeUrl(a.url) : 'https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}); }
     else if (a.action === 'switch') { page = pages[a.index] || page; await page.bringToFront(); }
-    else if (a.action === 'close') { const t = pages[a.index ?? pages.indexOf(page)]; await t?.close(); page = ctx.pages()[0] || (await ctx.newPage()); }
-    return { ok: true, active: ctx.pages().indexOf(page), tabs: await Promise.all(ctx.pages().map(async (p, i) => ({ index: i, url: p.url(), title: await p.title().catch(() => '') }))) };
+    else if (a.action === 'close') { const t = pages[a.index ?? pages.indexOf(page)]; await t?.close(); const left = livePages(); page = left[left.length - 1] || (await ctx.newPage()); }
+    const now = livePages();
+    return { ok: true, active: now.indexOf(page), tabs: await Promise.all(now.map(async (p, i) => ({ index: i, url: p.url(), title: await p.title().catch(() => '') }))) };
   });
   def('web_eval', 'Run a JavaScript expression in the page and return the JSON result.', { expression: { type: 'string' } }, ['expression'], async (a) => {
     const r = await (await ensure()).evaluate(a.expression);

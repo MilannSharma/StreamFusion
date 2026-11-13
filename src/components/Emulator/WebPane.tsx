@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, Globe, X, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCw, Globe, X, Download, Loader2, Plus } from 'lucide-react';
 
 const border = '1px solid var(--glass-border, #e2e8f0)';
 const post = (path: string, body?: any) => fetch('/api/web/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -14,6 +14,8 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
   const [vp, setVp] = useState({ w: 1280, h: 800 });
   const [url, setUrl] = useState('');
   const [editing, setEditing] = useState(false);
+  const [tabs, setTabs] = useState<{ index: number; url: string; title: string }[]>([]);
+  const [activeTab, setActiveTab] = useState(0);
   const editingRef = useRef(false); const busyRef = useRef(busy);
   editingRef.current = editing; busyRef.current = busy;
   const [err, setErr] = useState('');
@@ -57,6 +59,17 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
     })();
     return () => { stop = true; };
   }, [active, open]);
+
+  // every tab / window of the connected Chrome, including ones the AI opened
+  useEffect(() => {
+    if (!active || !open) { setTabs([]); return; }
+    let stop = false;
+    const tick = async () => { const r = await tool('web_tabs', { action: 'list' }); if (!stop && r.ok) { setTabs(r.tabs || []); setActiveTab(r.active ?? 0); } if (!stop) setTimeout(tick, 1500); };
+    tick();
+    return () => { stop = true; };
+  }, [active, open]);
+  const tabAct = async (args: any) => { const r = await tool('web_tabs', args); if (r.ok) { setTabs(r.tabs || []); setActiveTab(r.active ?? 0); } };
+  const tabLabel = (t: { url: string; title: string }) => (t.title || t.url.replace(/^https?:\/\/(www\.)?/, '') || 'New tab').slice(0, 24);
 
   const go = async () => { setErr(''); inputRef.current?.blur(); const r = await tool('web_navigate', { url: url.trim() }); if (!r.ok) setErr(r.error || 'Could not open that address'); };
   const onClick = (e: React.MouseEvent<HTMLImageElement>) => {
@@ -103,6 +116,18 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
           style={{ flex: 1, minWidth: 160, padding: '6px 12px', borderRadius: 999, border, fontSize: 12.5, background: 'var(--glass-soft, #f1f5f9)', color: 'var(--text-main)', outline: 'none' }} />
         {open && <button style={btn} onClick={() => post('close')} title="Disconnect (your Chrome window stays open)"><X size={14} /></button>}
       </div>
+      {open && tabs.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
+          {tabs.map(t => (
+            <div key={t.index} onClick={() => tabAct({ action: 'switch', index: t.index })} title={t.url}
+              style={{ ...btn, padding: '4px 6px 4px 10px', flex: '0 0 auto', maxWidth: 190, fontWeight: t.index === activeTab ? 700 : 500, background: t.index === activeTab ? 'rgba(79,70,229,0.14)' : (btn.background as string), borderColor: t.index === activeTab ? '#6366f1' : undefined }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tabLabel(t)}</span>
+              {tabs.length > 1 && <X size={12} onClick={e => { e.stopPropagation(); tabAct({ action: 'close', index: t.index }); }} style={{ flex: '0 0 auto', opacity: 0.6 }} />}
+            </div>
+          ))}
+          <button style={{ ...btn, flex: '0 0 auto' }} onClick={() => tabAct({ action: 'new' })} title="New tab"><Plus size={14} /></button>
+        </div>
+      )}
       {err && <div style={{ fontSize: 12, color: '#b91c1c' }}>{err}</div>}
       <div tabIndex={0} onKeyDown={onKey} style={{ flex: 1, minHeight: 0, border, borderRadius: 14, overflow: 'hidden', background: 'rgba(15,23,42,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}
         onWheel={e => { if (open) tool('web_eval', { expression: `window.scrollBy(0, ${Math.round(e.deltaY)})` }); }}>
