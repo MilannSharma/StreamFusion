@@ -51,6 +51,7 @@ export function createNotificationsRouter({ runAdb, dataDir }) {
   const lastAt = new Map(); // key -> time of the last alert: counters that update every few seconds (steps, downloads) alert at most every 30 s
   const state = new Map(); // serial -> Map(key -> signature); a serial is "baselined" once it has an entry
   const enabled = () => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8')).notificationMirroring === true; } catch (e) { return false; } };
+  const idCache = new Map(); // adb serial -> hardware serial, so one phone connected by USB and Wi-Fi alerts once
   let busy = false, timer = null;
   async function tick() {
     if (busy || !enabled()) { if (!enabled()) state.clear(); return; }
@@ -58,7 +59,13 @@ export function createNotificationsRouter({ runAdb, dataDir }) {
     try {
       const d = await runAdb(['devices'], 4000);
       const serials = String(d.output || '').split(/\r?\n/).slice(1).map(l => l.trim().split(/\s+/)).filter(p => p[1] === 'device').map(p => p[0]).filter(s => !/^emulator-/.test(s));
-      for (const serial of serials) {
+      const seenPhones = new Set(), unique = [];
+      for (const sv of [...serials].sort((a, b) => (a.includes(':') ? 1 : 0) - (b.includes(':') ? 1 : 0))) { // USB first
+        let id = idCache.get(sv);
+        if (!id) { const r = await runAdb(['-s', sv, 'shell', 'getprop', 'ro.serialno'], 3000); id = String(r.output || '').trim() || sv; idCache.set(sv, id); }
+        if (!seenPhones.has(id)) { seenPhones.add(id); unique.push(sv); }
+      }
+      for (const serial of unique) {
         const r = await runAdb(['-s', serial, 'shell', 'dumpsys', 'notification', '--noredact'], 8000);
         if (!r.output) continue;
         const now = parseNotifications(r.output).filter(n => !n.ongoing && !n.system);
@@ -71,7 +78,7 @@ export function createNotificationsRouter({ runAdb, dataDir }) {
         }
         state.set(serial, next); // the first scan only records what is already there: no flood of old alerts at start
       }
-      for (const s of [...state.keys()]) if (!serials.includes(s)) state.delete(s);
+      for (const s of [...state.keys()]) if (!unique.includes(s)) state.delete(s);
     } catch (e) {}
     busy = false;
   }

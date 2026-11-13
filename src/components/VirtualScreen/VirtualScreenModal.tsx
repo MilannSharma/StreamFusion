@@ -165,15 +165,18 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
     } catch (e) {}
   };
 
-  const handleStatusbar = async (action: 'notifications' | 'settings') => {
+  const handleStatusbar = async (requested: 'notifications' | 'settings') => {
     if (!serial) return;
+    const w = window as any; // pressing the same button again closes the panel
+    const action: 'notifications' | 'settings' | 'collapse' = w.__sfShade === requested ? 'collapse' : requested;
+    w.__sfShade = action === 'collapse' ? '' : requested;
     try {
       await fetch('http://127.0.0.1:3001/api/control/statusbar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serial, action })
       });
-      onToast(action === 'settings' ? 'Quick Settings opened' : 'Notifications opened', '🔔');
+      onToast(action === 'collapse' ? 'Panel closed' : action === 'settings' ? 'Quick Settings opened' : 'Notifications opened', '🔔');
     } catch (e) {}
   };
 

@@ -872,7 +872,10 @@ export default function App() {
     } catch (e) {}
   };
 
-  const handleStatusbar = async (action: 'notifications' | 'settings') => {
+  const shadeOpen = React.useRef(''); // pressing the same button again closes the panel
+  const handleStatusbar = async (requested: 'notifications' | 'settings') => {
+    const action: 'notifications' | 'settings' | 'collapse' = shadeOpen.current === requested ? 'collapse' : requested;
+    shadeOpen.current = action === 'collapse' ? '' : requested;
     const serial = mirrorStatus.device?.serial || selectedDevice?.serial || selectedSerial;
     if (!serial) return;
     try {
@@ -881,7 +884,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serial, action })
       });
-      showToast(action === 'settings' ? 'Quick Settings opened' : 'Notifications opened', '🔔');
+      showToast(action === 'collapse' ? 'Panel closed' : action === 'settings' ? 'Quick Settings opened' : 'Notifications opened', '🔔');
     } catch (e) {}
   };
 

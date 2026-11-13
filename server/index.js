@@ -99,6 +99,10 @@ app.use('/api/settings', createSettingsRouter(dataDir));
 app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
 app.use('/api/notifications', createNotificationsRouter({ runAdb, dataDir }).startWatcher());
 app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
+// One failed adb/scrcpy/child call must never take the whole server (and the AI session with it) down
+process.on('unhandledRejection', (e) => console.error('[StreamFusion] unhandled rejection:', e && e.message ? e.message : e));
+process.on('uncaughtException', (e) => console.error('[StreamFusion] uncaught exception:', e && e.stack ? e.stack : e));
+
 const mcpActivity = createMcpActivity();
 app.use(mcpActivity.middleware);
 app.use('/api/mcp/live', mcpActivity.router);
@@ -335,6 +339,9 @@ app.get('/api/devices', async (req, res) => {
 
   res.json({ success: true, devices, savedDevices: savedList });
 });
+
+// List saved Wi-Fi devices (same data as `savedDevices` in /api/devices)
+app.get('/api/wifi/saved', (req, res) => res.json({ success: true, devices: getSavedDevices() }));
 
 // Delete a saved device
 app.delete('/api/wifi/saved', (req, res) => {
@@ -733,7 +740,7 @@ app.post('/api/control/statusbar', async (req, res) => {
   const { serial, action = 'notifications' } = req.body;
   if (!serial) return res.json({ success: false, message: 'No serial provided' });
   try {
-    const cmd = action === 'settings' ? 'expand-settings' : 'expand-notifications';
+    const cmd = action === 'settings' ? 'expand-settings' : action === 'collapse' ? 'collapse' : 'expand-notifications';
     await runAdb(['-s', serial, 'shell', 'cmd', 'statusbar', cmd], 3000);
     res.json({ success: true, message: `Status bar ${cmd} triggered` });
   } catch (e) {

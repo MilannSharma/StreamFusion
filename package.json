@@ -17,7 +17,8 @@
     "build:exe": "vite build && electron-builder --win",
     "preview": "vite preview",
     "sf:run": "node server/cli/sf-run.mjs",
-    "test": "node --test server/automation/automation.test.mjs"
+    "test": "node --test server/automation/automation.test.mjs",
+    "prebuild:exe": "npx tsc --noEmit -p . && npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
