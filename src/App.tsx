@@ -8,6 +8,7 @@ import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal'
 import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModal';
 import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
+import { GuideExtra } from './components/Guide/GuideExtra';
 import { WebStudio } from './components/Emulator/WebStudio';
 import { ApiSection, EmulatorSection, WebSection, AppearanceSection } from './components/Settings/SettingsSections';
 import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
@@ -521,7 +522,7 @@ export default function App() {
 
   // Guide State
   const [selectedBrand, setSelectedBrand] = useState<'samsung' | 'xiaomi' | 'pixel' | 'oneplus' | 'vivo' | 'motorola'>('samsung');
-  const [guideCategory, setGuideCategory] = useState<'usb' | 'wifi' | 'shortcuts' | 'faq'>('usb');
+  const [guideCategory, setGuideCategory] = useState<'overview' | 'usb' | 'wifi' | 'emulator' | 'web' | 'tests' | 'shortcuts' | 'faq'>('overview');
 
   // Compute Active Device
   const selectedDevice = devices.find(d => d.serial === selectedSerial) || devices[0] || null;
@@ -1269,20 +1270,6 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActiveTab('settings')}
-              className={`sidebar-tab ${activeTab === 'settings' ? 'active' : ''}`}
-            >
-              <Settings size={16} /> Settings
-            </button>
-
-            <button
-              onClick={() => setActiveTab('guide')}
-              className={`sidebar-tab ${activeTab === 'guide' ? 'active' : ''}`}
-            >
-              <HelpCircle size={16} /> How to Connect
-            </button>
-
-            <button
               onClick={() => setActiveTab('emulator')}
               className={`sidebar-tab ${activeTab === 'emulator' ? 'active' : ''}`}
               style={{
@@ -1303,6 +1290,22 @@ export default function App() {
               <Globe size={16} color="#6366f1" /> Web Testing
             </button>
 
+            <div style={{ height: 1, background: 'var(--border-subtle)', margin: '8px 6px' }} />
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`sidebar-tab ${activeTab === 'settings' ? 'active' : ''}`}
+            >
+              <Settings size={16} /> Settings
+            </button>
+
+            <button
+              onClick={() => setActiveTab('guide')}
+              className={`sidebar-tab ${activeTab === 'guide' ? 'active' : ''}`}
+            >
+              <HelpCircle size={16} /> User Guide
+            </button>
+
             <button
               onClick={() => setActiveTab('about')}
               className={`sidebar-tab ${activeTab === 'about' ? 'active' : ''}`}
@@ -1310,6 +1313,7 @@ export default function App() {
             >
               <Info size={16} /> About
             </button>
+
           </div>
 
           {/* Connected Phone Status Card */}
@@ -2080,26 +2084,50 @@ export default function App() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
-                  <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)' }}>How to Connect Your Phone</h1>
+                  <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)' }}>User Guide</h1>
                   <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    Simple instructions for connecting any phone brand with USB Cable or Wireless Mirroring.
+                    Step-by-step help for phone mirroring, the Android emulator, web testing and test reports.
                   </p>
                 </div>
               </div>
 
               {/* Guide Category Tabs */}
-              <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setGuideCategory('overview')}
+                  className={`brand-pill ${guideCategory === 'overview' ? 'active' : ''}`}
+                >
+                  🚀 Getting Started
+                </button>
                 <button
                   onClick={() => setGuideCategory('usb')}
                   className={`brand-pill ${guideCategory === 'usb' ? 'active' : ''}`}
                 >
-                  📱 Phone Connection Setup
+                  📱 Mirror: USB
                 </button>
                 <button
                   onClick={() => setGuideCategory('wifi')}
                   className={`brand-pill ${guideCategory === 'wifi' ? 'active' : ''}`}
                 >
-                  📶 Wireless Mirror Setup
+                  📶 Mirror: Wi-Fi
+                </button>
+                <button
+                  onClick={() => setGuideCategory('emulator')}
+                  className={`brand-pill ${guideCategory === 'emulator' ? 'active' : ''}`}
+                >
+                  🤖 Android Emulator
+                </button>
+                <button
+                  onClick={() => setGuideCategory('web')}
+                  className={`brand-pill ${guideCategory === 'web' ? 'active' : ''}`}
+                >
+                  🌐 Web Testing
+                </button>
+                <button
+                  onClick={() => setGuideCategory('tests')}
+                  className={`brand-pill ${guideCategory === 'tests' ? 'active' : ''}`}
+                >
+                  🧪 Test Reports
                 </button>
                 <button
                   onClick={() => setGuideCategory('shortcuts')}
@@ -2116,6 +2144,8 @@ export default function App() {
               </div>
 
               {/* Brand Setup */}
+              {(guideCategory === 'overview' || guideCategory === 'emulator' || guideCategory === 'web' || guideCategory === 'tests') && <GuideExtra category={guideCategory} />}
+
               {guideCategory === 'usb' && (
                 <div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
