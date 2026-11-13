@@ -6,6 +6,7 @@ import { WebPane } from './WebPane';
 import { loadKey } from './secrets';
 import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref, installClaude, startClaudeSignIn } from './ConnectOptions';
 import { Coach, type CoachGuide } from '../Tutorial/Coach';
+import { TestBrief, StartBar, EMPTY_BRIEF, briefMissing, composeBrief, type Brief, type BriefFile } from './TestBrief';
 
 interface AgentPanelProps {
   emu: EmulatorApi;
@@ -55,26 +56,40 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [tokens, setTokens] = useState({ input: 0, output: 0, cached: 0 });
   const [pending, setPending] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(() => { try { return localStorage.getItem('sf_test_mode') === '1'; } catch (e) { return false; } });
-  const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
+  const [files, setFiles] = useState<BriefFile[]>([]);
+  const briefKey = 'sf_brief_' + world;
+  const [brief, setBriefState] = useState<Brief>(() => { try { return { ...EMPTY_BRIEF, ...JSON.parse(localStorage.getItem(briefKey) || '{}'), login: '' }; } catch (e) { return EMPTY_BRIEF; } });
+  const setBrief = (b: Brief) => { setBriefState(b); try { localStorage.setItem(briefKey, JSON.stringify({ ...b, login: '' })); } catch (e) {} }; // logins are never stored
+  const testRunRef = useRef<{ title: string; summary: string } | null>(null);
   const [showReports, setShowReports] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const h = (e: any) => { if (e.detail?.world !== world) return; setInput(e.detail.text || ''); if (e.detail.testMode) setTestMode(true); };
+    const h = (e: any) => { if (e.detail?.world !== world) return; if (e.detail.brief) setBrief({ ...EMPTY_BRIEF, ...e.detail.brief }); else setInput(e.detail.text || ''); if (e.detail.testMode) setTestMode(true); };
     window.addEventListener('sf-prefill-chat', h);
     return () => window.removeEventListener('sf-prefill-chat', h);
   }, [world]);
   useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
   const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
   useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
-  const addFiles = async (list: FileList | null) => {
+  const addFiles = async (list: FileList | null, kind: 'cases' | 'docs' = 'cases') => {
     if (!list) return;
-    const out: { name: string; text: string }[] = [];
+    const out: BriefFile[] = [];
     for (const f of Array.from(list).slice(0, 10)) {
-      if (f.size > 300_000) { setMsgs(m => [...m, { kind: 'error', text: f.name + ' is too large (max 300 KB). Use a text-based test case file.' }]); continue; }
-      out.push({ name: f.name, text: await f.text() });
+      try {
+        if (/\.(docx|pdf|doc|xlsx|pptx)$/i.test(f.name)) {
+          if (f.size > 6_000_000) throw new Error('is too large (max 6 MB)');
+          const bytes = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          const j = await (await fetch('/api/agent/extract', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, base64: btoa(bin) }) })).json();
+          if (!j.success) throw new Error(j.message || 'could not be read');
+          out.push({ name: f.name, text: j.text, kind });
+        } else {
+          if (f.size > 300_000) throw new Error('is too large (max 300 KB). Paste the relevant part instead');
+          out.push({ name: f.name, text: await f.text(), kind });
+        }
+      } catch (e: any) { setMsgs(m => [...m, { kind: 'error', text: f.name + ' ' + (e.message || 'could not be read') }]); }
     }
-    setFiles(x => [...x, ...out].slice(0, 10));
+    setFiles(x => [...x, ...out].slice(0, 12));
   };
   const sessionId = useRef('sf-' + Math.random().toString(36).slice(2, 10));
   const abortRef = useRef<AbortController | null>(null);
@@ -199,6 +214,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       if (emu.phase === 'booting') setPending(text);
       return;
     }
+    const tm = testMode ? testRunRef.current : null; testRunRef.current = null; // only the first message of a test starts a report run
     setBusy(true);
     const ac = new AbortController(); abortRef.current = ac;
     try {
@@ -206,8 +222,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
         body: JSON.stringify({
           sessionId: sessionId.current, engine, ...(engine === 'api' ? { apiKey } : {}), model, serial, mode,
-          message: testMode && files.length ? text + '\n\n' + files.map(f => '--- Attached file: ' + f.name + ' ---\n' + f.text).join('\n\n') : text,
-          ...(testMode ? { testMode: { title: text.split('\n')[0].slice(0, 80), attachments: files.map(f => ({ name: f.name })) } } : {})
+          message: text,
+          ...(tm ? { testMode: { title: tm.title, summary: tm.summary, attachments: files.map(f => ({ name: f.name })) } } : {})
         })
       });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).message || `HTTP ${res.status}`);
@@ -254,6 +270,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     else if (ev.type === 'approval') setMsgs(m => [...m, { kind: 'approval', id: ev.id, name: ev.name, input: ev.input }]);
     else if (ev.type === 'check') setMsgs(m => [...m, { kind: 'check', ...ev.check }]);
     else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status }]); if (showReportsRef.current) loadRuns(); }
+    else if (ev.type === 'no_report') setMsgs(m => [...m, { kind: 'info', text: 'No test case was executed, so no report was created.' }]);
     else if (ev.type === 'usage') setTokens(t => ({ input: t.input + (ev.input || 0), output: t.output + (ev.output || 0), cached: t.cached + (ev.cacheRead || 0) }));
     else if (ev.type === 'error') setMsgs(m => [...m, { kind: 'error', text: ev.message }]);
     else if (ev.type === 'done' && ev.reason !== 'complete') {
@@ -271,9 +288,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     stop();
     fetch('/api/agent/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId.current }) });
     sessionId.current = 'sf-' + Math.random().toString(36).slice(2, 10);
-    setMsgs([]); setTokens({ input: 0, output: 0, cached: 0 });
+    testRunRef.current = null; setMsgs([]); setTokens({ input: 0, output: 0, cached: 0 });
   };
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
+
+  // ---------- Test mode: nothing starts until the brief is filled ----------
+  const hasSentAny = msgs.some(m => m.kind === 'user');
+  const formMode = testMode && !hasSentAny;
+  const missing = briefMissing(brief, files, isWeb);
+  const startTest = () => {
+    if (missing.length) return;
+    const c = composeBrief(brief, files, isWeb);
+    testRunRef.current = { title: c.title, summary: c.summary };
+    setMsgs(m => [...m, { kind: 'user', text: 'Test: ' + c.title + '\n' + brief.target.trim() }]);
+    send(c.full, true);
+  };
 
   // ---------- avatar guides: what to do next, until the task is done ----------
   const [webSt, setWebSt] = useState<any>(null);
@@ -287,7 +316,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const hasSent = msgs.some(m => m.kind === 'user');
   const ready = engine !== 'none' || mcpLive.connected;
   const askStep = { title: 'Tell the agent what to test', mood: 'listening' as const, done: hasSent,
-    body: <>Type it in the chat on the left, for example <i>{isWeb ? '"Open example.com and check the heading"' : '"Open Settings and tell me the Android version"'}</i>. Turn on <b>Test mode</b> if you want a PDF/DOCX report with screenshots.</> };
+    body: <>Type it in the chat on the left, for example <i>{isWeb ? '"Open example.com and check the heading"' : '"Open Settings and tell me the Android version"'}</i>. For a proper test with a PDF/DOCX report, turn on <b>Test mode</b> and fill the test brief.</> };
   const guides: CoachGuide[] = [
     { id: 'ai', enabled: !cli.loading, doneTitle: 'AI connected', doneBody: 'Now type what you want to test in the chat and press Enter.',
       steps: [
@@ -358,6 +387,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           </div>
         )}
 
+        {formMode ? (
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} /></div>
+        ) : (
         <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: 13, maxWidth: 340, lineHeight: 1.6 }}>
@@ -368,6 +400,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           {msgs.map((m, i) => <Bubble key={i} m={m} onAnswer={answer} onStart={() => m.kind === 'startPrompt' && startFromChat(i, m.pending)} onCancelStart={() => cancelStart(i)} />)}
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
         </div>
+        )}
 
         {showConnect && (
           <div style={{ padding: 12, borderTop: border, background: 'rgba(79,70,229,0.04)', maxHeight: '55%', overflowY: 'auto' }}>
@@ -391,24 +424,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <button onClick={() => setShowConnect(true)} style={{ ...iconBtn, padding: '3px 12px', fontSize: 11.5, marginLeft: 'auto', background: '#4f46e5', color: '#fff', border: 'none', fontWeight: 700 }}><Plug size={12} /> Connect</button>
           </div>
         )}
-        {testMode && (
-          <div style={{ padding: '8px 12px', borderTop: border, background: 'rgba(79,70,229,0.06)', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <FlaskConical size={13} color="#4f46e5" /><b style={{ color: '#4f46e5' }}>Test mode</b>
-            <span style={{ color: 'var(--text-muted, #64748b)' }}>Write test cases below or attach files. A report (PDF/DOCX) with screenshots is made at the end.</span>
-            {files.map((f, i) => <span key={i} style={{ background: 'var(--bg-card, #fff)', border, borderRadius: 6, padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{f.name}<X size={11} style={{ cursor: 'pointer' }} onClick={() => setFiles(x => x.filter((_, j) => j !== i))} /></span>)}
-            <button onClick={() => fileRef.current?.click()} style={{ ...iconBtn, padding: '2px 8px', fontSize: 11 }}><Paperclip size={12} /> Attach test cases</button>
-            <input ref={fileRef} type="file" multiple accept=".txt,.md,.csv,.json,.yaml,.yml,.xml,.feature,.tsv" style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
-          </div>
-        )}
+        {formMode ? <StartBar missing={missing} onStart={startTest} /> : (
         <div style={{ padding: 10, borderTop: border, display: 'flex', gap: 8 }}>
           <textarea value={input} onChange={e => setInput(e.target.value)} rows={2}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder={testMode ? "Test cases or instruction, e.g. TC-01: login with wrong password shows an error…" : "Instruction for the agent… (Enter to send, Shift+Enter for new line)"}
+            placeholder="Instruction for the agent… (Enter to send, Shift+Enter for new line)"
             style={{ flex: 1, resize: 'none', padding: '8px 10px', borderRadius: 10, border, fontSize: 13, fontFamily: 'inherit' }} />
           {busy
             ? <button onClick={stop} style={{ ...primaryBtn, background: '#dc2626' }}><Square size={14} /> Stop</button>
-            : <button onClick={() => send()} disabled={!input.trim() && !(testMode && files.length)} style={primaryBtn}><Send size={14} /> Send</button>}
+            : <button onClick={() => send()} disabled={!input.trim()} style={primaryBtn}><Send size={14} /> Send</button>}
         </div>
+        )}
       </div>
 
       {chatHidden && (
@@ -471,6 +497,7 @@ const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void;
       <b style={{ color: c }}>{m.status.toUpperCase()}</b> {m.id ? m.id + ' · ' : ''}{m.title}
       <div style={{ color: 'var(--text-muted, #64748b)', marginTop: 2 }}>{m.evidence}</div></div>;
   }
+  if (m.kind === 'report' && m.status === 'no-checks') return null;
   if (m.kind === 'report') return (
     <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: 12, fontSize: 13, alignSelf: 'flex-start' }}>
       <div style={{ fontWeight: 700, color: '#3730a3', marginBottom: 8 }}>Test report ready: {m.status.toUpperCase()}</div>

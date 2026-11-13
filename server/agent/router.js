@@ -1,14 +1,15 @@
 import express from 'express';
-import { listRuns, getRun, shotPath, buildDocx, buildPdf, createRun, saveShot, addCheck, finishRun } from '../testmode/runs.js';
+import { listRuns, getRun, shotPath, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun } from '../testmode/runs.js';
 import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
+import { extractText } from './extract.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
 
 export function createAgentRouter({ tools }) {
   const router = express.Router();
   let current = null; // the open test-report run (in-app Test mode, or started by an external MCP client with report_begin)
   const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
-  const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status }); };
+  const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status }); };
 
   router.get('/models', (req, res) => res.json({ success: true, models: MODELS }));
 
@@ -29,19 +30,19 @@ export function createAgentRouter({ tools }) {
         closeRun('aborted');
         let deviceInfo = null;
         try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-        run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.message).slice(0, 4000), deviceInfo });
+        run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo });
         current = run;
         emit({ type: 'run_started', runId: run.id });
       }
       let reason = 'complete';
       const wrap = (ev) => { if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error'; emit(ev); };
       await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), emit: wrap, signal: ac.signal });
-      if (run) { if (current === run) closeRun(reason, emit); else emit({ type: 'report_ready', runId: run.id, status: run.status }); } // the AI may have finished it itself with report_finish
+      if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
       return res.end();
     }
     await runAgent({
       sessionId: String(b.sessionId), message: String(b.message), apiKey: b.apiKey, model: b.model, effort: b.effort,
-      testMode: b.testMode ? { title: String(b.testMode.title || '').slice(0, 120), attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })) } : null,
+      testMode: b.testMode ? { title: String(b.testMode.title || '').slice(0, 120), summary: String(b.testMode.summary || ''), attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })) } : null,
       serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', tools, emit, signal: ac.signal,
       baseURL: process.env.SF_ANTHROPIC_BASE_URL
     });
@@ -62,6 +63,8 @@ export function createAgentRouter({ tools }) {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
   });
 
+  // Text of an uploaded test document (.docx is unzipped; text formats as is)
+  router.post('/extract', (req, res) => { try { res.json({ success: true, text: extractText(String(req.body?.name || ''), req.body?.base64).slice(0, 200000) }); } catch (e) { res.json({ success: false, message: e.message }); } });
   router.post('/approve', (req, res) => res.json({ success: resolveApproval(String(req.body?.id), !!req.body?.allow) }));
   router.post('/reset', (req, res) => { resetSession(String(req.body?.sessionId)); resetCliSession(String(req.body?.sessionId)); res.json({ success: true }); });
 

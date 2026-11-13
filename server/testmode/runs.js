@@ -37,13 +37,16 @@ export function finishRun(run, summary, reason) {
   save(run);
 }
 
+// A run in which no test case was executed is not a report: remove it.
+export function discardRun(run) { try { fs.rmSync(runDir(run.id), { recursive: true, force: true }); } catch (e) {} }
+
 export function listRuns() {
   if (!fs.existsSync(REPORTS_DIR)) return [];
   return fs.readdirSync(REPORTS_DIR).filter(d => ID_RE.test(d) && fs.existsSync(path.join(runDir(d), 'run.json'))).sort().reverse().map(d => {
     const r = readRun(d);
     const n = (s) => r.checks.filter(c => c.status === s).length;
     return { id: r.id, title: r.title, startedAt: r.startedAt, status: r.status, total: r.checks.length, pass: n('pass'), fail: n('fail'), blocked: n('blocked') };
-  });
+  }).filter(x => x.total > 0 || x.status === 'running');
 }
 export const getRun = (id) => (ID_RE.test(id) && fs.existsSync(path.join(runDir(id), 'run.json')) ? readRun(id) : null);
 export const shotPath = (id, rel) => { const p = path.join(runDir(id), rel); return ID_RE.test(id) && p.startsWith(runDir(id) + path.sep) && fs.existsSync(p) ? p : null; };

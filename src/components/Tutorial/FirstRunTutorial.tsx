@@ -41,7 +41,7 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
   const runSample = () => {
     finish();
     onGoto('web');
-    setTimeout(() => window.dispatchEvent(new CustomEvent('sf-prefill-chat', { detail: { world: 'web', text: SAMPLE_TEST, testMode: true } })), 600);
+    setTimeout(() => window.dispatchEvent(new CustomEvent('sf-prefill-chat', { detail: { world: 'web', testMode: true, brief: { product: 'Avatar Lab (sample)', module: 'Avatars page', target: SAMPLE_URL, cases: SAMPLE_TEST.split('\n').slice(2).join('\n'), notes: 'Public demo site, no login needed.' } } })), 600);
   };
 
   const steps: { mood: MascotMood; title: string; body: React.ReactNode }[] = [

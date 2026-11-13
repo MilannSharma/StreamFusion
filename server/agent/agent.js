@@ -1,6 +1,6 @@
 // M3-A: Chat agent. A manual tool loop over the M2 device tools using the official Anthropic SDK.
 import Anthropic from '@anthropic-ai/sdk';
-import { createRun, saveShot, addStep, addCheck, finishRun } from '../testmode/runs.js';
+import { createRun, saveShot, addStep, addCheck, finishRun, discardRun } from '../testmode/runs.js';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (most capable)' },
@@ -95,13 +95,13 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
   if (testMode) {
     let deviceInfo = null;
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-    run = createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(message).slice(0, 4000), deviceInfo });
+    run = createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(testMode.summary ?? message).slice(0, 4000), deviceInfo });
     anthropicTools.push(...REPORT_TOOLS);
     emit({ type: 'run_started', runId: run.id });
   }
   let runEnded = false;
   let lastWorld = 'device';
-  const endRun = (reason) => { if (run && !runEnded) { runEnded = true; finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status }); } };
+  const endRun = (reason) => { if (run && !runEnded) { runEnded = true; if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status }); } };
   const emitDone = emit;
   emit = (ev) => { emitDone(ev); if (ev.type === 'done') endRun(ev.reason); if (ev.type === 'error') endRun('error'); };
   const s = sessions.get(sessionId) || { messages: [] };
