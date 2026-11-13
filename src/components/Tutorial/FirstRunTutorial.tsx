@@ -83,14 +83,14 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
       </>)
     },
     {
-      mood: 'working', title: 'Install the web browser',
+      mood: 'working', title: 'Check the web browser',
       body: (<>
-        <p style={muted}>Web Testing uses Chromium. It is a one-time download of about 150 MB and is not bundled with the app.</p>
+        <p style={muted}>Web Testing drives your own Google Chrome (or Edge) in its own window, so you can log in yourself. If neither is installed, StreamFusion downloads Chrome for you.</p>
         <div style={{ margin: '10px 0' }}>
           {!web ? <div style={stateBox(false)}><Loader2 size={14} /> Checking…</div>
-            : web.installed ? <div style={stateBox(true)}><Check size={14} /> Chromium is installed</div>
+            : web.installed ? <div style={stateBox(true)}><Check size={14} /> {web.browser} found, nothing to install</div>
             : web.isInstalling ? <div style={stateBox(false)}><Loader2 size={14} /> {web.stage || 'Installing…'}</div>
-            : <button className="btn-primary" onClick={() => fetch('/api/web/install', { method: 'POST' })}><Download size={14} /> Install Chromium</button>}
+            : <button className="btn-primary" onClick={() => fetch('/api/web/install', { method: 'POST' })}><Download size={14} /> Install Chrome</button>}
         </div>
         {web?.error && <div style={{ fontSize: 12, color: '#b91c1c' }}>{web.error}</div>}
         <p style={{ ...muted, fontSize: 12 }}>The Android emulator (about 5.4 GB) is installed later from its own page, only if you need it.</p>
@@ -100,7 +100,7 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
       mood: 'celebrate', title: 'Run your first test',
       body: (<>
         <p style={muted}>Let me try a ready-made example on a public demo site, <b>Avatar Lab</b> ({SAMPLE_URL.replace('https://', '')}). I will open Web Testing with 4 test cases already typed in, and Test mode on. Press Send and you will get a PDF/DOCX report with screenshots.</p>
-        {(!hasKey || !web?.installed) && <div style={{ ...stateBox(false), margin: '10px 0' }}>{!hasKey ? 'Add the API key (previous step) ' : ''}{!hasKey && !web?.installed ? 'and ' : ''}{!web?.installed ? 'install Chromium ' : ''}first, then send.</div>}
+        {(!hasKey || !web?.installed) && <div style={{ ...stateBox(false), margin: '10px 0' }}>{!hasKey ? 'Add the API key (previous step) ' : ''}{!hasKey && !web?.installed ? 'and ' : ''}{!web?.installed ? 'install Chrome ' : ''}first, then send.</div>}
         <button className="btn-primary" style={{ marginTop: 6 }} onClick={runSample}>Try the sample test <ArrowRight size={14} /></button>
       </>)
     },

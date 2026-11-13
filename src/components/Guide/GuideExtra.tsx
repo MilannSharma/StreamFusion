@@ -38,7 +38,7 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
       <ul style={{ ...p, paddingLeft: 20 }}>
         <li><b>Screen Mirror</b>: show and control your real Android phone on this PC (USB cable or Wi-Fi), record the screen, move files, use the phone as a webcam.</li>
         <li><b>Android Emulator</b>: a virtual Android phone for testing apps. An AI agent can tap, type and install apps for you.</li>
-        <li><b>Web Testing</b>: a real Chromium browser the AI can drive to test websites.</li>
+        <li><b>Web Testing</b>: your own Chrome browser, which the AI can drive to test websites.</li>
       </ul>
     </Card>
     <Card title="FIRST-TIME SETUP (2 MINUTES)">
@@ -46,7 +46,7 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
         <>For a real phone: follow <b>Mirror: USB</b> or <b>Mirror: Wi-Fi</b> in this guide.</>,
         <>For the AI features: open <Link onClick={() => openSettings('ai')}>Settings → AI &amp; API</Link> and paste your Anthropic API key. It is stored encrypted on this PC and sent only to Anthropic.</>,
         <>Emulator: open <b>Android Emulator</b> and press <b>Install</b> (one-time download, about 5.4 GB). Not bundled with the app.</>,
-        <>Web: open <b>Web Testing</b> and press <b>Install Chromium</b> (one-time, about 150 MB).</>
+        <>Web: open <b>Web Testing</b> and press <b>Open Chrome</b>. If Chrome or Edge is missing, StreamFusion offers a one-time Chrome install.</>
       ]} />
       <Note>You do not need an API key for Screen Mirror, File Transfer or the manual emulator. The key is only for the built-in AI agent. Claude Code or other MCP clients can use their own login instead, see Settings → AI &amp; API.</Note>
     </Card>
@@ -100,7 +100,7 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
   if (category === 'web') return (<>
     <Card title="OPEN THE BROWSER">
       <Steps items={[
-        <>Open <b>Web Testing</b> from the sidebar. If Chromium is missing, press <b>Install Chromium</b> once.</>,
+        <>Open <b>Web Testing</b> from the sidebar. Press <b>Open Chrome</b>: your own Chrome opens in its own window (separate profile). Log in or pass any check there yourself. If Chrome and Edge are both missing, press <b>Install Chrome</b> once.</>,
         <>Press <b>Open browser</b>. It starts on Google. Type a URL in the address bar, or any words to search Google, then press Enter.</>,
         <>Click, scroll and type directly in the preview to control the page. Back, Forward and Reload are above it.</>
       ]} />

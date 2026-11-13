@@ -1,48 +1,66 @@
-// M4: Chromium web testing. Playwright drives a real Chromium with its own persistent profile.
-// Chromium is NOT bundled: it is downloaded on demand into %LOCALAPPDATA%\StreamFusion\browsers.
+// M4: web testing in the user's own Chrome (Edge as fallback). Playwright only talks to it over CDP; no Chromium is bundled or downloaded.
+// If neither browser is installed, the official Google Chrome installer is downloaded and run silently (per-user, no admin needed).
 // Tools use the same shape as the device tools so the chat agent, REST and MCP share them.
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
 const BASE = process.env.SF_EMULATOR_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'StreamFusion');
-const BROWSERS = path.join(BASE, 'browsers');
-const PROFILE = path.join(BASE, 'web-profile');
-process.env.PLAYWRIGHT_BROWSERS_PATH = BROWSERS;
 const require = createRequire(import.meta.url);
 
-export const state = { installing: false, stage: '', error: null, headless: true, device: null, mode: 'desktop' };
+export const state = { installing: false, stage: '', error: null, mode: 'chrome' };
 let pw = null;
 const playwright = () => (pw ||= require('playwright-core'));
 
-export function isInstalled() {
-  try {
-    const exe = playwright().chromium.executablePath();
-    return !!exe && fs.existsSync(exe);
-  } catch (e) { return false; }
-}
+const CHROME_SETUP_URL = 'https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe';
 
+export function findDesktopBrowser() {
+  const pf = process.env['ProgramFiles'] || 'C:/Program Files', pf86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)', la = process.env.LOCALAPPDATA || '';
+  const c = [
+    pf + '/Google/Chrome/Application/chrome.exe', pf86 + '/Google/Chrome/Application/chrome.exe', la + '/Google/Chrome/Application/chrome.exe',
+    pf86 + '/Microsoft/Edge/Application/msedge.exe', pf + '/Microsoft/Edge/Application/msedge.exe'
+  ];
+  return c.find(p => { try { return fs.existsSync(p); } catch (e) { return false; } }) || null;
+}
+export const isInstalled = () => !!findDesktopBrowser();
+export const browserName = () => { const e = findDesktopBrowser(); return !e ? null : /msedge/i.test(e) ? 'Microsoft Edge' : 'Google Chrome'; };
+
+// Only runs when no Chrome/Edge exists. Downloads Google's offline installer and runs it silently.
 export async function install() {
-  if (state.installing) return;
-  Object.assign(state, { installing: true, stage: 'Downloading Chromium (about 150 MB)...', error: null });
-  const cli = path.join(path.dirname(require.resolve('playwright-core/package.json')), 'cli.js');
-  const child = spawn(process.execPath, [cli, 'install', 'chromium'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PLAYWRIGHT_BROWSERS_PATH: BROWSERS }, windowsHide: true });
-  let tail = '';
-  const onData = (d) => { tail = (tail + d.toString()).slice(-600); const m = tail.match(/(\d+)%/g); if (m) state.stage = `Downloading Chromium... ${m[m.length - 1]}`; };
-  child.stdout.on('data', onData); child.stderr.on('data', onData);
-  child.on('close', (code) => {
-    state.installing = false;
-    if (code === 0 && isInstalled()) state.stage = '';
-    else state.error = 'Install failed: ' + tail.trim().split('\n').slice(-3).join(' ');
-  });
+  if (state.installing || isInstalled()) return;
+  Object.assign(state, { installing: true, stage: 'Downloading Google Chrome...', error: null });
+  try {
+    const dir = path.join(BASE, 'downloads');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'ChromeStandaloneSetup64.exe');
+    const res = await fetch(CHROME_SETUP_URL);
+    if (!res.ok || !res.body) throw new Error('Download failed (HTTP ' + res.status + ')');
+    const total = Number(res.headers.get('content-length')) || 0;
+    const out = fs.createWriteStream(file);
+    let got = 0;
+    for await (const chunk of res.body) {
+      got += chunk.length;
+      if (!out.write(chunk)) await new Promise(r => out.once('drain', r));
+      state.stage = 'Downloading Google Chrome... ' + (total ? Math.round(got * 100 / total) + '%' : Math.round(got / 1048576) + ' MB');
+    }
+    await new Promise((r, j) => { out.end(); out.on('finish', r); out.on('error', j); });
+    state.stage = 'Installing Google Chrome...';
+    const child = spawn(file, ['/silent', '/install'], { windowsHide: true });
+    await new Promise((r, j) => { child.on('error', j); child.on('close', r); });
+    for (let i = 0; i < 60 && !isInstalled(); i++) await new Promise(r => setTimeout(r, 1000)); // installer can finish in the background
+    if (!isInstalled()) throw new Error('Chrome did not finish installing. Please install it from google.com/chrome and try again.');
+    state.stage = '';
+    fs.rmSync(file, { force: true });
+  } catch (e) {
+    state.error = 'Install failed: ' + String(e.message || e).slice(0, 300);
+  } finally { state.installing = false; }
 }
 
 // ---------- browser lifecycle ----------
 let ctx = null;
-let remote = null; // CDP connection to Chrome/WebView inside the Android emulator
+let remote = null; // CDP connection (desktop Chrome, or Chrome/WebView in the Android emulator)
 let page = null;
 const logs = { console: [], network: [] };
 const cap = (arr, v, n = 200) => { arr.push(v); if (arr.length > n) arr.shift(); };
@@ -54,29 +72,23 @@ function wirePage(p) {
   p.on('requestfailed', (r) => cap(logs.network, { t: Date.now(), method: r.method(), url: r.url().slice(0, 200), status: 0, failure: r.failure()?.errorText }));
 }
 
+const livePages = () => (ctx ? ctx.pages().filter(p => !p.isClosed() && !/^devtools:/.test(p.url())) : []);
+
 async function ensure() {
   if (ctx && page && !page.isClosed()) return page;
-  if (remote) throw new Error('The connected Android browser page was closed. Reconnect with web_attach_android.');
-  if (!isInstalled()) throw new Error('Chromium is not installed. Install it from the Web tab (or POST /api/web/install) first.');
-  const { chromium, devices } = playwright();
-  fs.mkdirSync(PROFILE, { recursive: true });
-  const dev = state.device && devices[state.device] ? devices[state.device] : {};
-  ctx = await chromium.launchPersistentContext(path.join(PROFILE, state.device ? 'mobile' : 'desktop'), { headless: state.headless, ...(state.device ? dev : { viewport: { width: 1280, height: 800 } }) });
-  ctx.on('page', wirePage);
-  ctx.on('close', () => { ctx = null; page = null; });
-  page = ctx.pages()[0] || await ctx.newPage();
-  if (!page.__wired) { wirePage(page); page.__wired = true; }
+  if (ctx && remote) { // the tab was closed: continue on another tab of the same browser
+    const left = livePages();
+    if (left.length) { page = left[left.length - 1]; if (!page.__wired) { wirePage(page); page.__wired = true; } return page; }
+    if (state.mode === 'android') throw new Error('The connected Android browser page was closed. Reconnect with web_attach_android.');
+    page = await ctx.newPage(); wirePage(page); page.__wired = true; return page;
+  }
+  if (state.mode === 'android') throw new Error('The Android browser connection was lost. Reconnect with web_attach_android.');
+  await attachDesktop();
   return page;
 }
 
-export async function closeBrowser() { try { if (remote) await remote.close(); else await ctx?.close(); } catch (e) {} remote = null; ctx = null; page = null; state.mode = state.device ? 'mobile' : 'desktop'; }
-export const isOpen = () => !!(ctx && page && !page.isClosed());
-export async function configure({ headless, device }) {
-  if (typeof headless === 'boolean') state.headless = headless;
-  if (device !== undefined) state.device = device || null;
-  await closeBrowser();
-}
-export const listDevices = () => { try { return Object.keys(playwright().devices).filter(n => !/landscape| \w+ landscape/.test(n)); } catch (e) { return []; } };
+export async function closeBrowser() { try { await remote?.close(); } catch (e) {} remote = null; ctx = null; page = null; state.mode = 'chrome'; } // for a CDP connection this only disconnects; the browser stays open
+export const isOpen = () => !!(ctx && remote && page && !page.isClosed());
 
 // Address-bar logic: a full URL is opened as is, something host-like gets a scheme, anything else is a Google search.
 export function normalizeUrl(input) {
@@ -92,7 +104,6 @@ export function normalizeUrl(input) {
 
 // ---------- tools ----------
 async function attachAndroid(runAdb, serial, target, pid) {
-  if (!isInstalled()) throw new Error('Chromium (Playwright) is not installed. Install it first.');
   let socket = 'chrome_devtools_remote';
   if (target === 'webview') {
     const u = await runAdb(['-s', serial, 'shell', 'cat', '/proc/net/unix'], 8000);
@@ -118,39 +129,33 @@ async function attachAndroid(runAdb, serial, target, pid) {
   return { socket, pages: ctx.pages().length };
 }
 
-// ---------- attach to the user's own desktop Chrome / Edge (they log in themselves, e.g. through bot checks) ----------
+// ---------- the user's own desktop Chrome / Edge ----------
 const DESKTOP_PORT = 9333;
-function findDesktopBrowser() {
-  const pf = process.env['ProgramFiles'] || 'C:/Program Files', pf86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)', la = process.env.LOCALAPPDATA || '';
-  const c = [
-    pf + '/Google/Chrome/Application/chrome.exe', pf86 + '/Google/Chrome/Application/chrome.exe', la + '/Google/Chrome/Application/chrome.exe',
-    pf86 + '/Microsoft/Edge/Application/msedge.exe', pf + '/Microsoft/Edge/Application/msedge.exe'
-  ];
-  return c.find(p => { try { return fs.existsSync(p); } catch (e) { return false; } }) || null;
-}
 async function cdpAlive() { try { const r = await fetch('http://127.0.0.1:' + DESKTOP_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }); return r.ok; } catch (e) { return false; } }
-export async function attachDesktop({ launch = true } = {}) {
-  if (!isInstalled()) throw new Error('Playwright browser support is not installed. Install it first (Settings -> Web).');
+let attaching = null;
+export function attachDesktop() { return (attaching ||= doAttach().finally(() => { attaching = null; })); }
+async function doAttach() {
   if (!(await cdpAlive())) {
-    if (!launch) throw new Error('Chrome is not running with remote debugging on port ' + DESKTOP_PORT + '.');
     const exe = findDesktopBrowser();
-    if (!exe) throw new Error('Chrome or Edge was not found on this PC.');
+    if (!exe) throw new Error('Google Chrome was not found on this PC. Install it from the Web Testing page (or Settings -> Web) first.');
     // A separate profile folder is required for remote debugging; it keeps your logins between sessions.
     const dir = path.join(BASE, 'own-chrome-profile');
     fs.mkdirSync(dir, { recursive: true });
-    spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', 'about:blank'], { detached: true, stdio: 'ignore' }).unref();
+    spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', '--no-default-browser-check', 'https://www.google.com'], { detached: true, stdio: 'ignore' }).unref();
     for (let i = 0; i < 40 && !(await cdpAlive()); i++) await new Promise(r => setTimeout(r, 500));
-    if (!(await cdpAlive())) throw new Error('Chrome started but did not open the debugging port.');
+    if (!(await cdpAlive())) throw new Error('The browser started but did not open its debugging port.');
   }
   await closeBrowser();
-  remote = await playwright().chromium.connectOverCDP('http://127.0.0.1:' + DESKTOP_PORT, { timeout: 15000 });
-  ctx = remote.contexts()[0];
+  const b = await playwright().chromium.connectOverCDP('http://127.0.0.1:' + DESKTOP_PORT, { timeout: 15000 });
+  remote = b; ctx = b.contexts()[0];
+  b.on('disconnected', () => { if (remote === b) { remote = null; ctx = null; page = null; } }); // user closed the Chrome window
   ctx.on('page', wirePage);
-  for (let i = 0; i < 20 && !ctx.pages().length; i++) await new Promise(r => setTimeout(r, 250));
-  page = ctx.pages()[ctx.pages().length - 1] || await ctx.newPage();
+  for (let i = 0; i < 20 && !livePages().length; i++) await new Promise(r => setTimeout(r, 250));
+  page = livePages().pop() || await ctx.newPage();
   wirePage(page); page.__wired = true;
+  if (/^(about:blank|chrome:\/\/newtab|chrome:\/\/new-tab-page|edge:\/\/newtab)/i.test(page.url())) await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}); // start on Google, not a blank tab
   state.mode = 'chrome';
-  return { pages: ctx.pages().length };
+  return { pages: livePages().length };
 }
 
 export function createWebTools({ runAdb } = {}) {
@@ -163,7 +168,7 @@ export function createWebTools({ runAdb } = {}) {
   const SEL = { selector: { type: 'string', description: 'Playwright selector: css, text="Sign in", role=button[name="Sign in"], label=Email, placeholder=Search. Get names from web_snapshot.' } };
   const state0 = async (p) => ({ url: p.url(), title: await p.title() });
 
-  def('web_navigate', 'Open a URL in the browser (opens Chromium if needed).', { url: { type: 'string' } }, ['url'], async (a) => {
+  def('web_navigate', "Open a URL in the user's Chrome (starts it if needed).", { url: { type: 'string' } }, ['url'], async (a) => {
     const p = await ensure();
     const r = await p.goto(normalizeUrl(a.url), { waitUntil: 'domcontentloaded', timeout: 30000 });
     return { ok: true, status: r?.status(), ...(await state0(p)) };
@@ -176,7 +181,7 @@ export function createWebTools({ runAdb } = {}) {
   def('web_screenshot', 'Screenshot of the current page (PNG). Use web_snapshot first; screenshots cost more.', { fullPage: { type: 'boolean' } }, [], async (a) => {
     const p = await ensure();
     const buf = await p.screenshot({ fullPage: !!a.fullPage, type: 'png', scale: 'css' });
-    const vp = p.viewportSize() || { width: 0, height: 0 };
+    const vp = p.viewportSize() || await p.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })).catch(() => ({ width: 0, height: 0 }));
     return { ok: true, mime: 'image/png', imageBase64: buf.toString('base64'), imageWidth: vp.width, imageHeight: vp.height, url: p.url() };
   });
   def('web_click', 'Click an element.', { ...SEL, button: { type: 'string', enum: ['left', 'right', 'middle'] }, doubleClick: { type: 'boolean' } }, ['selector'], async (a) => {
@@ -236,11 +241,6 @@ export function createWebTools({ runAdb } = {}) {
     else if (a.action === 'close') { const t = pages[a.index ?? pages.indexOf(page)]; await t?.close(); page = ctx.pages()[0] || (await ctx.newPage()); }
     return { ok: true, active: ctx.pages().indexOf(page), tabs: await Promise.all(ctx.pages().map(async (p, i) => ({ index: i, url: p.url(), title: await p.title().catch(() => '') }))) };
   });
-  def('web_emulate', 'Emulate a mobile device (e.g. "Pixel 7", "iPhone 14") or return to desktop with device="" . Restarts the browser (cookies stay per mode).', { device: { type: 'string' } }, ['device'], async (a) => {
-    if (a.device && !playwright().devices[a.device]) return { ok: false, error: 'Unknown device. Examples: Pixel 7, iPhone 14, iPad Pro 11, Galaxy S9+' };
-    await configure({ device: a.device });
-    return { ok: true, device: a.device || 'desktop' };
-  });
   def('web_eval', 'Run a JavaScript expression in the page and return the JSON result.', { expression: { type: 'string' } }, ['expression'], async (a) => {
     const r = await (await ensure()).evaluate(a.expression);
     return { ok: true, result: JSON.stringify(r)?.slice(0, 8000) };
@@ -258,7 +258,7 @@ export function createWebTools({ runAdb } = {}) {
     const r = await attachAndroid(runAdb, a.serial || 'emulator-5554', a.target || 'chrome', a.pid);
     return { ok: true, ...r, ...(await state0(page)) };
   });
-  def('web_attach_chrome', "Use the user's own desktop Chrome/Edge (opened with a dedicated profile and remote debugging) instead of the built-in Chromium. The user can log in or solve any check themselves in that window; then web_* tools act on it. Use web_close to disconnect (Chrome stays open).", {}, [], async () => {
+  def('web_attach_chrome', "Connect to (or start) the user's own desktop Chrome. Other web_* tools do this automatically; use it to reconnect, e.g. after switching back from the Android browser. The user can log in or pass any check themselves in that window. web_close only disconnects (Chrome stays open).", {}, [], async () => {
     const r = await attachDesktop();
     return { ok: true, ...r, ...(await state0(page)) };
   });

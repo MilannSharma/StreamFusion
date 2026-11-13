@@ -6,10 +6,8 @@ export function createWebRouter({ runAdb } = {}) {
   const TOOLS = web.createWebTools({ runAdb });
   router.TOOLS = TOOLS;
 
-  router.get('/status', (req, res) => res.json({ success: true, installed: web.isInstalled(), isInstalling: web.state.installing, stage: web.state.stage, error: web.state.error, open: web.isOpen(), headless: web.state.headless, device: web.state.device, mode: web.state.mode }));
-  router.get('/devices', (req, res) => res.json({ success: true, devices: web.listDevices() }));
+  router.get('/status', (req, res) => res.json({ success: true, installed: web.isInstalled(), isInstalling: web.state.installing, stage: web.state.stage, error: web.state.error, open: web.isOpen(), browser: web.browserName(), mode: web.state.mode }));
   router.post('/install', (req, res) => { web.install(); res.json({ success: true }); });
-  router.post('/config', async (req, res) => { await web.configure({ headless: req.body?.headless, device: req.body?.device }); res.json({ success: true }); });
   router.post('/attach-chrome', async (req, res) => { try { res.json({ success: true, ...(await web.attachDesktop()) }); } catch (e) { res.json({ success: false, error: e.message }); } });
   router.post('/close', async (req, res) => { await web.closeBrowser(); res.json({ success: true }); });
 

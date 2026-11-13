@@ -84,19 +84,15 @@ export const WebSection: React.FC = () => {
   }, []);
   const post = (p: string, body?: any) => fetch('/api/web/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   return (
-    <Card title="CHROMIUM (WEB TESTING)">
+    <Card title="BROWSER (WEB TESTING)">
       {!web ? <div style={muted}>Checking…</div> : web.isInstalling ? <div style={muted}>{web.stage || 'Installing…'}</div> : !web.installed ? (
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn-primary" onClick={() => post('install')}><Download size={14} /> Install Chromium</button>
-          <span style={muted}>One-time download (~150 MB). Not bundled with the app.{web.error ? ' ' + web.error : ''}</span>
+          <button className="btn-primary" onClick={() => post('install')}><Download size={14} /> Install Google Chrome</button>
+          <span style={muted}>Chrome or Edge was not found. This downloads the official installer (installs for you only, no admin).{web.error ? ' ' + web.error : ''}</span>
         </div>
       ) : (<>
-        <div style={{ ...muted, marginBottom: 10 }}><Globe size={13} style={{ verticalAlign: -2 }} /> Chromium is installed.</div>
-        <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: 13 }}>
-          <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={!web.headless} onChange={e => post('config', { headless: !e.target.checked })} />
-          Show a separate browser window while the agent tests
-        </label>
-        <div style={{ ...muted, marginTop: 6 }}>Off by default: the browser is shown inside the Web Testing page.</div>
+        <div style={{ ...muted, marginBottom: 6 }}><Globe size={13} style={{ verticalAlign: -2 }} /> <b style={{ color: '#16a34a' }}>{web.browser} found.</b> Nothing to install.</div>
+        <div style={muted}>Web Testing opens your own browser in its own window with a separate profile, so you can log in or pass bot checks yourself. The AI agent controls that same window. Your normal browser profile is not touched.</div>
       </>)}
     </Card>
   );

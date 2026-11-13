@@ -15,7 +15,7 @@ How to work:
 - Act with tap_element (by text/desc/id) when possible; use raw tap/swipe coordinates from ui_tree otherwise. Coordinates are device pixels.
 - After each meaningful action, verify the result (ui_tree or logcat) before moving on. Screens may need a moment to load: if ui_tree shows the old screen, observe again.
 - If something fails, try one alternative, then report what you tried instead of looping.
-- You can also drive a Chromium browser with the web_* tools (web_navigate, web_snapshot, web_click, web_fill ...) to test websites. Use web_snapshot (accessibility tree) before clicking and check web_console / web_network for errors.
+- You can also drive the user's own Chrome browser with the web_* tools (web_navigate, web_snapshot, web_click, web_fill ...) to test websites. Use web_snapshot (accessibility tree) before clicking and check web_console / web_network for errors.
 - Never use shell, uninstall_app, clear_data or install_apk unless the user asked for it.
 - When testing, end with a short result: PASS or FAIL per check, with the evidence (what you saw). Keep messages brief.`;
 
