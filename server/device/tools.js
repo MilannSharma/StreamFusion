@@ -4,7 +4,7 @@
 import { execFile } from 'child_process';
 import zlib from 'zlib';
 import path from 'path';
-import { compareBaseline, baselineDir, getContext, crashScan } from '../automation/assertions.js';
+import { compareBaseline, baselineDir, getContext, crashScan, decodePng } from '../automation/assertions.js';
 
 // ---------- tiny helpers ----------
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -63,7 +63,7 @@ export function createTools({ runAdb, adbExe, cwd }) {
 
   async function dumpTree(serial) {
     let xml = '', lastErr = '';
-    for (let attempt = 0; attempt < 3 && !xml.includes('<node'); attempt++) {
+    for (let attempt = 0; attempt < 2 && !xml.includes('<node'); attempt++) {
       if (attempt) await new Promise(r => setTimeout(r, 800)); // UI busy/animating: retry
       const r = await bin(serial, ['exec-out', 'uiautomator', 'dump', '/dev/tty'], 25000);
       if (!r.ok) { lastErr = r.error; continue; }
@@ -98,21 +98,40 @@ export function createTools({ runAdb, adbExe, cwd }) {
   };
 
   // ---- observe ----
+  // Raw screencap moves ~10 MB over USB (about 3 s on many phones). The phone's own PNG is ~1 MB (about 1.2 s): use it, fall back to raw.
+  const shotCache = new Map(); // serial -> { at, maxDim, result } : two calls within 400 ms share one capture
   def('screenshot', 'Capture the screen as a downscaled PNG (base64). Use ui_tree first; it is cheaper.', { maxDim: { type: 'number', description: 'Longest side in px (default 1024)' } }, [], async (a) => {
+    const md = num(a.maxDim, 1024), hit = shotCache.get(a.serial);
+    if (hit && hit.maxDim === md && Date.now() - hit.at < 400) return hit.result;
+    const done = (result) => { if (result.ok) shotCache.set(a.serial, { at: Date.now(), maxDim: md, result }); return result; };
+    const p = await bin(a.serial, ['exec-out', 'screencap', '-p']);
+    if (p.ok && p.data.length > 1000 && p.data.readUInt32BE(0) === 0x89504e47) {
+      try {
+        const img = decodePng(p.data);
+        if (img.ch === 4) { const { rgb, dw, dh } = downscale(img.data, img.w, img.h, 0, md); return done({ ok: true, mime: 'image/png', imageBase64: pngEncode(rgb, dw, dh).toString('base64'), imageWidth: dw, imageHeight: dh, deviceWidth: img.w, deviceHeight: img.h }); }
+      } catch (e) { /* fall through to the raw path */ }
+    }
     const r = await bin(a.serial, ['exec-out', 'screencap']);
     if (!r.ok) return r;
     const d = r.data, w = d.readUInt32LE(0), h = d.readUInt32LE(4);
     const off = d.length - w * h * 4;
     if (off < 12 || off > 64) return { ok: false, error: 'Unexpected screencap format' };
-    const { rgb, dw, dh } = downscale(d, w, h, off, num(a.maxDim, 1024));
-    return { ok: true, mime: 'image/png', imageBase64: pngEncode(rgb, dw, dh).toString('base64'), imageWidth: dw, imageHeight: dh, deviceWidth: w, deviceHeight: h };
+    const { rgb, dw, dh } = downscale(d, w, h, off, md);
+    return done({ ok: true, mime: 'image/png', imageBase64: pngEncode(rgb, dw, dh).toString('base64'), imageWidth: dw, imageHeight: dh, deviceWidth: w, deviceHeight: h });
   });
 
+  const treeCache = new Map();
   def('ui_tree', 'List visible UI elements (text, id, bounds, center x/y). Best way to see the screen. Tap using cx,cy.', { all: { type: 'boolean', description: 'Include non-interactive nodes' } }, [], async (a) => {
+    const hit = treeCache.get(a.serial);
+    if (hit && !a.all && Date.now() - hit.at < 500) return hit.result; // back-to-back calls share one dump
+    const t0 = Date.now();
     const t = await dumpTree(a.serial);
-    if (!t.ok) return t;
+    if (!t.ok) return { ...t, hint: 'ui_tree failed or is slow on this phone (video or animation on screen). Use screenshot instead, or wait for the screen to settle.' };
     const list = (a.all ? t.nodes : t.nodes.filter(interesting)).slice(0, 200).map((n, i) => ({ i, ...n }));
-    return { ok: true, count: list.length, foreground: t.nodes.find(n => n.pkg)?.pkg || '', elements: list };
+    const took = Date.now() - t0;
+    const result = { ok: true, count: list.length, foreground: t.nodes.find(n => n.pkg)?.pkg || '', elements: list, ...(took > 8000 ? { hint: `ui_tree took ${Math.round(took / 1000)} s on this phone; prefer screenshot for quick looks.` } : {}) };
+    if (!a.all) treeCache.set(a.serial, { at: Date.now(), result });
+    return result;
   });
 
   def('device_info', 'Model, Android version, screen size, foreground app.', {}, [], async (a) => {

@@ -107,6 +107,8 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
     anthropicTools.push(...REPORT_TOOLS);
     emit({ type: 'run_started', runId: run.id });
   }
+  // the tool list is identical on every step: cache it together with the system prompt (a cache read costs a tenth)
+  if (anthropicTools.length) anthropicTools[anthropicTools.length - 1] = { ...anthropicTools[anthropicTools.length - 1], cache_control: { type: 'ephemeral' } };
   let runEnded = false;
   let lastWorld = 'device';
   const endRun = (reason) => { if (run && !runEnded) { runEnded = true; if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status }); } };

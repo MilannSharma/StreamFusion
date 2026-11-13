@@ -14,7 +14,7 @@ export const setContext = (c) => { ctx = { projectId: null, loginTokens: [], ...
 export const getContext = () => ctx;
 
 // ---------- minimal PNG decoder (8-bit, non-interlaced; enough for Playwright and our own screenshots) ----------
-function decodePng(buf) {
+export function decodePng(buf) {
   if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('Not a PNG');
   let p = 8, w = 0, h = 0, depth = 0, ct = 0, inter = 0; const idat = [];
   while (p < buf.length) {

@@ -32,7 +32,7 @@ type Msg =
 
 const MODELS = [
   { id: 'claude-opus-5-5', label: 'Opus 5.5 (best)' },
-  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 (cheaper)' },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 (recommended)' },
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5 (cheapest)' }
 ];
 
@@ -55,7 +55,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const { cli } = useClaudeStatus(active);
   const engine = resolveEngine(pref, cli, !!apiKey);
   useEffect(() => { const h = () => setPref(getEnginePref()); window.addEventListener('sf-engine-changed', h); return () => window.removeEventListener('sf-engine-changed', h); }, []);
-  const [model, setModel] = useState(() => { try { return localStorage.getItem('sf_agent_model') || MODELS[0].id; } catch (e) { return MODELS[0].id; } });
+  const [model, setModel] = useState(() => { try { return localStorage.getItem('sf_agent_model') || MODELS[1].id; } catch (e) { return MODELS[1].id; } }); // Sonnet by default: about 5x cheaper than Opus and good enough for test execution
   const [mode, setMode] = useState<'ask' | 'auto'>('ask');
   const [tokens, setTokens] = useState({ input: 0, output: 0, cached: 0 });
   const [pending, setPending] = useState<string | null>(null);
@@ -396,7 +396,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <option value="auto">Auto</option>
           </select>
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
-            {engine === 'claude' ? '' : engine === 'api' ? `${fmt(tokens.input)} in · ${fmt(tokens.output)} out` : ''}
+            {engine !== 'none' && (tokens.input || tokens.output) ? `${fmt(tokens.input)} in · ${fmt(tokens.output)} out` : ''}
           </span>
           <button onClick={() => setChatHidden(true)} title="Hide chat" style={iconBtn}><PanelLeftClose size={14} /></button>
           <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"

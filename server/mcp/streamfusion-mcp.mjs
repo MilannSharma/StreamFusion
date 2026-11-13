@@ -42,7 +42,9 @@ const APP_TOOLS = [
   { name: 'streamfusion_open_app', description: 'Show the StreamFusion window so the user can watch the emulator / browser live. Optional: everything also works with the window closed.', inputSchema: { type: 'object', properties: {} } },
   { name: 'report_begin', description: 'Start a test report (PDF/DOCX with screenshots). Call before testing, then report_check once per test case, then report_finish.', inputSchema: { type: 'object', properties: { title: { type: 'string' }, instructions: { type: 'string', description: 'What is being tested' }, serial: { type: 'string' } }, required: ['title'] } },
   { name: 'report_check', description: 'Record the result of one test case. A screenshot of the current screen (browser or phone) is attached automatically, so make sure the result is visible first.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'e.g. TC-01' }, title: { type: 'string' }, status: { type: 'string', enum: ['pass', 'fail', 'blocked'] }, evidence: { type: 'string', description: 'What you actually observed' }, world: { type: 'string', enum: ['web', 'phone'], description: 'Which screen to capture (default: the one you used last)' } }, required: ['title', 'status', 'evidence'] } },
-  { name: 'report_finish', description: 'Finish the report. Returns download links for PDF and DOCX.', inputSchema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] } }
+  { name: 'report_finish', description: 'Finish the report. Returns download links for PDF and DOCX.', inputSchema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] } },
+  { name: 'automation_list', description: 'List the saved automated tests of a project (recorded or written earlier). Check this first: a saved test can be replayed with automation_run at zero AI cost.', inputSchema: { type: 'object', properties: { project: { type: 'string', description: 'Project name or id (omit to list all projects)' } } } },
+  { name: 'automation_run', description: 'Replay saved automated tests of a project WITHOUT any AI steps (no tokens). Returns pass/fail per check and a report id. Use instead of re-testing by hand when a saved test exists.', inputSchema: { type: 'object', properties: { project: { type: 'string', description: 'Project name or id' }, test: { type: 'string', description: 'Test name (part of it is enough). Omit to run all tests of the project.' }, serials: { type: 'array', items: { type: 'string' }, description: 'Phone serials for Android tests (default: ' + DEFAULT_SERIAL + ')' } }, required: ['project'] } }
 ];
 
 let clientName = process.env.SF_CLIENT_NAME || 'MCP client';
@@ -83,6 +85,20 @@ async function callTool(name, args = {}) {
   if (name.startsWith('report_')) {
     const r = await api('/api/agent/report/' + name.slice(7), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial: DEFAULT_SERIAL, client: clientName, ...args }) });
     return { ...text(r), ...(r.ok ? {} : { isError: true }) };
+  }
+  if (name === 'automation_list' || name === 'automation_run') {
+    const list = (await api('/api/projects')).projects || [];
+    if (name === 'automation_list' && !args.project) return text(list.map(p => ({ id: p.id, name: p.name, tests: p.tests || 0 })));
+    const q = String(args.project || '').toLowerCase();
+    const p = list.find(x => x.id === args.project || x.name.toLowerCase() === q) || list.find(x => x.name.toLowerCase().includes(q));
+    if (!p) return { ...text({ ok: false, error: 'Project not found. Known: ' + list.map(x => x.name).join(', ') }), isError: true };
+    const tests = (await api('/api/automation/' + p.id + '/tests')).tests || [];
+    if (name === 'automation_list') return text({ project: p.name, tests: tests.map(t => ({ id: t.id, name: t.name, target: t.target, steps: t.steps, needsAi: t.needsAi, lastRun: t.lastRun && t.lastRun.status })) });
+    const tq = String(args.test || '').toLowerCase();
+    const ids = args.test ? tests.filter(t => t.id === args.test || t.name.toLowerCase().includes(tq)).map(t => t.id) : undefined;
+    if (args.test && !ids.length) return { ...text({ ok: false, error: 'No test matches. Available: ' + tests.map(t => t.name).join(', ') }), isError: true };
+    const r = await api('/api/automation/' + p.id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, serials: args.serials && args.serials.length ? args.serials : [DEFAULT_SERIAL] }) });
+    return { ...text(r.success ? { passed: r.passed, aiTokens: 0, results: r.results } : r), ...(r.success && r.passed ? {} : { isError: true }) };
   }
   if (name === 'emulator_status') return text(await api('/api/emulator/status'));
   if (name === 'emulator_start') return text(await api('/api/emulator/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ headless: !!args.headless, wipe: !!args.wipe }) }));
