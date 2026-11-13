@@ -17,6 +17,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
   const [devices, setDevices] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const imgRef = useRef<HTMLImageElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!active) return;
@@ -51,7 +52,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
     return () => { stop = true; };
   }, [active, open, busy, editing]);
 
-  const go = async () => { setErr(''); const q = url.trim(); const r = await tool('web_navigate', { url: !q ? 'https://www.google.com' : /^[a-z]+:/i.test(q) || /^[\w-]+(\.[\w-]+)+(\/|$)/.test(q) ? q : 'https://www.google.com/search?q=' + encodeURIComponent(q) }); if (!r.ok) setErr(r.error || 'Failed'); setEditing(false); };
+  const go = async () => { setErr(''); inputRef.current?.blur(); const r = await tool('web_navigate', { url: url.trim() }); if (!r.ok) setErr(r.error || 'Could not open that address'); };
   const onClick = (e: React.MouseEvent<HTMLImageElement>) => {
     // the image is letterboxed (object-fit: contain), so map through the drawn area
     const r = e.currentTarget.getBoundingClientRect();
@@ -91,7 +92,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'back' })} title="Back"><ArrowLeft size={14} /></button>
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'forward' })} title="Forward"><ArrowRight size={14} /></button>
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'reload' })} title="Reload"><RotateCw size={14} /></button>
-        <input value={url} placeholder="Search or enter a URL" onFocus={() => setEditing(true)} onBlur={() => setEditing(false)}
+        <input ref={inputRef} value={url} placeholder="Search or enter a URL" onFocus={e => { setEditing(true); e.currentTarget.select(); }} onBlur={() => setEditing(false)}
           onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }}
           style={{ flex: 1, minWidth: 160, padding: '6px 12px', borderRadius: 999, border, fontSize: 12.5, background: 'var(--glass-soft, #f1f5f9)', color: 'var(--text-main)', outline: 'none' }} />
         <select value={status.device || ''} onChange={e => post('config', { device: e.target.value })} style={{ ...btn, width: 'auto' }} title="Device emulation">

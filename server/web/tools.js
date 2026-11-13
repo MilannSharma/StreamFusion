@@ -78,6 +78,18 @@ export async function configure({ headless, device }) {
 }
 export const listDevices = () => { try { return Object.keys(playwright().devices).filter(n => !/landscape| \w+ landscape/.test(n)); } catch (e) { return []; } };
 
+// Address-bar logic: a full URL is opened as is, something host-like gets a scheme, anything else is a Google search.
+export function normalizeUrl(input) {
+  const q = String(input || '').trim();
+  if (!q) return 'https://www.google.com';
+  if (/^(about|data|file|chrome|blob):/i.test(q) || /^[a-z][a-z0-9+.-]*:\/\//i.test(q)) return q;
+  if (!/\s/.test(q)) {
+    if (/^(localhost|(\d{1,3}\.){3}\d{1,3})(:\d+)?([\/?#]|$)/i.test(q)) return 'http://' + q;
+    if (/^([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?([\/?#]|$)/i.test(q)) return 'https://' + q;
+  }
+  return 'https://www.google.com/search?q=' + encodeURIComponent(q);
+}
+
 // ---------- tools ----------
 async function attachAndroid(runAdb, serial, target, pid) {
   if (!isInstalled()) throw new Error('Chromium (Playwright) is not installed. Install it first.');
@@ -118,7 +130,7 @@ export function createWebTools({ runAdb } = {}) {
 
   def('web_navigate', 'Open a URL in the browser (opens Chromium if needed).', { url: { type: 'string' } }, ['url'], async (a) => {
     const p = await ensure();
-    const r = await p.goto(/^[a-z]+:/i.test(a.url) ? a.url : 'https://' + a.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const r = await p.goto(normalizeUrl(a.url), { waitUntil: 'domcontentloaded', timeout: 30000 });
     return { ok: true, status: r?.status(), ...(await state0(p)) };
   });
   def('web_snapshot', 'Accessibility snapshot of the page: roles, names, values, states. Cheap; use this before clicking. Returns YAML-like text.', { selector: { type: 'string', description: 'Optional root selector (default body)' } }, [], async (a) => {
