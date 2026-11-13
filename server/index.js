@@ -8,7 +8,7 @@ import { createSettingsRouter } from './routes/settings.js';
 import { createFilesRouter } from './routes/files.js';
 import { createDiagnosticsRouter } from './routes/diagnostics.js';
 import { createNotificationsRouter } from './routes/notifications.js';
-import { createEmulatorRouter } from './routes/emulator.js';
+import { createEmulatorRouter } from './emulator/router.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

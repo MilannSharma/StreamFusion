@@ -48,3 +48,6 @@ Thumbs.db
 !build/CatSetupProgress.exe
 *.zip
 scratch/
+
+# Emulator runtime state/binaries (downloaded on demand in M1)
+emulator-bin/

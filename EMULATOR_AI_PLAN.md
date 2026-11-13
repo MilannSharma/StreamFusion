@@ -34,11 +34,11 @@
 ## 3. Modules
 
 ### M0: Cleanup (~½ din)
-- [ ] Current changes commit karo
-- [ ] `.gitattributes` add karo
-- [ ] Fake install hatao
-- [ ] Emulator router ko `server/emulator/` mein split karo
-- [ ] `.gitignore` / `extraResources` fix
+- [x] Current changes commit karo
+- [x] `.gitattributes` add karo
+- [x] Fake install hatao (/install ab 501 deta hai, real installer M1 mein)
+- [x] Emulator router ko `server/emulator/` mein split karo (router.js + helpers.js)
+- [x] `.gitignore` fix (emulator-bin ignored, extraResources local build ke liye as-is)
 
 ### M1: Emulator Manager (real install)
 - [ ] Download `cmdline-tools`, `emulator`, `platform-tools`, system image (progress + resume)

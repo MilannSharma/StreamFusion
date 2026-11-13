@@ -2,7 +2,7 @@ import express from 'express';
 import { spawn, exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import net from 'net';
+import { checkPortOpen, scanActiveEmulatorPorts, qemuStatus, checkProcessRunning } from './helpers.js';
 
 export function createEmulatorRouter({ runAdb, rootDir }) {
   const router = express.Router();
@@ -68,105 +68,7 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
     return fs.existsSync(installMarkerPath);
   }
 
-  // TCP Port Sentinel: Tests if a local port has an active listening service
-  function checkPortOpen(port, host = '127.0.0.1', timeout = 900) {
-    return new Promise((resolve) => {
-      const socket = new net.Socket();
-      let isResolved = false;
-
-      socket.setTimeout(timeout);
-
-      socket.once('connect', () => {
-        if (!isResolved) {
-          isResolved = true;
-          socket.destroy();
-          resolve(true);
-        }
-      });
-
-      socket.once('timeout', () => {
-        if (!isResolved) {
-          isResolved = true;
-          socket.destroy();
-          resolve(false);
-        }
-      });
-
-      socket.once('error', () => {
-        if (!isResolved) {
-          isResolved = true;
-          socket.destroy();
-          resolve(false);
-        }
-      });
-
-      socket.connect(port, host);
-    });
-  }
-
-  // Common Android emulator ADB listening ports
-  const COMMON_EMULATOR_PORTS = [
-    { port: 5555, name: 'Default ADB / BlueStacks / QEMU' },
-    { port: 58526, name: 'Windows Subsystem for Android (WSA)' },
-    { port: 62001, name: 'LDPlayer / NoxPlayer (Port 1)' },
-    { port: 62025, name: 'LDPlayer / NoxPlayer (Port 2)' },
-    { port: 7555, name: 'MuMu Player' },
-    { port: 5554, name: 'Android Studio AVD (Console)' },
-    { port: 16384, name: 'Genymotion' }
-  ];
-
-  async function scanActiveEmulatorPorts() {
-    const active = [];
-    for (const item of COMMON_EMULATOR_PORTS) {
-      try {
-        const isOpen = await checkPortOpen(item.port);
-        if (isOpen) {
-          active.push({ ...item, open: true });
-        }
-      } catch (e) {}
-    }
-    return active;
-  }
-
-  // QEMU availability checker
-  async function checkQemuStatus() {
-    // 1. Check local emulator-bin
-    if (fs.existsSync(path.join(emulatorBin, 'qemu-system-x86_64.exe'))) {
-      return { available: true, path: path.join(emulatorBin, 'qemu-system-x86_64.exe') };
-    }
-    // 2. Check standard Windows installation directory
-    const defaultWinQemu = 'C:\\Program Files\\qemu\\qemu-system-x86_64.exe';
-    if (fs.existsSync(defaultWinQemu)) {
-      return { available: true, path: defaultWinQemu };
-    }
-    // 3. Check system PATH via where.exe
-    return new Promise((resolve) => {
-      exec('where.exe qemu-system-x86_64', (err, stdout) => {
-        if (!err && stdout && stdout.trim()) {
-          resolve({ available: true, path: stdout.split(/\r?\n/)[0].trim() });
-        } else {
-          resolve({ available: false, path: null });
-        }
-      });
-    });
-  }
-
-  // Helper: check if emulator process is currently running
-  function checkProcessRunning() {
-    return new Promise((resolve) => {
-      exec('tasklist /FI "IMAGENAME eq StreamFusionEmulator.exe" /NH', (err, stdout) => {
-        if (!err && stdout && stdout.toLowerCase().includes('streamfusionemulator.exe')) {
-          return resolve(true);
-        }
-        exec('tasklist /FI "IMAGENAME eq SoulAndroid.exe" /NH', (err2, stdout2) => {
-          if (!err2 && stdout2 && stdout2.toLowerCase().includes('soulandroid.exe')) {
-            return resolve(true);
-          }
-          resolve(false);
-        });
-      });
-    });
-  }
+  const checkQemuStatus = () => qemuStatus(emulatorBin);
 
   // Active child process reference
   let activeEmulatorProcess = null;
@@ -315,58 +217,10 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
   });
 
   // 7. POST /api/emulator/install
-  router.post('/install', async (req, res) => {
-    if (installState.isInstalling) {
-      return res.json({ success: true, message: 'Installation already in progress', state: installState });
-    }
-
-    addEmulatorLog('info', 'Starting StreamFusion Android Emulator installation...');
-    installState = {
-      isInstalling: true,
-      progress: 15,
-      stage: 'Initializing StreamFusion Android Virtual Environment...'
-    };
-
-    res.json({ success: true, message: 'Installation started' });
-
-    // Step 1: Initialize
-    setTimeout(() => {
-      installState.progress = 35;
-      installState.stage = 'Configuring graphics and ADB bridge subsystems...';
-      addEmulatorLog('info', 'Configuring graphics and ADB bridge subsystems...');
-    }, 900);
-
-    // Step 2: Bridge setup
-    setTimeout(() => {
-      installState.progress = 65;
-      installState.stage = 'Configuring ADB host networking on port 5555...';
-      addEmulatorLog('info', 'Configuring ADB host networking on port 5555...');
-    }, 1900);
-
-    // Step 3: Finalize
-    setTimeout(() => {
-      installState.progress = 90;
-      installState.stage = 'Finalizing StreamFusion Emulator setup...';
-      addEmulatorLog('info', 'Finalizing StreamFusion Emulator setup...');
-    }, 2800);
-
-    // Step 4: Complete
-    setTimeout(() => {
-      try {
-        fs.writeFileSync(installMarkerPath, JSON.stringify({
-          installed: true,
-          version: '1.0.0',
-          installedAt: new Date().toISOString()
-        }, null, 2));
-      } catch (e) {}
-
-      installState.progress = 100;
-      installState.stage = 'Installation Complete!';
-      addEmulatorLog('success', 'StreamFusion Android Emulator installation complete!');
-      setTimeout(() => {
-        installState.isInstalling = false;
-      }, 800);
-    }, 3600);
+  // Real installer arrives in M1 (Android SDK emulator download). The old simulated installer was removed.
+  router.post('/install', (req, res) => {
+    addEmulatorLog('warn', 'Install requested but the real installer is not implemented yet (planned: M1)');
+    res.status(501).json({ success: false, message: 'Emulator installer not implemented yet (coming in M1).' });
   });
 
   // 8. POST /api/emulator/start
