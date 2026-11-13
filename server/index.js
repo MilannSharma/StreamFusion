@@ -12,6 +12,7 @@ import { createEmulatorRouter } from './emulator/router.js';
 import { createDeviceRouter } from './device/router.js';
 import { createAgentRouter } from './agent/router.js';
 import { createWebRouter } from './web/router.js';
+import { createProjectsRouter } from './projects/router.js';
 import { createMcpActivity } from './mcp/activity.js';
 
 let APP_VERSION = '0.0.0';
@@ -111,6 +112,7 @@ app.get('/api/mcp/config', (req, res) => {
 });
 const webRouter = createWebRouter({ runAdb });
 app.use('/api/web', webRouter);
+app.use('/api/projects', createProjectsRouter());
 app.use('/api/agent', createAgentRouter({ tools: { ...deviceRouter.TOOLS, ...webRouter.TOOLS } }));
 
 // The Android emulator lives in its own tab; it must never be saved/auto-reconnected as a Wi-Fi phone.

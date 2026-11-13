@@ -95,7 +95,7 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
   if (testMode) {
     let deviceInfo = null;
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-    run = createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(testMode.summary ?? message).slice(0, 4000), deviceInfo });
+    run = createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(testMode.summary ?? message).slice(0, 4000), deviceInfo, projectId: testMode.projectId || null });
     anthropicTools.push(...REPORT_TOOLS);
     emit({ type: 'run_started', runId: run.id });
   }

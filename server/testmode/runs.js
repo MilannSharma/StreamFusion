@@ -14,10 +14,10 @@ const runDir = (id) => path.join(REPORTS_DIR, id);
 const readRun = (id) => JSON.parse(fs.readFileSync(path.join(runDir(id), 'run.json'), 'utf8'));
 const save = (run) => fs.writeFileSync(path.join(runDir(run.id), 'run.json'), JSON.stringify(run, null, 1));
 
-export function createRun({ title, model, serial, attachments = [], instructions = '', deviceInfo = null }) {
+export function createRun({ title, model, serial, attachments = [], instructions = '', deviceInfo = null, projectId = null }) {
   const id = 'run-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   fs.mkdirSync(path.join(runDir(id), 'shots'), { recursive: true });
-  const run = { id, title: title || 'Test run', model, serial, startedAt: new Date().toISOString(), finishedAt: null, instructions, attachments: attachments.map(a => a.name), deviceInfo, checks: [], steps: [], summary: '', status: 'running' };
+  const run = { id, projectId, title: title || 'Test run', model, serial, startedAt: new Date().toISOString(), finishedAt: null, instructions, attachments: attachments.map(a => a.name), deviceInfo, checks: [], steps: [], summary: '', status: 'running' };
   save(run);
   return run;
 }
@@ -45,7 +45,7 @@ export function listRuns() {
   return fs.readdirSync(REPORTS_DIR).filter(d => ID_RE.test(d) && fs.existsSync(path.join(runDir(d), 'run.json'))).sort().reverse().map(d => {
     const r = readRun(d);
     const n = (s) => r.checks.filter(c => c.status === s).length;
-    return { id: r.id, title: r.title, startedAt: r.startedAt, status: r.status, total: r.checks.length, pass: n('pass'), fail: n('fail'), blocked: n('blocked') };
+    return { id: r.id, projectId: r.projectId || null, title: r.title, startedAt: r.startedAt, status: r.status, total: r.checks.length, pass: n('pass'), fail: n('fail'), blocked: n('blocked') };
   }).filter(x => x.total > 0 || x.status === 'running');
 }
 export const getRun = (id) => (ID_RE.test(id) && fs.existsSync(path.join(runDir(id), 'run.json')) ? readRun(id) : null);

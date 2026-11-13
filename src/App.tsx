@@ -11,6 +11,7 @@ import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModa
 import { GuideExtra } from './components/Guide/GuideExtra';
 import { FirstRunTutorial, TUTORIAL_KEY } from './components/Tutorial/FirstRunTutorial';
 import { Coach, resetCoaches, type CoachGuide } from './components/Tutorial/Coach';
+import { ProjectsPage } from './components/Projects/ProjectsPage';
 import { WebStudio } from './components/Emulator/WebStudio';
 import { ApiSection, EmulatorSection, WebSection, AppearanceSection } from './components/Settings/SettingsSections';
 import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
@@ -19,7 +20,7 @@ import {
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff, Info
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff, Info, Briefcase
 } from 'lucide-react';
 
 declare global {
@@ -330,7 +331,7 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator' | 'web' | 'about'>('devices');
+  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator' | 'web' | 'projects' | 'about'>('devices');
   const [settingsSection, setSettingsSection] = useState<'mirror' | 'emulator' | 'web' | 'ai' | 'appearance'>('mirror');
   useEffect(() => {
     const h = (e: any) => { setSettingsSection(e.detail || 'ai'); setActiveTab('settings'); setIsEmulatorStudioOpen(false); };
@@ -1301,6 +1302,13 @@ export default function App() {
             >
               <Globe size={16} color="#6366f1" /> Web Testing
             </button>
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`sidebar-tab ${activeTab === 'projects' ? 'active' : ''}`}
+              style={{ marginTop: 6, fontWeight: 700 }}
+            >
+              <Briefcase size={16} color="#6366f1" /> Projects
+            </button>
 
             <div style={{ height: 1, background: 'var(--border-subtle)', margin: '8px 6px' }} />
 
@@ -1985,6 +1993,14 @@ export default function App() {
           )}
 
           {/* ABOUT: version, updates, welcome tour */}
+          {activeTab === 'projects' && (
+            <ProjectsPage onRun={(world, detail) => {
+              // the chat panel picks this up when it is shown (it may not be mounted yet)
+              (window as any).__sfPrefill = { world, detail };
+              setActiveTab(world === 'web' ? 'web' : 'emulator');
+              setTimeout(() => window.dispatchEvent(new CustomEvent('sf-prefill-chat', { detail: { world, ...detail } })), 500);
+            }} />
+          )}
           {activeTab === 'about' && (
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>About</h1>
@@ -2885,7 +2901,7 @@ export default function App() {
       )}
 
       {/* Avatar guides for the non-AI pages (the AI pages render their own inside the chat panel) */}
-      {(activeTab === 'devices' || activeTab === 'files' || activeTab === 'recordings') && (() => {
+      {(activeTab === 'devices' || activeTab === 'files' || activeTab === 'recordings' || activeTab === 'projects') && (() => {
         const guides: CoachGuide[] = [
           { id: 'mirror', doneTitle: 'Mirroring works', doneBody: 'Click and type in the mirror window to control your phone. Recordings are saved under My Recordings.',
             steps: [
@@ -2899,6 +2915,8 @@ export default function App() {
               { title: 'Connect your phone first', mood: 'listening', done: devices.length > 0, body: 'File transfer needs the phone connected with USB debugging on.', action: { label: 'Go to Screen Mirror', onClick: () => setActiveTab('devices') } },
               { title: 'Browse and move files', mood: 'happy', body: 'Open folders on the phone. Drag files from this PC to upload, or select files and download them.' }
             ] },
+          { id: 'projects', doneTitle: 'Got it', doneBody: 'Start a test with Test mode and your first project appears here.',
+            steps: [{ title: 'Your products live here', mood: 'happy', body: 'A project is created automatically the first time you start a test. It remembers the brief, test cases, documents, logins and reports, so next time you only pick it and press Start.' }] },
           { id: 'recordings', doneTitle: 'Got it', doneBody: 'Recordings from Screen Mirror will appear here.',
             steps: [{ title: 'Your recordings live here', mood: 'happy', body: 'Start a recording with the Record button while mirroring. Finished videos are listed here, ready to play or open in their folder.' }] }
         ];

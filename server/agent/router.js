@@ -30,7 +30,7 @@ export function createAgentRouter({ tools }) {
         closeRun('aborted');
         let deviceInfo = null;
         try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-        run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo });
+        run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo, projectId: b.testMode.projectId ? String(b.testMode.projectId) : null });
         current = run;
         emit({ type: 'run_started', runId: run.id });
       }
@@ -42,7 +42,7 @@ export function createAgentRouter({ tools }) {
     }
     await runAgent({
       sessionId: String(b.sessionId), message: String(b.message), apiKey: b.apiKey, model: b.model, effort: b.effort,
-      testMode: b.testMode ? { title: String(b.testMode.title || '').slice(0, 120), summary: String(b.testMode.summary || ''), attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })) } : null,
+      testMode: b.testMode ? { title: String(b.testMode.title || '').slice(0, 120), summary: String(b.testMode.summary || ''), projectId: b.testMode.projectId ? String(b.testMode.projectId) : null, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })) } : null,
       serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', tools, emit, signal: ac.signal,
       baseURL: process.env.SF_ANTHROPIC_BASE_URL
     });

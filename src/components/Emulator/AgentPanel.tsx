@@ -3,7 +3,8 @@ import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, 
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
-import { loadKey } from './secrets';
+import { loadKey, loadSecret, saveSecret, loginSecretName } from './secrets';
+import { readBriefFiles } from './readFiles';
 import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref, installClaude, startClaudeSignIn } from './ConnectOptions';
 import { Coach, type CoachGuide } from '../Tutorial/Coach';
 import { TestBrief, StartBar, EMPTY_BRIEF, briefMissing, composeBrief, type Brief, type BriefFile } from './TestBrief';
@@ -60,35 +61,35 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const briefKey = 'sf_brief_' + world;
   const [brief, setBriefState] = useState<Brief>(() => { try { return { ...EMPTY_BRIEF, ...JSON.parse(localStorage.getItem(briefKey) || '{}'), login: '' }; } catch (e) { return EMPTY_BRIEF; } });
   const setBrief = (b: Brief) => { setBriefState(b); try { localStorage.setItem(briefKey, JSON.stringify({ ...b, login: '' })); } catch (e) {} }; // logins are never stored
-  const testRunRef = useRef<{ title: string; summary: string } | null>(null);
+  const testRunRef = useRef<{ title: string; summary: string; projectId: string } | null>(null);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [projectData, setProjectData] = useState<any>(null);
+  const loadProjects = () => fetch('/api/projects').then(r => r.json()).then(j => setProjects(j.projects || [])).catch(() => {});
+  const loadProject = async (id: string) => { try { const j = await (await fetch('/api/projects/' + id)).json(); if (j.success) { setProjectData(j.project); return j.project; } } catch (e) {} return null; };
   const [showReports, setShowReports] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const h = (e: any) => { if (e.detail?.world !== world) return; if (e.detail.brief) setBrief({ ...EMPTY_BRIEF, ...e.detail.brief }); else setInput(e.detail.text || ''); if (e.detail.testMode) setTestMode(true); };
+    const h = (e: any) => {
+      if (e.detail?.world !== world) return;
+      (window as any).__sfPrefill = null;
+      if (e.detail.brief) setBrief({ ...EMPTY_BRIEF, ...e.detail.brief }); else setInput(e.detail.text || '');
+      if (e.detail.files) setFiles(e.detail.files);
+      if (e.detail.projectId) { setProjectId(e.detail.projectId); loadProject(e.detail.projectId); }
+      if (e.detail.testMode) { setTestMode(true); setMsgs([]); }
+    };
     window.addEventListener('sf-prefill-chat', h);
+    const pending = (window as any).__sfPrefill; // opened from the Projects page before this panel was mounted
+    if (active && pending?.world === world) h({ detail: { world, ...pending.detail } });
     return () => window.removeEventListener('sf-prefill-chat', h);
-  }, [world]);
+  }, [world, active]);
   useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
   const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
   useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
   const addFiles = async (list: FileList | null, kind: 'cases' | 'docs' = 'cases') => {
     if (!list) return;
-    const out: BriefFile[] = [];
-    for (const f of Array.from(list).slice(0, 10)) {
-      try {
-        if (/\.(docx|pdf|doc|xlsx|pptx)$/i.test(f.name)) {
-          if (f.size > 6_000_000) throw new Error('is too large (max 6 MB)');
-          const bytes = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          const j = await (await fetch('/api/agent/extract', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, base64: btoa(bin) }) })).json();
-          if (!j.success) throw new Error(j.message || 'could not be read');
-          out.push({ name: f.name, text: j.text, kind });
-        } else {
-          if (f.size > 300_000) throw new Error('is too large (max 300 KB). Paste the relevant part instead');
-          out.push({ name: f.name, text: await f.text(), kind });
-        }
-      } catch (e: any) { setMsgs(m => [...m, { kind: 'error', text: f.name + ' ' + (e.message || 'could not be read') }]); }
-    }
+    const out = await readBriefFiles(list, kind, (text) => setMsgs(m => [...m, { kind: 'error', text }]));
     setFiles(x => [...x, ...out].slice(0, 12));
   };
   const sessionId = useRef('sf-' + Math.random().toString(36).slice(2, 10));
@@ -223,7 +224,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
         body: JSON.stringify({
           sessionId: sessionId.current, engine, ...(engine === 'api' ? { apiKey } : {}), model, serial, mode,
           message: text,
-          ...(tm ? { testMode: { title: tm.title, summary: tm.summary, attachments: files.map(f => ({ name: f.name })) } } : {})
+          ...(tm ? { testMode: { title: tm.title, summary: tm.summary, projectId: tm.projectId, attachments: files.map(f => ({ name: f.name })) } } : {})
         })
       });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).message || `HTTP ${res.status}`);
@@ -296,10 +297,31 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const hasSentAny = msgs.some(m => m.kind === 'user');
   const formMode = testMode && !hasSentAny;
   const missing = briefMissing(brief, files, isWeb);
-  const startTest = () => {
+  useEffect(() => { if (formMode && active) loadProjects(); }, [formMode, active]);
+  const pickProject = async (id: string) => {
+    setProjectId(id);
+    if (!id) { setProjectData(null); setBrief(EMPTY_BRIEF); setFiles([]); return; }
+    const p = await loadProject(id); if (!p) return;
+    const only = p.modules.length === 1 ? p.modules[0] : null;
+    setBrief({ product: p.name, module: only?.name || '', target: (isWeb ? p.targets.web : p.targets.app) || '', login: await loadSecret(loginSecretName(id)), notes: p.notes || '', cases: only?.cases || '' });
+    setFiles([...p.docs.map((d: any) => ({ ...d, kind: 'docs' as const })), ...(only?.files || []).map((d: any) => ({ ...d, kind: 'cases' as const }))]);
+  };
+  const onModule = (name: string) => {
+    const m = projectData?.modules?.find((x: any) => x.name.toLowerCase() === name.trim().toLowerCase());
+    if (!m) return;
+    setBrief({ ...brief, module: m.name, cases: m.cases || '' });
+    setFiles(x => [...x.filter(f => f.kind === 'docs'), ...(m.files || []).map((d: any) => ({ ...d, kind: 'cases' as const }))]);
+  };
+  const startTest = async () => {
     if (missing.length) return;
-    const c = composeBrief(brief, files, isWeb);
-    testRunRef.current = { title: c.title, summary: c.summary };
+    // save (or create) the project first: brief, cases and documents are kept for next time; the login goes to the encrypted store
+    let pid = projectId, history = '';
+    try {
+      const j = await (await fetch('/api/projects/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, world: isWeb ? 'web' : 'phone', brief: { ...brief, login: undefined }, files }) })).json();
+      if (j.success) { pid = j.projectId; history = j.history || ''; setProjectId(pid); setProjectData(j.project); if (brief.login.trim()) saveSecret(loginSecretName(pid), brief.login); else if (projectId) { /* keep the saved login */ } }
+    } catch (e) {}
+    const c = composeBrief(brief, files, isWeb, history);
+    testRunRef.current = { title: c.title, summary: c.summary, projectId: pid };
     setMsgs(m => [...m, { kind: 'user', text: 'Test: ' + c.title + '\n' + brief.target.trim() }]);
     send(c.full, true);
   };
@@ -388,7 +410,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
         )}
 
         {formMode ? (
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} /></div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief projects={projects} projectId={projectId} onPickProject={pickProject} modules={(projectData?.modules || []).map((m: any) => m.name)} onModule={onModule} isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} /></div>
         ) : (
         <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (

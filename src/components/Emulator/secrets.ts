@@ -14,3 +14,13 @@ export const saveKey = async (v: string) => {
 export type SettingsSection = 'mirror' | 'emulator' | 'web' | 'ai' | 'appearance';
 export const openSettings = (section: SettingsSection = 'ai') =>
   window.dispatchEvent(new CustomEvent('sf-open-settings', { detail: section }));
+
+// Generic named secrets (project logins). Same OS-encrypted store as the API key.
+export const loadSecret = async (name: string): Promise<string> => {
+  try { if (secrets) return (await secrets.get(name)) || ''; } catch (e) {}
+  try { return localStorage.getItem('sf_secret_' + name) || ''; } catch (e) { return ''; }
+};
+export const saveSecret = async (name: string, v: string) => {
+  try { if (secrets) await secrets.set(name, v); else if (v) localStorage.setItem('sf_secret_' + name, v); else localStorage.removeItem('sf_secret_' + name); } catch (e) { try { localStorage.setItem('sf_secret_' + name, v); } catch (e2) {} }
+};
+export const loginSecretName = (projectId: string) => 'project_login_' + projectId;

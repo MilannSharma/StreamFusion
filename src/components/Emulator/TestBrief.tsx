@@ -15,12 +15,13 @@ export const briefMissing = (b: Brief, files: BriefFile[], isWeb: boolean): stri
 };
 
 // What the agent receives. Logins and attached documents go to the AI but never into the saved report.
-export function composeBrief(b: Brief, files: BriefFile[], isWeb: boolean) {
+export function composeBrief(b: Brief, files: BriefFile[], isWeb: boolean, history = '') {
   const cases = files.filter(f => f.kind === 'cases'), docs = files.filter(f => f.kind === 'docs');
   const head = `# Test brief\nProduct: ${b.product.trim()}\nFeature / module: ${b.module.trim()}\n${isWeb ? 'URL(s)' : 'App (name or package)'}: ${b.target.trim()}`;
   const summary = head + (b.cases.trim() ? '\n\n## Test cases\n' + b.cases.trim().slice(0, 1800) : '') + (cases.length ? '\n\nTest case files: ' + cases.map(f => f.name).join(', ') : '');
   const full = head
     + (b.login.trim() ? '\n\n## Login / credentials (use these when the app or site asks to sign in)\n' + b.login.trim() : '')
+    + (history ? '\n\n## What earlier runs of this project found (use as context, re-verify fixed items)\n' + history : '')
     + (b.notes.trim() ? '\n\n## PRD / notes / environment\n' + b.notes.trim() : '')
     + (b.cases.trim() ? '\n\n## Test cases\n' + b.cases.trim() : '')
     + cases.map(f => '\n\n## Test cases from file: ' + f.name + '\n' + f.text).join('')
@@ -34,11 +35,12 @@ const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', paddi
 const chip: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 6, padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5 };
 
 interface Props {
+  projects: { id: string; name: string }[]; projectId: string; onPickProject: (id: string) => void; modules: string[]; onModule: (name: string) => void;
   isWeb: boolean; brief: Brief; setBrief: (b: Brief) => void; files: BriefFile[];
   addFiles: (list: FileList | null, kind: 'cases' | 'docs') => void; removeFile: (i: number) => void;
 }
 
-export const TestBrief: React.FC<Props> = ({ isWeb, brief, setBrief, files, addFiles, removeFile }) => {
+export const TestBrief: React.FC<Props> = ({ projects, projectId, onPickProject, modules, onModule, isWeb, brief, setBrief, files, addFiles, removeFile }) => {
   const casesRef = useRef<HTMLInputElement>(null), docsRef = useRef<HTMLInputElement>(null);
   const set = (k: keyof Brief) => (e: React.ChangeEvent<any>) => setBrief({ ...brief, [k]: e.target.value });
   const accept = '.txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.feature,.docx';
@@ -47,9 +49,17 @@ export const TestBrief: React.FC<Props> = ({ isWeb, brief, setBrief, files, addF
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#4f46e5', fontWeight: 800, fontSize: 13.5 }}><FlaskConical size={15} /> Test brief</div>
       <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)', lineHeight: 1.5, marginTop: -4 }}>The test starts only when the fields marked * are filled. The better the brief, the better the report.</div>
+      <div>
+        <div style={lbl}>Project</div>
+        <select style={{ ...inp, resize: 'none' }} value={projectId} onChange={e => onPickProject(e.target.value)}>
+          <option value="">New project (saved automatically when you start)</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>{projectId ? 'Everything saved for this project is filled in. Change anything, or just press Start.' : 'Everything you enter here is saved as a project, so you do not type it again next time.'}</div>
+      </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Product name *</div><input style={inp} value={brief.product} onChange={set('product')} placeholder="e.g. Rysen HQ" /></div>
-        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Feature / module *</div><input style={inp} value={brief.module} onChange={set('module')} placeholder="e.g. Login, Fee collection" /></div>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Feature / module *</div><input style={inp} list="sf-modules" value={brief.module} onChange={e => { setBrief({ ...brief, module: e.target.value }); onModule(e.target.value); }} placeholder="e.g. Login, Fee collection" /><datalist id="sf-modules">{modules.map(m => <option key={m} value={m} />)}</datalist></div>
       </div>
       <div><div style={lbl}>{isWeb ? 'URL(s) to test *' : 'App to test *'}</div><input style={inp} value={brief.target} onChange={set('target')} placeholder={isWeb ? 'https://staging.example.com (one or more, comma separated)' : 'App name or package, e.g. com.example.app (installed on the phone)'} /></div>
       <div>
@@ -61,7 +71,7 @@ export const TestBrief: React.FC<Props> = ({ isWeb, brief, setBrief, files, addF
           <input ref={casesRef} type="file" multiple accept={accept} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files, 'cases'); e.target.value = ''; }} />
         </div>
       </div>
-      <div><div style={lbl}>Login / credentials <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>optional, not saved in the report</span></div>
+      <div><div style={lbl}>Login / credentials <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>optional. Saved encrypted on this PC with the project, never in reports</span></div>
         <textarea style={{ ...inp, minHeight: 52 }} value={brief.login} onChange={set('login')} placeholder={'admin: admin@example.com / password123\nteacher: t@example.com / password456'} /></div>
       <div>
         <div style={lbl}>PRD / extra notes <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>optional: requirements, environment, known issues</span></div>
