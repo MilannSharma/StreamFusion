@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert } from 'lucide-react';
+import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power } from 'lucide-react';
+import type { EmulatorApi } from './useEmulator';
+import { PowerPanel, startEmulator } from './PowerControl';
 
 interface AgentPanelProps {
-  serial: string;
-  connected: boolean;
+  emu: EmulatorApi;
 }
 
 type Msg =
@@ -11,6 +12,7 @@ type Msg =
   | { kind: 'agent'; text: string }
   | { kind: 'tool'; id: string; name: string; input: any; state: 'running' | 'ok' | 'error'; summary?: string }
   | { kind: 'approval'; id: string; name: string; input: any; answered?: 'allowed' | 'denied' }
+  | { kind: 'startPrompt'; pending: string; state: 'ask' | 'starting' | 'cancelled' }
   | { kind: 'info'; text: string }
   | { kind: 'error'; text: string };
 
@@ -35,7 +37,9 @@ const saveKey = async (v: string) => {
 const border = '1px solid var(--border-color, #e2e8f0)';
 const card: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 12 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
+  const serial = emu.status.serial || 'emulator-5554';
+  const connected = emu.phase === 'running';
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,12 +51,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => 
   const [showSettings, setShowSettings] = useState(false);
   const [mcp, setMcp] = useState<{ claudeCode: string; json: string } | null>(null);
   const [copied, setCopied] = useState('');
+  const [pending, setPending] = useState<string | null>(null);
   const sessionId = useRef('sf-' + Math.random().toString(36).slice(2, 10));
   const abortRef = useRef<AbortController | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadKey().then((k) => { setApiKey(k); if (!k) setShowSettings(true); }); }, []);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs]);
   useEffect(() => { try { localStorage.setItem('sf_agent_model', model); } catch (e) {} }, [model]);
 
   // ---------- live phone screen (polls a downscaled screenshot; click = tap) ----------
@@ -90,12 +95,23 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => 
   const phoneBtn = (key: string) => callTool('key', { key });
 
   // ---------- chat ----------
-  const send = useCallback(async () => {
-    const text = input.trim();
+  const send = useCallback(async (override?: string, alreadyShown?: boolean) => {
+    const text = (override ?? input).trim();
     if (!text || busy) return;
     if (!apiKey) { setShowSettings(true); return; }
-    setInput(''); setBusy(true);
-    setMsgs(m => [...m, { kind: 'user', text }]);
+    setInput('');
+    if (!alreadyShown) setMsgs(m => [...m, { kind: 'user', text }]);
+    if (emu.phase === 'not_installed' || emu.phase === 'installing') {
+      setMsgs(m => [...m, { kind: 'info', text: emu.phase === 'installing' ? 'The emulator is still installing. Send again when it finishes.' : 'The emulator is not installed yet. Use the Install button on the phone, then send again.' }]);
+      return;
+    }
+    if (!connected) {
+      // Emulator is off: ask in chat instead of failing
+      setMsgs(m => [...m, { kind: 'startPrompt', pending: text, state: emu.phase === 'booting' ? 'starting' : 'ask' }]);
+      if (emu.phase === 'booting') setPending(text);
+      return;
+    }
+    setBusy(true);
     const ac = new AbortController(); abortRef.current = ac;
     try {
       const res = await fetch('/api/agent/chat', {
@@ -112,7 +128,32 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => 
     } catch (e: any) {
       if (e?.name !== 'AbortError') setMsgs(m => [...m, { kind: 'error', text: e.message || String(e) }]);
     } finally { setBusy(false); abortRef.current = null; }
-  }, [input, busy, apiKey, model, serial, mode]);
+  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase]);
+
+  useEffect(() => {
+    if (pending && connected && !busy) {
+      const t = pending; setPending(null);
+      setMsgs(m => [...m, { kind: 'info', text: 'Emulator is ready. Running your request…' }]);
+      send(t, true);
+    }
+  }, [pending, connected, busy, send]);
+
+  useEffect(() => {
+    if (!pending || connected || emu.phase === 'booting' || emu.busy) return;
+    const t = setTimeout(() => {
+      setPending(null);
+      setMsgs(m => m.map(x => x.kind === 'startPrompt' && x.state === 'starting' ? { ...x, state: 'cancelled' } : x));
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [pending, connected, emu.phase, emu.busy]);
+
+  const startFromChat = async (idx: number, text: string) => {
+    setMsgs(m => m.map((x, i) => i === idx && x.kind === 'startPrompt' ? { ...x, state: 'starting' } : x));
+    setPending(text);
+    const ok = await startEmulator(emu);
+    if (!ok) { setPending(null); setMsgs(m => m.map((x, i) => i === idx && x.kind === 'startPrompt' ? { ...x, state: 'ask' } : x)); }
+  };
+  const cancelStart = (idx: number) => { setPending(null); setMsgs(m => m.map((x, i) => i === idx && x.kind === 'startPrompt' ? { ...x, state: 'cancelled' } : x)); };
 
   const handleEvent = (ev: any) => {
     if (ev.type === 'text') setMsgs(m => [...m, { kind: 'agent', text: ev.text }]);
@@ -147,14 +188,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => 
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
   return (
-    <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 290px)', minHeight: 520 }}>
+    <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 440, maxHeight: 'calc(100vh - 300px)' }}>
       {/* ---------- left: chat ---------- */}
       <div style={{ ...card, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: border, flexWrap: 'wrap' }}>
-          <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border }}>
+          <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
             {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
-          <select value={mode} onChange={e => setMode(e.target.value as any)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border }} title="Dangerous actions: shell, uninstall, clear data, install APK">
+          <select value={mode} onChange={e => setMode(e.target.value as any)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }} title="Dangerous actions: shell, uninstall, clear data, install APK">
             <option value="ask">Ask before risky actions</option>
             <option value="auto">Auto (no prompts)</option>
           </select>
@@ -188,26 +229,25 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => 
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: 13, maxWidth: 340, lineHeight: 1.6 }}>
-              {connected ? 'Tell the agent what to test. For example:' : 'Start the emulator first (Emulator & APK Testing tab).'}
+              {connected ? 'Tell the agent what to test. For example:' : 'The emulator is off. Power it on from the phone on the right, or just send an instruction and I will ask.'}
               {connected && <div style={{ marginTop: 8, fontStyle: 'italic' }}>"Open Settings, search for Wi-Fi and tell me what you see"</div>}
             </div>
           )}
-          {msgs.map((m, i) => <Bubble key={i} m={m} onAnswer={answer} />)}
+          {msgs.map((m, i) => <Bubble key={i} m={m} onAnswer={answer} onStart={() => m.kind === 'startPrompt' && startFromChat(i, m.pending)} onCancelStart={() => cancelStart(i)} />)}
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
-          <div ref={endRef} />
         </div>
 
         <div style={{ padding: 10, borderTop: border, display: 'flex', gap: 8 }}>
-          <textarea value={input} onChange={e => setInput(e.target.value)} rows={2} disabled={!connected}
+          <textarea value={input} onChange={e => setInput(e.target.value)} rows={2}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder={connected ? 'Instruction for the agent… (Enter to send, Shift+Enter for new line)' : 'Emulator is not connected'}
+            placeholder="Instruction for the agent… (Enter to send, Shift+Enter for new line)"
             style={{ flex: 1, resize: 'none', padding: '8px 10px', borderRadius: 10, border, fontSize: 13, fontFamily: 'inherit' }} />
           {busy
             ? <button onClick={stop} style={{ ...primaryBtn, background: '#dc2626' }}><Square size={14} /> Stop</button>
-            : <button onClick={send} disabled={!input.trim() || !connected} style={primaryBtn}><Send size={14} /> Send</button>}
+            : <button onClick={() => send()} disabled={!input.trim()} style={primaryBtn}><Send size={14} /> Send</button>}
         </div>
       </div>
 
@@ -217,7 +257,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ serial, connected }) => 
           {shot
             ? <img ref={imgRef} src={shot} onClick={onScreenClick} alt="Device screen" draggable={false}
                 style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 24, cursor: 'pointer', display: 'block' }} />
-            : <div style={{ color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center' }}>{connected ? 'Loading screen…' : 'Emulator offline'}</div>}
+            : connected
+              ? <div style={{ color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center' }}>Loading screen…</div>
+              : <PowerPanel emu={emu} dark />}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {[['Back', 'back'], ['Home', 'home'], ['Recents', 'recent']].map(([l, k]) => (
@@ -240,7 +282,21 @@ const CodeLine: React.FC<{ text: string; onCopy: () => void; done: boolean; mult
   </div>
 );
 
-const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void }> = ({ m, onAnswer }) => {
+const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void; onStart: () => void; onCancelStart: () => void }> = ({ m, onAnswer, onStart, onCancelStart }) => {
+  if (m.kind === 'startPrompt') return (
+    <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: 12, fontSize: 13, alignSelf: 'flex-start', maxWidth: '92%' }}>
+      <div style={{ fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>The emulator is off.</div>
+      {m.state === 'ask' && <>
+        <div style={{ color: '#475569', marginBottom: 8 }}>Power it on and I will run your request as soon as it is ready (about 1–2 minutes).</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onStart} style={{ ...primaryBtn, padding: '6px 14px' }}><Power size={14} /> Power on &amp; continue</button>
+          <button onClick={onCancelStart} style={{ ...iconBtn, padding: '6px 14px' }}>Not now</button>
+        </div>
+      </>}
+      {m.state === 'starting' && <div style={{ color: '#475569' }}>Starting… I will continue automatically. <button onClick={onCancelStart} style={{ ...iconBtn, padding: '2px 8px', marginLeft: 6 }}>Cancel</button></div>}
+      {m.state === 'cancelled' && <div style={{ color: '#64748b' }}>Cancelled. Power on the emulator from the phone panel, then send again.</div>}
+    </div>
+  );
   if (m.kind === 'user') return <div style={{ alignSelf: 'flex-end', maxWidth: '85%', background: '#4f46e5', color: '#fff', padding: '8px 12px', borderRadius: '14px 14px 4px 14px', fontSize: 13, whiteSpace: 'pre-wrap' }}>{m.text}</div>;
   if (m.kind === 'agent') return <div style={{ alignSelf: 'flex-start', maxWidth: '92%', background: 'var(--bg-muted, #f1f5f9)', padding: '8px 12px', borderRadius: '14px 14px 14px 4px', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.text}</div>;
   if (m.kind === 'info') return <div style={{ alignSelf: 'center', fontSize: 11.5, color: 'var(--text-muted, #64748b)' }}>{m.text}</div>;
