@@ -28,6 +28,9 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
   }, [active]);
 
   const open = !!status?.open;
+  // A freshly opened browser starts on Google instead of a blank page
+  const homed = useRef(false);
+  useEffect(() => { if (!open) homed.current = false; else if (url === 'about:blank' && !homed.current && !editing) { homed.current = true; tool('web_navigate', { url: 'https://www.google.com' }); } }, [open, url, editing]);
   useEffect(() => {
     if (!active || !open) { setShot(''); return; }
     let stop = false; let last = '';
@@ -48,7 +51,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
     return () => { stop = true; };
   }, [active, open, busy, editing]);
 
-  const go = async () => { setErr(''); const r = await tool('web_navigate', { url: url.trim() || 'about:blank' }); if (!r.ok) setErr(r.error || 'Failed'); setEditing(false); };
+  const go = async () => { setErr(''); const q = url.trim(); const r = await tool('web_navigate', { url: !q ? 'https://www.google.com' : /^[a-z]+:/i.test(q) || /^[\w-]+(\.[\w-]+)+(\/|$)/.test(q) ? q : 'https://www.google.com/search?q=' + encodeURIComponent(q) }); if (!r.ok) setErr(r.error || 'Failed'); setEditing(false); };
   const onClick = (e: React.MouseEvent<HTMLImageElement>) => {
     // the image is letterboxed (object-fit: contain), so map through the drawn area
     const r = e.currentTarget.getBoundingClientRect();
@@ -88,7 +91,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'back' })} title="Back"><ArrowLeft size={14} /></button>
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'forward' })} title="Forward"><ArrowRight size={14} /></button>
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'reload' })} title="Reload"><RotateCw size={14} /></button>
-        <input value={url} placeholder="Enter a URL and press Enter" onFocus={() => setEditing(true)} onBlur={() => setEditing(false)}
+        <input value={url} placeholder="Search or enter a URL" onFocus={() => setEditing(true)} onBlur={() => setEditing(false)}
           onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }}
           style={{ flex: 1, minWidth: 160, padding: '6px 12px', borderRadius: 999, border, fontSize: 12.5, background: 'var(--glass-soft, #f1f5f9)', color: 'var(--text-main)', outline: 'none' }} />
         <select value={status.device || ''} onChange={e => post('config', { device: e.target.value })} style={{ ...btn, width: 'auto' }} title="Device emulation">
@@ -105,7 +108,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
           : <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
               <Globe size={28} />
               <div>{open ? 'Loading…' : 'Browser is closed'}</div>
-              {!open && <button style={{ ...btn, background: '#4f46e5', color: '#fff', border: 'none', padding: '8px 16px', fontWeight: 700 }} onClick={() => tool('web_navigate', { url: 'about:blank' })}>Open browser</button>}
+              {!open && <button style={{ ...btn, background: '#4f46e5', color: '#fff', border: 'none', padding: '8px 16px', fontWeight: 700 }} onClick={() => tool('web_navigate', { url: 'https://www.google.com' })}>Open browser</button>}
             </div>}
       </div>
       <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Click, scroll and type here to control the page. The agent uses the same browser.</div>
