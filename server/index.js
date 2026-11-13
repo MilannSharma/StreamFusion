@@ -10,6 +10,7 @@ import { createSettingsRouter } from './routes/settings.js';
 import { createFilesRouter } from './routes/files.js';
 import { createDiagnosticsRouter } from './routes/diagnostics.js';
 import { createNotificationsRouter } from './routes/notifications.js';
+import { friendlyApp } from './routes/appnames.js';
 import { createEmulatorRouter } from './emulator/router.js';
 import { createDeviceRouter } from './device/router.js';
 import { createAgentRouter } from './agent/router.js';
@@ -96,7 +97,7 @@ const savedDevicesFile = path.join(dataDir, 'saved_devices.json');
 // Mount centralized routers
 app.use('/api/settings', createSettingsRouter(dataDir));
 app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
-app.use('/api/notifications', createNotificationsRouter({ runAdb }));
+app.use('/api/notifications', createNotificationsRouter({ runAdb, dataDir }).startWatcher());
 app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
 const mcpActivity = createMcpActivity();
 app.use(mcpActivity.middleware);
@@ -566,9 +567,7 @@ app.get('/api/devices/:serial/apps', async (req, res) => {
         const [pkg, act] = line.split('/');
         if (pkg && !seenPackages.has(pkg)) {
           seenPackages.add(pkg);
-          const parts = pkg.split('.');
-          let label = parts[parts.length - 1];
-          label = label.charAt(0).toUpperCase() + label.slice(1);
+          const label = friendlyApp(pkg);
           apps.push({
             package: pkg,
             activity: act,

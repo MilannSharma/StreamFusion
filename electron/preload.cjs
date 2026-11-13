@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
   showNotification: (data) => ipcRenderer.send('show-notification', data),
+  getAutostart: () => ipcRenderer.invoke('autostart:get'),
+  setAutostart: (on) => ipcRenderer.invoke('autostart:set', on),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   restartAndInstallUpdate: () => ipcRenderer.send('restart-and-install-update'),
   openMirrorToolbar: (data) => ipcRenderer.send('open-mirror-toolbar', data),

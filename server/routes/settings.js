@@ -14,6 +14,7 @@ export function createSettingsRouter(dataDir) {
     screenOffMirror: false,
     stayAwake: true,
     clipboardSync: true,
+    notificationMirroring: true,
     downloadDir: defaultDownloadDir,
     autoUpdateCheck: true
   };

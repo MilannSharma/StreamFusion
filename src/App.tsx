@@ -36,6 +36,8 @@ declare global {
       getPathForFile?: (file: any) => string;
       showOpenDialog?: (options: any) => Promise<any>;
       showNotification?: (data: { title: string; body: string }) => void;
+      getAutostart?: () => Promise<boolean>;
+      setAutostart?: (on: boolean) => Promise<boolean>;
       checkForUpdates?: () => void;
       restartAndInstallUpdate?: () => void;
       onUpdaterStatus?: (cb: (status: any) => void) => () => void;
@@ -463,7 +465,7 @@ export default function App() {
     screenOffMirror: false,
     stayAwake: true,
     clipboardSync: true,
-    notificationMirroring: false,
+    notificationMirroring: true,
     autoUpdateCheck: true
   });
 
@@ -656,31 +658,9 @@ export default function App() {
     return mirrorStatus.isMirroring && mirrorStatus.device?.serial === serial;
   };
 
-  // Background Android notification forwarding to Desktop (Phase 2.2)
-  useEffect(() => {
-    if (!appSettings.notificationMirroring || devices.length === 0) return;
-    const targetSerial = selectedDevice?.serial || devices[0]?.serial;
-    if (!targetSerial) return;
-
-    const notifInterval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/notifications?serial=${targetSerial}`);
-        const data = await res.json();
-        if (data.success && data.notifications) {
-          data.notifications.forEach((n: any) => {
-            if (n.isNew) {
-              window.electronAPI?.showNotification?.({
-                title: `Phone (${n.pkg.split('.').pop()}): ${n.title}`,
-                body: n.text
-              });
-            }
-          });
-        }
-      } catch (e) {}
-    }, 8000);
-
-    return () => clearInterval(notifInterval);
-  }, [appSettings.notificationMirroring, selectedDevice, devices]);
+  const [autostart, setAutostart] = useState(false);
+  useEffect(() => { window.electronAPI?.getAutostart?.().then(v => setAutostart(!!v)).catch(() => {}); }, []);
+  // Phone notifications are watched by the server and shown by the desktop shell (main process), so they keep arriving while the window is in the tray.
 
   // Alert on phone plug-in / connection (Phase 1.3)
   const prevDeviceCountRef = React.useRef(0);
@@ -1951,7 +1931,12 @@ export default function App() {
                       checked={appSettings.notificationMirroring}
                       onChange={e => updateAppSetting('notificationMirroring', e.target.checked)}
                     />
-                    Mirror Phone Notifications to Windows Desktop Alerts
+                    Show phone notifications as Windows alerts (works while the window is closed to the tray)
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={autostart} onChange={async e => { const on = e.target.checked; setAutostart(on); await window.electronAPI?.setAutostart?.(on); }} />
+                    Start StreamFusion with Windows (hidden in the tray, so alerts arrive even after a restart)
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer' }}>

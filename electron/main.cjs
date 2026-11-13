@@ -11,6 +11,7 @@ let serverProcess = null;
 let logFd = null;
 let tray = null;
 let isQuitting = false;
+const startHidden = process.argv.includes('--hidden'); // started by Windows at login: tray only, no window
 
 const PORT = 3001;
 const isDev = !app.isPackaged;
@@ -145,7 +146,7 @@ function createWindow() {
 
   // Reveal window smoothly once painted to avoid white flashes
   mainWindow.once('ready-to-show', () => {
-    if (mainWindow) mainWindow.show();
+    if (mainWindow && !startHidden) mainWindow.show();
   });
 
   // Diagnostic logging for load issues
@@ -215,6 +216,10 @@ function createWindow() {
     }
   });
 
+  // Start with Windows (hidden in the tray), so phone notifications keep arriving without opening the app
+  ipcMain.handle('autostart:get', () => { try { return app.getLoginItemSettings().openAtLogin; } catch (e) { return false; } });
+  ipcMain.handle('autostart:set', (event, on) => { try { app.setLoginItemSettings({ openAtLogin: !!on, args: ['--hidden'] }); return true; } catch (e) { return false; } });
+
   // Attached Floating Navigation Toolbar IPC
   ipcMain.on('open-mirror-toolbar', (event, data) => {
     openMirrorToolbar(data || {});
@@ -277,7 +282,7 @@ function createTray() {
   try {
     const iconPath = path.join(__dirname, '../StreamFusion.png');
     tray = new Tray(iconPath);
-    tray.setToolTip('StreamFusion v3.1.0');
+    tray.setToolTip('StreamFusion v' + app.getVersion());
 
     const contextMenu = Menu.buildFromTemplate([
       {
@@ -378,10 +383,39 @@ function cleanExit() {
   }
 }
 
+// Phone notifications -> native Windows notifications. This runs in the main process, which keeps running while the window
+// is hidden in the tray (the page's own timers are throttled or paused then). The server does the watching (adb) and keeps a queue.
+function startNotificationBridge() {
+  let last = null;
+  const poll = () => {
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/notifications/queue?after=' + (last || 0), timeout: 2500 }, (res) => {
+      let body = '';
+      res.on('data', d => { body += d; });
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(body);
+          if (last === null || j.lastSeq < last) { last = j.lastSeq; return; } // first call, or the server restarted: only new ones from now on
+          for (const n of j.items || []) {
+            last = Math.max(last, n.seq);
+            if (!Notification.isSupported()) continue;
+            const note = new Notification({ title: n.title || n.app, subtitle: n.app, body: n.text || '', icon: path.join(__dirname, '../StreamFusion.png') });
+            note.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+            note.show();
+          }
+        } catch (e) {}
+      });
+    });
+    req.on('error', () => {}); req.on('timeout', () => req.destroy());
+  };
+  setInterval(poll, 3000);
+}
+
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.milannsharma.streamfusion'); // lets Windows show our toasts under the app's name
   await startBackendIfNeeded();
   createWindow();
   createTray();
+  startNotificationBridge();
 
   if (!isDev) {
     try {
