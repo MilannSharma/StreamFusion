@@ -98,7 +98,9 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
   if (!apiKey) return emit({ type: 'error', message: 'No API key set. Add your Anthropic API key in the chat settings.' });
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const anthropicTools = toAnthropicTools(tools);
-  const worldPrompt = WORLD_PROMPT[world] || '';
+  const worldPrompt = (WORLD_PROMPT[world] || '') + (world === 'phone' && !/^emulator-/.test(String(serial || '')) ? `
+
+The user chose their REAL phone (serial ${serial}). Work only on it and never start the Android emulator.` : '');
   let run = null;
   if (testMode) {
     let deviceInfo = null;

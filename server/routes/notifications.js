@@ -24,6 +24,8 @@ export function parseNotifications(output) {
   return out;
 }
 
+import { phoneInUse } from '../device/activity.js';
+
 export function createNotificationsRouter({ runAdb, dataDir }) {
   const router = express.Router();
   const seenNotificationKeys = new Set();
@@ -52,10 +54,13 @@ export function createNotificationsRouter({ runAdb, dataDir }) {
   const state = new Map(); // serial -> Map(key -> signature); a serial is "baselined" once it has an entry
   const enabled = () => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8')).notificationMirroring === true; } catch (e) { return false; } };
   const idCache = new Map(); // adb serial -> hardware serial, so one phone connected by USB and Wi-Fi alerts once
-  let busy = false, timer = null;
+  let busy = false, timer = null, lastScan = 0, lastCost = 0;
   async function tick() {
     if (busy || !enabled()) { if (!enabled()) state.clear(); return; }
-    busy = true;
+    // never compete with the live screen or the agent on a slow phone, and wait longer when the phone answers slowly
+    const gap = Math.max(phoneInUse() ? 45000 : 8000, lastCost * 4);
+    if (Date.now() - lastScan < gap) return;
+    busy = true; lastScan = Date.now();
     try {
       const d = await runAdb(['devices'], 4000);
       const serials = String(d.output || '').split(/\r?\n/).slice(1).map(l => l.trim().split(/\s+/)).filter(p => p[1] === 'device').map(p => p[0]).filter(s => !/^emulator-/.test(s));
@@ -80,6 +85,7 @@ export function createNotificationsRouter({ runAdb, dataDir }) {
       }
       for (const s of [...state.keys()]) if (!unique.includes(s)) state.delete(s);
     } catch (e) {}
+    lastCost = Date.now() - lastScan;
     busy = false;
   }
   router.startWatcher = () => { if (!timer) timer = setInterval(tick, 4000); return router; };

@@ -203,6 +203,15 @@ export function createTools({ runAdb, adbExe, cwd }) {
     return res(await sh(a.serial, `input keyevent ${code}`));
   });
 
+  def('wake_screen', 'Turn the phone screen on if it is off (a sleeping screen shows nothing). Dismisses a swipe-only lock screen. Safe to call any time.', {}, [], async (a) => {
+    const r = await sh(a.serial, 'dumpsys power | grep -m1 mWakefulness=', 8000);
+    const asleep = /Asleep|Dozing/i.test(r.output || '');
+    if (asleep) { await sh(a.serial, 'input keyevent 224', 5000); await new Promise(x => setTimeout(x, 600)); }
+    await sh(a.serial, 'wm dismiss-keyguard', 5000); // no effect on PIN / pattern locks
+    const k = await sh(a.serial, 'dumpsys window | grep -m1 -E "mDreamingLockscreen|isKeyguardShowing"', 8000);
+    return { ok: true, wasAsleep: asleep, locked: /mDreamingLockscreen=true|isKeyguardShowing=true/.test(k.output || '') };
+  });
+
   // ---- apps ----
   def('list_apps', 'List installed third-party apps.', {}, [], async (a) => {
     const r = await sh(a.serial, 'pm list packages -3');

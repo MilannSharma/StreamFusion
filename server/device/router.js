@@ -1,6 +1,7 @@
 import express from 'express';
 import { spawn } from 'child_process';
 import { createTools } from './tools.js';
+import { activity } from './activity.js';
 
 // REST face of the device tool registry: GET /api/device/tools, POST /api/device/tool/:name
 export function createDeviceRouter({ runAdb, adbExe, scrcpyBin }) {
@@ -14,6 +15,7 @@ export function createDeviceRouter({ runAdb, adbExe, scrcpyBin }) {
   router.post('/tool/:name', async (req, res) => {
     const tool = TOOLS[req.params.name];
     if (!tool) return res.status(404).json({ ok: false, error: 'Unknown tool' });
+    activity.lastTool = Date.now();
     const args = req.body || {};
     if (!/^[\w.:-]+$/.test(String(args.serial || ''))) return res.status(400).json({ ok: false, error: 'serial is required' });
     for (const k of tool.inputSchema.required) {
@@ -25,6 +27,7 @@ export function createDeviceRouter({ runAdb, adbExe, scrcpyBin }) {
 
   // Convenience for <img src>: /api/device/screenshot.png?serial=emulator-5554
   router.get('/screenshot.png', async (req, res) => {
+    activity.lastTool = Date.now();
     const r = await TOOLS.screenshot.handler({ serial: String(req.query.serial || ''), maxDim: req.query.maxDim });
     if (!r.ok) return res.status(500).json(r);
     res.type('png').send(Buffer.from(r.imageBase64, 'base64'));
@@ -38,6 +41,8 @@ export function createDeviceRouter({ runAdb, adbExe, scrcpyBin }) {
     const w = Math.max(16, Math.min(1080, parseInt(req.query.w, 10) || 540)), h = Math.max(16, Math.min(2400, parseInt(req.query.h, 10) || 1204));
     const bit = Math.max(1, Math.min(12, Number(req.query.mbps) || 4)) * 1000000;
     const p = spawn(adbExe, ['-s', serial, 'exec-out', 'screenrecord', '--output-format=h264', '--size', w + 'x' + h, '--bit-rate', String(bit), '--time-limit', '180', '-'], { cwd: scrcpyBin, windowsHide: true });
+    activity.streams++; let counted = true; const uncount = () => { if (counted) { counted = false; activity.streams = Math.max(0, activity.streams - 1); } };
+    p.on('close', uncount); p.on('error', uncount); res.on('close', uncount);
     res.setHeader('Content-Type', 'video/h264'); res.setHeader('Cache-Control', 'no-store');
     let got = 0, err = '';
     p.stdout.on('data', (d) => { got += d.length; res.write(d); });

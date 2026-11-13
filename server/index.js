@@ -191,6 +191,7 @@ function runAdb(args, timeoutMs = 8000) {
 }
 
 // 1. GET /api/devices
+const devInfoCache = new Map(); // serial -> { at, dev }
 app.get('/api/devices', async (req, res) => {
   const result = await runAdb(['devices', '-l'], 4000);
   if (!result.success && !result.output) {
@@ -256,7 +257,11 @@ app.get('/api/devices', async (req, res) => {
       ipAddress: isWifi ? serial.split(':')[0] : ''
     };
 
-    if (state === 'device') {
+    // The app asks for this list every few seconds; 8 adb shell calls each time swamp a slow phone, so a phone's details are reused for 60 s
+    const cachedInfo = devInfoCache.get(serial);
+    const usedCache = state === 'device' && cachedInfo && Date.now() - cachedInfo.at < 60000;
+    if (usedCache) Object.assign(dev, cachedInfo.dev);
+    else if (state === 'device') {
       try {
         const [devNameRes, btNameRes, marketRes, modRes, verRes, batRes, wmRes] = await Promise.all([
           runAdb(['-s', serial, 'shell', 'settings', 'get', 'global', 'device_name'], 2000),
@@ -318,6 +323,7 @@ app.get('/api/devices', async (req, res) => {
       } catch (e) {}
     }
 
+    if (state === 'device' && !usedCache && dev.androidVersion) devInfoCache.set(serial, { at: Date.now(), dev: { ...dev } });
     devices.push(dev);
   }
 

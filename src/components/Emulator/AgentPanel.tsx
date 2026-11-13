@@ -125,6 +125,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [live, setLive] = useState<'try' | 'on' | 'off'>(canLiveStream() ? 'try' : 'off');
   useEffect(() => { setLive(canLiveStream() ? 'try' : 'off'); }, [serial]);
 
+  const [wakeNote, setWakeNote] = useState('');
+  useEffect(() => { // a sleeping phone sends no picture at all: turn it on first
+    if (!connected || isWeb || /^emulator-/.test(serial)) return;
+    let dead = false;
+    fetch('/api/device/tool/wake_screen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial }) })
+      .then(r => r.json()).then(j => { if (!dead) setWakeNote(j.ok && j.locked ? 'The phone is locked. Unlock it to see its screen.' : ''); }).catch(() => {});
+    return () => { dead = true; };
+  }, [connected, serial, isWeb]);
+
   useEffect(() => {
     if (!connected) return;
     fetch('/api/device/tool/device_info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial }) })
@@ -132,7 +141,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   }, [connected, serial]);
 
   useEffect(() => {
-    if (!connected || !active || isWeb || live !== 'off') { if (live === 'off' || !connected || !active || isWeb) setShot(''); return; } // the live stream replaces screenshot polling
+    if (!connected || !active || isWeb || live === 'on') { if (!connected || !active || isWeb) setShot(''); return; } // a playing live stream replaces screenshot polling; while it is still starting, a screenshot is shown so the phone never looks empty
     let stop = false; let last = '';
     (async () => {
       while (!stop) {
@@ -495,7 +504,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             ? <img ref={imgRef} src={shot} onPointerDown={onPointerDown} onPointerUp={onPointerUp} alt="Device screen" draggable={false}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer', display: 'block', touchAction: 'none', userSelect: 'none' }} />
             : connected
-              ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center', pointerEvents: 'none' }}>Loading screen…</div>
+              ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center', pointerEvents: 'none' }}>{wakeNote || 'Loading screen…'}</div>
               : <PowerPanel emu={emu} dark />}
                 <span style={{ position: 'absolute', top: '2.2cqw', left: '50%', transform: 'translateX(-50%)', width: '25cqw', height: '7.2cqw', borderRadius: '4cqw', background: '#000', pointerEvents: 'none', boxShadow: '0 0 0 0.2cqw #0c0c0e' } as any}><i style={{ position: 'absolute', right: '2.2cqw', top: '50%', transform: 'translateY(-50%)', width: '3.4cqw', height: '3.4cqw', borderRadius: '50%', background: 'radial-gradient(circle at 35% 35%,#2b3a67,#0a0d18 70%)' }} /></span>
               </div>

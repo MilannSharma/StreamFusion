@@ -14,14 +14,18 @@ export function createAgentRouter({ tools }) {
   // A chat belongs to one world: the browser page only gets web_* tools, the phone page only device tools.
   const isWebTool = (n) => n.startsWith('web_');
   const worldTools = (world) => (world === 'web' ? Object.fromEntries(Object.entries(tools).filter(([n]) => isWebTool(n))) : world === 'phone' ? Object.fromEntries(Object.entries(tools).filter(([n]) => !isWebTool(n))) : tools);
-  const otherWorldNames = (world) => (world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'phone' ? Object.keys(tools).filter(isWebTool) : []);
+  const isRealPhone = (serial) => !/^emulator-/.test(String(serial || ''));
+  const REAL_PHONE = (serial) => `
+
+The user chose their REAL phone (serial ${serial}). Work only on it: pass serial "${serial}" to every device tool. Never call emulator_start, emulator_status or emulator_stop and never start the Android emulator.`;
+  const otherWorldNames = (world, serial) => (world === 'phone' && isRealPhone(serial) ? Object.keys(tools).filter(isWebTool).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'phone' ? Object.keys(tools).filter(isWebTool) : []);
   const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
   const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status }); };
 
   router.get('/models', (req, res) => res.json({ success: true, models: MODELS }));
 
   // NDJSON stream: one JSON event per line. Closing the connection stops the agent.
-  router.post('/chat', async (req, res) => {
+  const chatHandler = async (req, res) => {
     const b = req.body || {};
     if (!b.message || !b.sessionId || !/^[\w.:-]+$/.test(String(b.serial || ''))) {
       return res.status(400).json({ success: false, message: 'sessionId, message and serial are required' });
@@ -44,7 +48,7 @@ export function createAgentRouter({ tools }) {
       }
       let reason = 'complete';
       const wrap = (ev) => { if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error'; emit(ev); };
-      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world), worldPrompt: WORLD_PROMPT[b.world] || '', emit: wrap, signal: ac.signal });
+      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world, b.serial), worldPrompt: (WORLD_PROMPT[b.world] || '') + (b.world === 'phone' && isRealPhone(b.serial) ? REAL_PHONE(b.serial) : ''), emit: wrap, signal: ac.signal });
       if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
       return res.end();
     }
@@ -55,7 +59,11 @@ export function createAgentRouter({ tools }) {
       baseURL: process.env.SF_ANTHROPIC_BASE_URL
     });
     res.end();
-  });
+  };
+  router.post('/chat', (req, res) => chatHandler(req, res).catch(e => {
+    console.error('[agent] chat failed:', e);
+    try { if (!res.headersSent) res.status(500).json({ success: false, message: e.message || 'Agent failed' }); else { res.write(JSON.stringify({ type: 'error', message: e.message || 'Agent failed' }) + String.fromCharCode(10)); res.end(); } } catch (x) {}
+  }));
 
   // Test reports
   router.get('/reports', (req, res) => res.json({ success: true, runs: listRuns() }));

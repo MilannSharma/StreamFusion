@@ -27,6 +27,8 @@ export const LiveScreen: React.FC<Props> = ({ serial, w, h, paused, onPlaying, o
     const s = Math.min(1, 1280 / Math.max(w, h));
     const sw = Math.max(16, Math.round((w * s) / 2) * 2), sh = Math.max(16, Math.round((h * s) / 2) * 2);
 
+    // no picture within 6 s (slow phone, screen that never changes, decoder not happy): give up and let the screenshot view take over
+    const watchdog = setTimeout(() => { if (!shown && !stopped) { stopped = true; ac.abort(); cb.current.onFail(); } }, 6000);
     const run = async () => {
       while (!stopped) {
         let got = 0;
@@ -84,7 +86,7 @@ export const LiveScreen: React.FC<Props> = ({ serial, w, h, paused, onPlaying, o
       }
     };
     run();
-    return () => { stopped = true; ac.abort(); };
+    return () => { stopped = true; clearTimeout(watchdog); ac.abort(); };
   }, [serial, w, h, paused, canvasRef]);
 
   return <canvas ref={canvasRef} onPointerDown={onPointerDown} onPointerUp={onPointerUp} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', touchAction: 'none', userSelect: 'none', cursor: 'pointer', ...style }} />;
