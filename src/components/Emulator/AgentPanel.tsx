@@ -489,13 +489,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '16cqw', background: '#050506', padding: '1.7cqw', boxSizing: 'border-box', boxShadow: 'inset 0 0 0 0.35cqw #1a1a1c' } as any}>
               <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '14.3cqw', overflow: 'hidden', background: '#0b1020', display: 'flex', alignItems: 'center', justifyContent: 'center' } as any}>
           {connected && active && !isWeb && live !== 'off' && (
-            <LiveScreen serial={serial} w={dev.w} h={dev.h} canvasRef={imgRef} onPlaying={() => setLive('on')} onFail={() => setLive('off')} onPointerDown={onPointerDown} onPointerUp={onPointerUp} style={{ opacity: live === 'on' ? 1 : 0 }} />
+            <LiveScreen serial={serial} w={dev.w} h={dev.h} canvasRef={imgRef} onPlaying={() => setLive('on')} onFail={() => setLive('off')} onPointerDown={onPointerDown} onPointerUp={onPointerUp} style={{ position: 'absolute', inset: 0, opacity: live === 'on' ? 1 : 0 }} />
           )}
           {live === 'on' ? null : shot
             ? <img ref={imgRef} src={shot} onPointerDown={onPointerDown} onPointerUp={onPointerUp} alt="Device screen" draggable={false}
-                style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer', display: 'block', touchAction: 'none', userSelect: 'none' }} />
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer', display: 'block', touchAction: 'none', userSelect: 'none' }} />
             : connected
-              ? <div style={{ color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center' }}>Loading screen…</div>
+              ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center', pointerEvents: 'none' }}>Loading screen…</div>
               : <PowerPanel emu={emu} dark />}
                 <span style={{ position: 'absolute', top: '2.2cqw', left: '50%', transform: 'translateX(-50%)', width: '25cqw', height: '7.2cqw', borderRadius: '4cqw', background: '#000', pointerEvents: 'none', boxShadow: '0 0 0 0.2cqw #0c0c0e' } as any}><i style={{ position: 'absolute', right: '2.2cqw', top: '50%', transform: 'translateY(-50%)', width: '3.4cqw', height: '3.4cqw', borderRadius: '50%', background: 'radial-gradient(circle at 35% 35%,#2b3a67,#0a0d18 70%)' }} /></span>
               </div>
