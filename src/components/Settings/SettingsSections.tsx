@@ -26,6 +26,13 @@ export const ApiSection: React.FC = () => {
   const [draft, setDraft] = useState('');
   const [mcp, setMcp] = useState<{ claudeCode: string; json: string } | null>(null);
   const [copied, setCopied] = useState('');
+  const [live, setLive] = useState<{ connected: boolean; clients: string[] }>({ connected: false, clients: [] });
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => { try { const j = await (await fetch('/api/mcp/live/status')).json(); if (!stop) setLive({ connected: !!j.connected, clients: j.clients || [] }); } catch (e) {} if (!stop) setTimeout(tick, 3000); };
+    tick();
+    return () => { stop = true; };
+  }, []);
   useEffect(() => { loadKey().then(setSaved); fetch('/api/mcp/config').then(r => r.json()).then(setMcp).catch(() => {}); }, []);
   const copy = (id: string, v: string) => { navigator.clipboard?.writeText(v); setCopied(id); setTimeout(() => setCopied(''), 1500); };
   return (<>
@@ -40,6 +47,10 @@ export const ApiSection: React.FC = () => {
     </Card>
     {mcp && (
       <Card title="USE CLAUDE CODE / CLAUDE DESKTOP INSTEAD (NO KEY NEEDED HERE)">
+        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, background: live.connected ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.12)', color: live.connected ? '#15803d' : 'var(--text-muted)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: live.connected ? '#22c55e' : '#94a3b8' }} />
+          {live.connected ? 'MCP connected: ' + live.clients.join(', ') : 'No MCP client connected yet'}
+        </div>
         <div style={{ ...muted, marginBottom: 8 }}>Keep StreamFusion open, then run once in a terminal:</div>
         <Code text={mcp.claudeCode} done={copied === 'cc'} onCopy={() => copy('cc', mcp.claudeCode)} />
         <div style={{ ...muted, margin: '12px 0 8px' }}>Other MCP clients (Claude Desktop, Cursor) config:</div>

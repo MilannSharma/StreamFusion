@@ -13,10 +13,15 @@ const EMULATOR_TOOLS = [
   { name: 'emulator_stop', description: 'Stop the emulator.', inputSchema: { type: 'object', properties: {} }, annotations: { destructiveHint: false } }
 ];
 
-async function api(path, init) {
-  const r = await fetch(BASE + path, init);
+let clientName = 'MCP client';
+async function api(path, init = {}) {
+  const r = await fetch(BASE + path, { ...init, headers: { ...(init.headers || {}), 'x-sf-client': 'mcp', 'x-sf-client-name': clientName } });
   return r.json();
 }
+// Heartbeat while the client is attached, so StreamFusion can show "MCP connected".
+let beat = null;
+const ping = () => fetch(BASE + '/api/mcp/live/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: clientName }) }).catch(() => {});
+const startBeat = () => { if (beat) return; ping(); beat = setInterval(ping, 8000); };
 
 async function listTools() {
   const j = await api('/api/device/tools');
@@ -68,6 +73,8 @@ async function handle(msg) {
   const { id, method, params } = msg;
   switch (method) {
     case 'initialize':
+      clientName = String(params?.clientInfo?.name || 'MCP client').slice(0, 40);
+      startBeat();
       return { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'streamfusion', version: '1.0.0' } };
     case 'ping': return {};
     case 'tools/list': return { tools: await listTools() };
@@ -92,3 +99,14 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
     send({ jsonrpc: '2.0', id: msg.id, error: { code: e.code || -32000, message: unreachable ? `StreamFusion is not running at ${BASE}. Open the StreamFusion app first.` : e.message } });
   }
 });
+
+// The client went away: tell StreamFusion and stop (the heartbeat timer would otherwise keep this process alive).
+let closing = false;
+const bye = () => {
+  if (closing) return; closing = true;
+  clearInterval(beat);
+  fetch(BASE + '/api/mcp/live/bye', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: clientName }) }).catch(() => {}).finally(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1500);
+};
+process.stdin.on('end', bye);
+process.stdin.on('close', bye);

@@ -73,6 +73,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // External AI clients (Claude Code etc.) attached through MCP
+  const [mcpLive, setMcpLive] = useState<{ connected: boolean; clients: string[]; recent: { name: string; ok: boolean }[] }>({ connected: false, clients: [], recent: [] });
+  useEffect(() => {
+    if (!active) return;
+    let stop = false;
+    const tick = async () => { try { const j = await (await fetch('/api/mcp/live/status')).json(); if (!stop) setMcpLive({ connected: !!j.connected, clients: j.clients || [], recent: j.recent || [] }); } catch (e) {} if (!stop) setTimeout(tick, 3000); };
+    tick();
+    return () => { stop = true; };
+  }, [active]);
   useEffect(() => {
     const load = () => loadKey().then(setApiKey);
     load();
@@ -111,10 +120,53 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
 
   const showReportsRef = useRef(false); showReportsRef.current = showReports;
   const callTool = (name: string, args: any) => fetch(`/api/device/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial, ...args }) });
-  const onScreenClick = (e: React.MouseEvent<HTMLImageElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    callTool('tap', { x: Math.round((e.clientX - r.left) / r.width * dev.w), y: Math.round((e.clientY - r.top) / r.height * dev.h) });
+  // Touch input on the phone view: click = tap, mouse drag = swipe, two-finger trackpad / wheel scroll = scroll the app.
+  const toDevice = (clientX: number, clientY: number) => {
+    const r = imgRef.current!.getBoundingClientRect();
+    const sc = Math.min(r.width / dev.w, r.height / dev.h);
+    const ox = (r.width - dev.w * sc) / 2, oy = (r.height - dev.h * sc) / 2;
+    return { x: Math.max(0, Math.min(dev.w, Math.round((clientX - r.left - ox) / sc))), y: Math.max(0, Math.min(dev.h, Math.round((clientY - r.top - oy) / sc))) };
   };
+  const down = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    down.current = { ...toDevice(e.clientX, e.clientY), t: Date.now() };
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLImageElement>) => {
+    const d = down.current; down.current = null;
+    if (!d || !imgRef.current) return;
+    const p = toDevice(e.clientX, e.clientY);
+    if (Math.hypot(p.x - d.x, p.y - d.y) < dev.w * 0.025) callTool('tap', { x: d.x, y: d.y });
+    else callTool('swipe', { x1: d.x, y1: d.y, x2: p.x, y2: p.y, durationMs: Math.min(600, Math.max(120, Date.now() - d.t)) });
+  };
+  const wheelAcc = useRef({ dx: 0, dy: 0, timer: 0 as any, busy: false });
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el || !connected || isWeb) return;
+    const flush = async () => {
+      const w = wheelAcc.current;
+      if (w.busy) { w.timer = setTimeout(flush, 80); return; }
+      const r = el.getBoundingClientRect(); if (!r.width) return;
+      const kx = dev.w / Math.min(r.width, r.height * dev.w / dev.h), ky = kx;
+      const dx = Math.max(-dev.w * 0.6, Math.min(dev.w * 0.6, w.dx * kx)), dy = Math.max(-dev.h * 0.5, Math.min(dev.h * 0.5, w.dy * ky));
+      w.dx = 0; w.dy = 0;
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      const cx = Math.round(dev.w / 2), cy = Math.round(dev.h / 2);
+      w.busy = true;
+      // wheel down = content moves up = finger moves up
+      await callTool('swipe', { x1: Math.round(cx + dx / 2), y1: Math.round(cy + dy / 2), x2: Math.round(cx - dx / 2), y2: Math.round(cy - dy / 2), durationMs: 220 }).catch(() => {});
+      w.busy = false;
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const w = wheelAcc.current;
+      const scale = e.deltaMode === 1 ? 16 : 1;
+      w.dx += e.deltaX * scale; w.dy += e.deltaY * scale;
+      clearTimeout(w.timer); w.timer = setTimeout(flush, 90);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => { el.removeEventListener('wheel', onWheel); clearTimeout(wheelAcc.current.timer); };
+  }, [connected, isWeb, dev.w, dev.h, shot ? 1 : 0]);
   const phoneBtn = (key: string) => callTool('key', { key });
 
   // ---------- chat ----------
@@ -122,7 +174,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     const text = (override ?? input).trim();
     if (!text || busy) return;
     if (!apiKey) {
-      setMsgs(m => [...m, { kind: 'user', text }, { kind: 'error', text: 'Agent is not connected. Add your Anthropic API key in Settings → AI & API, then send again.' }]);
+      setMsgs(m => [...m, { kind: 'user', text }, mcpLive.connected
+        ? { kind: 'info', text: 'This chat needs an API key. Your connected AI (' + (mcpLive.clients[0] || 'MCP') + ') controls the ' + (isWeb ? 'browser' : 'phone') + ' directly, so give it the instruction there. Add a key in Settings → AI & API to use this chat as well.' }
+        : { kind: 'error', text: 'Agent is not connected. Add your Anthropic API key in Settings → AI & API, then send again.' }]);
       setInput('');
       return;
     }
@@ -159,7 +213,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     } catch (e: any) {
       if (e?.name !== 'AbortError') setMsgs(m => [...m, { kind: 'error', text: e.message || String(e) }]);
     } finally { setBusy(false); abortRef.current = null; }
-  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase, testMode, files, isWeb]);
+  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase, testMode, files, isWeb, mcpLive]);
 
   useEffect(() => {
     if (pending && connected && !busy) {
@@ -215,9 +269,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
   return (
-    <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 440, ...(fill ? { height: 'calc(100vh - 215px)' } : { maxHeight: 'calc(100vh - 300px)' }) }}>
+    <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 520, height: fill ? 'calc(100vh - 215px)' : 'calc(100vh - 238px)' }}>
       {/* ---------- left: chat ---------- */}
-      <div style={{ ...card, flex: isWeb ? '0 0 clamp(340px, 38%, 520px)' : '0 0 clamp(300px, 32%, 380px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, flex: '0 0 clamp(340px, 40%, 560px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: border, flexWrap: 'wrap' }}>
           <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
             {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -263,7 +317,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
         </div>
 
-        {!apiKey && (
+        {mcpLive.connected && (
+          <div style={{ padding: '8px 12px', borderTop: border, background: 'rgba(34,197,94,0.10)', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#15803d', fontWeight: 700 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e' }} /> MCP connected · {mcpLive.clients.join(', ')}
+              {!apiKey && <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>· no API key needed here</span>}
+            </div>
+            {mcpLive.recent.length > 0 && <div style={{ color: 'var(--text-muted, #64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Recent: {mcpLive.recent.slice(0, 4).map(r => r.name + (r.ok ? '' : ' (failed)')).join(' · ')}</div>}
+          </div>
+        )}
+        {!apiKey && !mcpLive.connected && (
           <div style={{ padding: '8px 12px', borderTop: border, background: '#fef2f2', color: '#b91c1c', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
             <ShieldAlert size={14} /> <b>Agent not connected.</b> <span>An Anthropic API key is needed.</span>
             <button onClick={() => openSettings('ai')} style={{ ...iconBtn, padding: '2px 10px', fontSize: 11, marginLeft: 'auto' }}><KeyRound size={12} /> Add API key</button>
@@ -297,21 +360,25 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       )}
       {/* ---------- right: phone / browser ---------- */}
       {isWeb && <WebPane active={active} serial={serial} busy={busy} />}
-      <div style={{ display: isWeb ? 'none' : 'flex', flex: 1, minWidth: 260, maxWidth: 460, margin: '0 auto', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <div style={{ background: '#0f172a', borderRadius: 34, padding: 10, boxShadow: '0 10px 30px rgba(15,23,42,0.35)', width: '100%', flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: isWeb ? 'none' : 'flex', flex: 1, minWidth: 220, flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 12 }}>
+        <div style={{ minHeight: 0, height: '100%', display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+        {/* a real phone shape (about 6.5 inch, 9:19.5) that fills the available height */}
+        <div style={{ background: '#0f172a', borderRadius: 40, padding: 10, boxShadow: '0 14px 40px rgba(15,23,42,0.4), inset 0 0 0 2px #1e293b', height: '100%', aspectRatio: '9 / 19.5', maxWidth: '100%', minWidth: 0, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', inset: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 30 }}>
           {shot
-            ? <img ref={imgRef} src={shot} onClick={onScreenClick} alt="Device screen" draggable={false}
-                style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 24, cursor: 'pointer', display: 'block' }} />
+            ? <img ref={imgRef} src={shot} onPointerDown={onPointerDown} onPointerUp={onPointerUp} alt="Device screen" draggable={false}
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 30, cursor: 'pointer', display: 'block', touchAction: 'none', userSelect: 'none' }} />
             : connected
               ? <div style={{ color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center' }}>Loading screen…</div>
               : <PowerPanel emu={emu} dark />}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }} title="Click = tap, drag = swipe, two-finger scroll = scroll">
           {[['Back', 'back'], ['Home', 'home'], ['Recents', 'recent']].map(([l, k]) => (
-            <button key={k} onClick={() => phoneBtn(k)} disabled={!connected} style={{ ...iconBtn, padding: '5px 12px', fontSize: 11 }}>{l}</button>
+            <button key={k} onClick={() => phoneBtn(k)} disabled={!connected} style={{ ...iconBtn, padding: '7px 10px', fontSize: 11, justifyContent: 'center' }}>{l}</button>
           ))}
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--text-muted, #64748b)' }}>Click the screen to tap</div>
       </div>
     </div>
   );

@@ -126,7 +126,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
       </div>
 
       {/* Body */}
-      <div style={{ padding: 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: tab === 'agent' ? 14 : 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {tab === 'emulator' && (<>
           <div style={{ ...card, display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ flex: '0 0 300px', display: 'flex', justifyContent: 'center' }}>

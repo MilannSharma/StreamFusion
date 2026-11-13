@@ -12,6 +12,7 @@ import { createEmulatorRouter } from './emulator/router.js';
 import { createDeviceRouter } from './device/router.js';
 import { createAgentRouter } from './agent/router.js';
 import { createWebRouter } from './web/router.js';
+import { createMcpActivity } from './mcp/activity.js';
 
 let APP_VERSION = '0.0.0';
 try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version; } catch (e) {}
@@ -94,6 +95,9 @@ app.use('/api/settings', createSettingsRouter(dataDir));
 app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
 app.use('/api/notifications', createNotificationsRouter({ runAdb }));
 app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
+const mcpActivity = createMcpActivity();
+app.use(mcpActivity.middleware);
+app.use('/api/mcp/live', mcpActivity.router);
 const deviceRouter = createDeviceRouter({ runAdb, adbExe, scrcpyBin });
 app.use('/api/device', deviceRouter);
 app.get('/api/mcp/config', (req, res) => {
