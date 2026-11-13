@@ -14,7 +14,7 @@ const PROFILE = path.join(BASE, 'web-profile');
 process.env.PLAYWRIGHT_BROWSERS_PATH = BROWSERS;
 const require = createRequire(import.meta.url);
 
-export const state = { installing: false, stage: '', error: null, headless: false, device: null };
+export const state = { installing: false, stage: '', error: null, headless: true, device: null, mode: 'desktop' };
 let pw = null;
 const playwright = () => (pw ||= require('playwright-core'));
 
@@ -42,6 +42,7 @@ export async function install() {
 
 // ---------- browser lifecycle ----------
 let ctx = null;
+let remote = null; // CDP connection to Chrome/WebView inside the Android emulator
 let page = null;
 const logs = { console: [], network: [] };
 const cap = (arr, v, n = 200) => { arr.push(v); if (arr.length > n) arr.shift(); };
@@ -55,6 +56,7 @@ function wirePage(p) {
 
 async function ensure() {
   if (ctx && page && !page.isClosed()) return page;
+  if (remote) throw new Error('The connected Android browser page was closed. Reconnect with web_attach_android.');
   if (!isInstalled()) throw new Error('Chromium is not installed. Install it from the Web tab (or POST /api/web/install) first.');
   const { chromium, devices } = playwright();
   fs.mkdirSync(PROFILE, { recursive: true });
@@ -67,7 +69,7 @@ async function ensure() {
   return page;
 }
 
-export async function closeBrowser() { try { await ctx?.close(); } catch (e) {} ctx = null; page = null; }
+export async function closeBrowser() { try { if (remote) await remote.close(); else await ctx?.close(); } catch (e) {} remote = null; ctx = null; page = null; state.mode = state.device ? 'mobile' : 'desktop'; }
 export const isOpen = () => !!(ctx && page && !page.isClosed());
 export async function configure({ headless, device }) {
   if (typeof headless === 'boolean') state.headless = headless;
@@ -77,7 +79,34 @@ export async function configure({ headless, device }) {
 export const listDevices = () => { try { return Object.keys(playwright().devices).filter(n => !/landscape| \w+ landscape/.test(n)); } catch (e) { return []; } };
 
 // ---------- tools ----------
-export function createWebTools() {
+async function attachAndroid(runAdb, serial, target, pid) {
+  if (!isInstalled()) throw new Error('Chromium (Playwright) is not installed. Install it first.');
+  let socket = 'chrome_devtools_remote';
+  if (target === 'webview') {
+    const u = await runAdb(['-s', serial, 'shell', 'cat', '/proc/net/unix'], 8000);
+    const names = [...String(u.output).matchAll(/@(webview_devtools_remote_\d+)/g)].map(m => m[1]);
+    const pick = pid ? names.find(n => n.endsWith('_' + pid)) : names[0];
+    if (!pick) throw new Error('No debuggable WebView found. The app must enable WebView debugging (setWebContentsDebuggingEnabled) or be a debug build.');
+    socket = pick;
+  } else {
+    const u = await runAdb(['-s', serial, 'shell', 'cat', '/proc/net/unix'], 8000);
+    if (!/@chrome_devtools_remote/.test(String(u.output))) throw new Error('Chrome is not running on the device. Open Chrome first (launch_app com.android.chrome).');
+  }
+  const f = await runAdb(['-s', serial, 'forward', 'tcp:9222', 'localabstract:' + socket], 8000);
+  if (!f.success) throw new Error('adb forward failed: ' + f.output);
+  await closeBrowser();
+  remote = await playwright().chromium.connectOverCDP('http://127.0.0.1:9222', { timeout: 15000 });
+  ctx = remote.contexts()[0];
+  ctx.on('page', wirePage);
+  for (let i = 0; i < 20 && !ctx.pages().length; i++) await new Promise(r => setTimeout(r, 250));
+  page = ctx.pages()[ctx.pages().length - 1];
+  if (!page) { await closeBrowser(); throw new Error('Connected, but no browser tab is visible. Open a tab in Chrome on the device and try again.'); }
+  wirePage(page); page.__wired = true;
+  state.mode = 'android';
+  return { socket, pages: ctx.pages().length };
+}
+
+export function createWebTools({ runAdb } = {}) {
   const TOOLS = {};
   const def = (name, description, properties, required, handler, dangerous = false) => {
     TOOLS[name] = { name, description, dangerous, inputSchema: { type: 'object', properties, required }, handler: async (a) => {
@@ -169,6 +198,19 @@ export function createWebTools() {
     const r = await (await ensure()).evaluate(a.expression);
     return { ok: true, result: JSON.stringify(r)?.slice(0, 8000) };
   }, true);
+  def('web_click_at', 'Click at page coordinates (CSS px, as in web_screenshot). Prefer web_click with a selector.', { x: { type: 'number' }, y: { type: 'number' } }, ['x', 'y'], async (a) => {
+    const p = await ensure(); await p.mouse.click(a.x, a.y); return { ok: true };
+  });
+  def('web_history', 'Go back, forward or reload.', { action: { type: 'string', enum: ['back', 'forward', 'reload'] } }, ['action'], async (a) => {
+    const p = await ensure();
+    if (a.action === 'back') await p.goBack({ timeout: 8000 }); else if (a.action === 'forward') await p.goForward({ timeout: 8000 }); else await p.reload({ timeout: 15000 });
+    return { ok: true, ...(await state0(p)) };
+  });
+  def('web_attach_android', 'Connect the web_* tools to Chrome or a debuggable WebView running on the Android device/emulator (via adb + DevTools). After this, web_snapshot/click/etc. act on the phone. Use web_close to disconnect.', { serial: { type: 'string', description: 'adb serial, default emulator-5554' }, target: { type: 'string', enum: ['chrome', 'webview'] }, pid: { type: 'string', description: 'WebView process id (optional)' } }, [], async (a) => {
+    if (!runAdb) return { ok: false, error: 'adb not available' };
+    const r = await attachAndroid(runAdb, a.serial || 'emulator-5554', a.target || 'chrome', a.pid);
+    return { ok: true, ...r, ...(await state0(page)) };
+  });
   def('web_close', 'Close the browser.', {}, [], async () => { await closeBrowser(); return { ok: true }; });
   return TOOLS;
 }

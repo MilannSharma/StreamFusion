@@ -307,7 +307,7 @@ export default function FileManager({ serial, onToast }: FileManagerProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: '#ffffff'
+        background: 'var(--glass-bg)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, overflowX: 'auto' }}>
           <button
@@ -378,10 +378,10 @@ export default function FileManager({ serial, onToast }: FileManagerProps) {
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: 14,
-        background: '#f8fafc',
+        background: 'var(--glass-soft)',
         padding: '8px 14px',
         borderRadius: 10,
-        border: '1px solid #e2e8f0'
+        border: '1px solid var(--border-subtle)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
@@ -472,7 +472,7 @@ export default function FileManager({ serial, onToast }: FileManagerProps) {
         style={{
           padding: 0,
           overflow: 'hidden',
-          border: isDragging ? '2px dashed #2563eb' : '1px solid #e2e8f0',
+          border: isDragging ? '2px dashed #2563eb' : '1px solid var(--border-subtle)',
           background: isDragging ? '#eff6ff' : '#ffffff',
           transition: 'all 0.15s ease'
         }}
@@ -493,7 +493,7 @@ export default function FileManager({ serial, onToast }: FileManagerProps) {
           <div style={{ maxHeight: 'calc(100vh - 350px)', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>
+                <tr style={{ background: 'var(--glass-soft)', borderBottom: '1px solid var(--border-subtle)', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>
                   <th style={{ padding: '10px 14px', width: 40 }}></th>
                   <th style={{ padding: '10px 14px' }}>Name</th>
                   <th style={{ padding: '10px 14px', width: 110 }}>Size</th>
@@ -561,7 +561,7 @@ export default function FileManager({ serial, onToast }: FileManagerProps) {
           justifyContent: 'center'
         }}>
           <div style={{
-            background: '#ffffff',
+            background: 'var(--glass-bg)',
             borderRadius: 16,
             padding: 24,
             width: '100%',

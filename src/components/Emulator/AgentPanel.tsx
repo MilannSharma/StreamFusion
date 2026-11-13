@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, FlaskConical, Paperclip, FileText, X, Download } from 'lucide-react';
+import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, FlaskConical, Paperclip, FileText, X, Download, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
+import { WebPane } from './WebPane';
 
 interface AgentPanelProps {
   emu: EmulatorApi;
+  world?: 'phone' | 'web';
+  active?: boolean;
 }
 
 type Msg =
@@ -39,9 +42,13 @@ const saveKey = async (v: string) => {
 const border = '1px solid var(--border-color, #e2e8f0)';
 const card: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 12 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', active = true }) => {
+  const isWeb = world === 'web';
   const serial = emu.status.serial || 'emulator-5554';
   const connected = emu.phase === 'running';
+  const hideKey = 'sf_chat_hidden_' + world;
+  const [chatHidden, setChatHidden] = useState(() => { try { return localStorage.getItem(hideKey) === '1'; } catch (e) { return false; } });
+  useEffect(() => { try { localStorage.setItem(hideKey, chatHidden ? '1' : '0'); } catch (e) {} }, [chatHidden, hideKey]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -100,7 +107,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
   }, [connected, serial]);
 
   useEffect(() => {
-    if (!connected) { setShot(''); return; }
+    if (!connected || !active || isWeb) { setShot(''); return; }
     let stop = false; let last = '';
     (async () => {
       while (!stop) {
@@ -113,7 +120,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
       if (last) URL.revokeObjectURL(last);
     })();
     return () => { stop = true; };
-  }, [connected, serial, busy]);
+  }, [connected, serial, busy, active, isWeb]);
 
   const showReportsRef = useRef(false); showReportsRef.current = showReports;
   const callTool = (name: string, args: any) => fetch(`/api/device/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial, ...args }) });
@@ -130,11 +137,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
     if (!apiKey) { setShowSettings(true); return; }
     setInput('');
     if (!alreadyShown) setMsgs(m => [...m, { kind: 'user', text }]);
-    if (emu.phase === 'not_installed' || emu.phase === 'installing') {
+    if (!isWeb && (emu.phase === 'not_installed' || emu.phase === 'installing')) {
       setMsgs(m => [...m, { kind: 'info', text: emu.phase === 'installing' ? 'The emulator is still installing. Send again when it finishes.' : 'The emulator is not installed yet. Use the Install button on the phone, then send again.' }]);
       return;
     }
-    if (!connected) {
+    if (!connected && !isWeb) {
       // Emulator is off: ask in chat instead of failing
       setMsgs(m => [...m, { kind: 'startPrompt', pending: text, state: emu.phase === 'booting' ? 'starting' : 'ask' }]);
       if (emu.phase === 'booting') setPending(text);
@@ -161,7 +168,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
     } catch (e: any) {
       if (e?.name !== 'AbortError') setMsgs(m => [...m, { kind: 'error', text: e.message || String(e) }]);
     } finally { setBusy(false); abortRef.current = null; }
-  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase, testMode, files]);
+  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase, testMode, files, isWeb]);
 
   useEffect(() => {
     if (pending && connected && !busy) {
@@ -223,9 +230,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
   return (
-    <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 440, maxHeight: 'calc(100vh - 300px)' }}>
+    <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: 1, minHeight: 440, maxHeight: 'calc(100vh - 300px)' }}>
       {/* ---------- left: chat ---------- */}
-      <div style={{ ...card, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, flex: 1, minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: border, flexWrap: 'wrap' }}>
           <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
             {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -237,6 +244,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
             {fmt(tokens.input)} in · {fmt(tokens.output)} out{tokens.cached ? ` · ${fmt(tokens.cached)} cached` : ''}
           </span>
+          <button onClick={() => setChatHidden(true)} title="Hide chat" style={iconBtn}><PanelLeftClose size={14} /></button>
           <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
             style={{ ...iconBtn, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
           <button onClick={() => setShowReports(v => !v)} title="Saved test reports" style={iconBtn}><FileText size={14} /></button>
@@ -301,8 +309,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
         <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: 13, maxWidth: 340, lineHeight: 1.6 }}>
-              {connected ? 'Tell the agent what to test. For example:' : 'The emulator is off. Power it on from the phone on the right, or just send an instruction and I will ask.'}
-              {connected && <div style={{ marginTop: 8, fontStyle: 'italic' }}>"Open Settings, search for Wi-Fi and tell me what you see"</div>}
+              {connected || isWeb ? 'Tell the agent what to test. For example:' : 'The emulator is off. Power it on from the phone on the right, or just send an instruction and I will ask.'}
+              {(connected || isWeb) && <div style={{ marginTop: 8, fontStyle: 'italic' }}>{isWeb ? '"Open example.com, click Learn more and tell me the page title"' : '"Open Settings, search for Wi-Fi and tell me what you see"'}</div>}
             </div>
           )}
           {msgs.map((m, i) => <Bubble key={i} m={m} onAnswer={answer} onStart={() => m.kind === 'startPrompt' && startFromChat(i, m.pending)} onCancelStart={() => cancelStart(i)} />)}
@@ -329,8 +337,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
         </div>
       </div>
 
-      {/* ---------- right: phone ---------- */}
-      <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      {chatHidden && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+          <button onClick={() => setChatHidden(false)} title="Show chat" style={{ ...iconBtn, padding: '10px 8px' }}><PanelLeftOpen size={16} /></button>
+          {busy && <span title="Agent is working" style={{ width: 8, height: 8, borderRadius: '50%', background: '#d97706' }} />}
+        </div>
+      )}
+      {/* ---------- right: phone / browser ---------- */}
+      {isWeb && <WebPane active={active} serial={serial} busy={busy} />}
+      <div style={{ display: isWeb ? 'none' : 'flex', width: chatHidden ? 340 : 290, margin: chatHidden ? '0 auto' : undefined, flexShrink: 0, flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <div style={{ background: '#0f172a', borderRadius: 34, padding: 10, boxShadow: '0 10px 30px rgba(15,23,42,0.35)', width: '100%', flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {shot
             ? <img ref={imgRef} src={shot} onClick={onScreenClick} alt="Device screen" draggable={false}

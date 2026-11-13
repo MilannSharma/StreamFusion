@@ -1110,8 +1110,8 @@ export default function App() {
       {/* 1. Custom Frameless Titlebar */}
       <header className="drag-region" style={{
         height: 52,
-        background: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
+        background: 'var(--glass-bg)',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1150,7 +1150,7 @@ export default function App() {
               <span>USB Cable: <strong>{getDeviceName(usbConnectedDevice)}</strong></span>
             </div>
           ) : (
-            <div className="badge" style={{ background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0' }} title="No phone connected via USB Cable">
+            <div className="badge" style={{ background: '#f1f5f9', color: '#94a3b8', border: '1px solid var(--border-subtle)' }} title="No phone connected via USB Cable">
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1' }} />
               <span>USB Cable: Not Connected</span>
             </div>
@@ -1163,7 +1163,7 @@ export default function App() {
               <span>Wireless Wi-Fi: <strong>{getDeviceName(wifiConnectedDevice)}</strong></span>
             </div>
           ) : (
-            <div className="badge" style={{ background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0' }} title="No phone connected via Wireless Wi-Fi">
+            <div className="badge" style={{ background: '#f1f5f9', color: '#94a3b8', border: '1px solid var(--border-subtle)' }} title="No phone connected via Wireless Wi-Fi">
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1' }} />
               <span>Wireless Wi-Fi: Not Connected</span>
             </div>
@@ -1172,7 +1172,7 @@ export default function App() {
           {/* Mirror Active Indicator */}
           {mirrorStatus.isMirroring && (
             <div className="badge badge-brand pulse">
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ffffff' }} />
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--glass-bg)' }} />
               <span>MIRROR LIVE</span>
             </div>
           )}
@@ -1213,8 +1213,8 @@ export default function App() {
         <aside style={{
           width: 230,
           margin: '16px 0 16px 16px',
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--border-subtle)',
           borderRadius: 16,
           boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.02)',
           display: 'flex',
@@ -1277,8 +1277,8 @@ export default function App() {
 
           {/* Connected Phone Status Card */}
           <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
+            background: 'var(--glass-soft)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: 12,
             padding: 12
           }}>
@@ -1385,7 +1385,7 @@ export default function App() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          background: '#ffffff',
+                          background: 'var(--glass-bg)',
                           border: '1.5px solid #bfdbfe',
                           borderRadius: 14
                         }}
@@ -1478,7 +1478,7 @@ export default function App() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        border: selectedSerial === dev.serial ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
+                        border: selectedSerial === dev.serial ? '1.5px solid #2563eb' : '1px solid var(--border-subtle)',
                         cursor: 'pointer'
                       }}
                       onClick={() => setSelectedSerial(dev.serial)}
@@ -1661,7 +1661,7 @@ export default function App() {
                   <div style={{
                     marginTop: 16,
                     paddingTop: 16,
-                    borderTop: '1px solid #e2e8f0',
+                    borderTop: '1px solid var(--border-subtle)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -1790,8 +1790,8 @@ export default function App() {
                       <div
                         key={idx}
                         style={{
-                          background: '#ffffff',
-                          border: '1px solid #e2e8f0',
+                          background: 'var(--glass-bg)',
+                          border: '1px solid var(--border-subtle)',
                           borderRadius: 8,
                           padding: 14,
                           display: 'flex',
@@ -1931,7 +1931,7 @@ export default function App() {
                       padding: 12,
                       borderRadius: 10,
                       background: updaterStatus.status === 'downloaded' ? '#f0fdf4' : '#f8fafc',
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border-subtle)',
                       marginBottom: 14,
                       fontSize: 13
                     }}
@@ -2152,27 +2152,27 @@ export default function App() {
                     Keyboard Shortcuts while Mirroring
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--glass-soft)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Toggle Fullscreen</span>
                       <div><span className="keycap">Alt</span> + <span className="keycap">F</span></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--glass-soft)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Back Button</span>
                       <div><span className="keycap">Alt</span> + <span className="keycap">B</span></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--glass-soft)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Home Button</span>
                       <div><span className="keycap">Alt</span> + <span className="keycap">H</span></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--glass-soft)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Recent Apps</span>
                       <div><span className="keycap">Alt</span> + <span className="keycap">S</span></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--glass-soft)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Lock / Power Button</span>
                       <div><span className="keycap">Alt</span> + <span className="keycap">P</span></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--glass-soft)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Turn Phone Screen Off</span>
                       <div><span className="keycap">Alt</span> + <span className="keycap">O</span></div>
                     </div>
@@ -2238,8 +2238,8 @@ export default function App() {
       {/* 3. Ultra-Clean Footer */}
       <footer style={{
         height: 36,
-        background: '#ffffff',
-        borderTop: '1px solid #e2e8f0',
+        background: 'var(--glass-bg)',
+        borderTop: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -2306,7 +2306,7 @@ export default function App() {
             {wirelessStep === 'connect_usb' && !manualIpMode && (
               <div>
                 <div style={{
-                  background: '#f8fafc',
+                  background: 'var(--glass-soft)',
                   border: '1.5px dashed #cbd5e1',
                   borderRadius: 12,
                   padding: 24,
@@ -2520,7 +2520,7 @@ export default function App() {
           padding: 24
         }}>
           <div style={{
-            background: '#ffffff',
+            background: 'var(--glass-bg)',
             borderRadius: 28,
             width: '100%',
             maxWidth: 580,
@@ -2538,8 +2538,8 @@ export default function App() {
                 position: 'absolute',
                 top: 20,
                 right: 20,
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-soft)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: '50%',
                 width: 34,
                 height: 34,
@@ -2557,7 +2557,7 @@ export default function App() {
 
             {/* Cat Playing Lottie Animation Container */}
             <div style={{
-              background: '#ffffff',
+              background: 'var(--glass-bg)',
               borderRadius: 20,
               padding: '10px 0 4px',
               display: 'flex',
@@ -2608,8 +2608,8 @@ export default function App() {
 
             {/* Installation Setup Progress Box */}
             <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
+              background: 'var(--glass-soft)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: 16,
               padding: '16px 20px',
               textAlign: 'left',
@@ -2673,8 +2673,8 @@ export default function App() {
               textAlign: 'left'
             }}>
               <div style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-bg)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 12,
                 padding: '12px 10px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
@@ -2697,8 +2697,8 @@ export default function App() {
               </div>
 
               <div style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-bg)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 12,
                 padding: '12px 10px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
@@ -2721,8 +2721,8 @@ export default function App() {
               </div>
 
               <div style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-bg)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 12,
                 padding: '12px 10px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)'

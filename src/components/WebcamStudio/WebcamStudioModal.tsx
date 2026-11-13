@@ -131,7 +131,7 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
         style={{
           width: '100%',
           maxWidth: 620,
-          background: '#ffffff',
+          background: 'var(--glass-bg)',
           borderRadius: 16,
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           overflow: 'hidden',
@@ -145,7 +145,7 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
         <div
           style={{
             padding: '20px 24px',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -193,7 +193,7 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', background: 'var(--glass-soft)' }}>
           <button
             onClick={() => setActiveTab('webcam')}
             style={{
@@ -300,7 +300,7 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
                     fontSize: 12,
                     fontWeight: 600,
                     outline: 'none',
-                    background: '#ffffff'
+                    background: 'var(--glass-bg)'
                   }}
                 >
                   <option value="1920x1080">1080p Full HD (1920 × 1080)</option>
@@ -345,8 +345,8 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
             {/* OBS Virtual Camera Quick Guide */}
             <div
               style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-soft)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 12,
                 padding: 16
               }}
@@ -389,7 +389,7 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
                   fontSize: 12,
                   fontWeight: 600,
                   outline: 'none',
-                  background: '#ffffff'
+                  background: 'var(--glass-bg)'
                 }}
               >
                 <option value="1920x1080/420">1080p Desktop (1920 × 1080, 420 DPI) - Recommended</option>
@@ -443,8 +443,8 @@ export const WebcamStudioModal: React.FC<WebcamStudioModalProps> = ({
         <div
           style={{
             padding: '12px 24px',
-            borderTop: '1px solid #e2e8f0',
-            background: '#f8fafc',
+            borderTop: '1px solid var(--border-subtle)',
+            background: 'var(--glass-soft)',
             display: 'flex',
             justifyContent: 'flex-end'
           }}

@@ -101,7 +101,7 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
         style={{
           width: '100%',
           maxWidth: 620,
-          background: '#ffffff',
+          background: 'var(--glass-bg)',
           borderRadius: 16,
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           overflow: 'hidden',
@@ -115,7 +115,7 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
         <div
           style={{
             padding: '20px 24px',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -178,7 +178,7 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
                   style={{
                     padding: 14,
                     borderRadius: 10,
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border-subtle)',
                     background: report.adb.ok ? '#f0fdf4' : '#fef2f2',
                     display: 'flex',
                     alignItems: 'center',
@@ -199,7 +199,7 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
                   style={{
                     padding: 14,
                     borderRadius: 10,
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border-subtle)',
                     background: report.scrcpy.ok ? '#f0fdf4' : '#fef2f2',
                     display: 'flex',
                     alignItems: 'center',
@@ -219,8 +219,8 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
                 style={{
                   padding: 16,
                   borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  background: '#f8fafc'
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--glass-soft)'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -252,9 +252,9 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           padding: '8px 12px',
-                          background: '#ffffff',
+                          background: 'var(--glass-bg)',
                           borderRadius: 8,
-                          border: '1px solid #e2e8f0'
+                          border: '1px solid var(--border-subtle)'
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -311,7 +311,7 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
               )}
 
               {/* Step-by-Step Mobile Setup Guide */}
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase' }}>
                   Quick Phone Troubleshooting (All Brands):
                 </div>
@@ -331,8 +331,8 @@ export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
         <div
           style={{
             padding: '14px 24px',
-            borderTop: '1px solid #e2e8f0',
-            background: '#f8fafc',
+            borderTop: '1px solid var(--border-subtle)',
+            background: 'var(--glass-soft)',
             display: 'flex',
             justifyContent: 'flex-end',
             gap: 10

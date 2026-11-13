@@ -100,7 +100,7 @@ export const ClipboardSyncModal: React.FC<ClipboardSyncModalProps> = ({
         style={{
           width: '100%',
           maxWidth: 540,
-          background: '#ffffff',
+          background: 'var(--glass-bg)',
           borderRadius: 16,
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           overflow: 'hidden',
@@ -113,7 +113,7 @@ export const ClipboardSyncModal: React.FC<ClipboardSyncModalProps> = ({
         <div
           style={{
             padding: '20px 24px',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -198,7 +198,7 @@ export const ClipboardSyncModal: React.FC<ClipboardSyncModalProps> = ({
                   onClick={() => setText(snippet)}
                   style={{
                     background: '#f1f5f9',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border-subtle)',
                     borderRadius: 6,
                     padding: '4px 10px',
                     fontSize: 11,
@@ -259,8 +259,8 @@ export const ClipboardSyncModal: React.FC<ClipboardSyncModalProps> = ({
         <div
           style={{
             padding: '12px 24px',
-            borderTop: '1px solid #e2e8f0',
-            background: '#f8fafc',
+            borderTop: '1px solid var(--border-subtle)',
+            background: 'var(--glass-soft)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'

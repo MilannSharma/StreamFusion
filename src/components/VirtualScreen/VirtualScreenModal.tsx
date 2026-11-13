@@ -275,7 +275,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
           display: 'flex',
           padding: '6px 24px 0',
           background: 'var(--bg-card, #f8fafc)',
-          borderBottom: '1px solid #e2e8f0',
+          borderBottom: '1px solid var(--border-subtle)',
           gap: 12
         }}>
           <button
@@ -473,7 +473,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
                       style={{
                         padding: 12,
                         borderRadius: 10,
-                        border: virtualDisplaySize === res.val ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                        border: virtualDisplaySize === res.val ? '2px solid #2563eb' : '1px solid var(--border-subtle)',
                         background: virtualDisplaySize === res.val ? '#eff6ff' : 'var(--bg-main, #ffffff)',
                         cursor: 'pointer',
                         display: 'flex',
@@ -505,7 +505,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
               </div>
 
               {/* 2. Window Scale & Monitor Fit (Fix for Half Screen Cut-Off & Zoom) */}
-              <div style={{ background: 'var(--bg-card, #f8fafc)', padding: '14px 16px', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              <div style={{ background: 'var(--bg-card, #f8fafc)', padding: '14px 16px', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>
@@ -553,7 +553,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
                 </div>
 
                 {/* Live Height Slider */}
-                <div style={{ marginTop: 12, padding: '10px 12px', background: '#ffffff', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--glass-bg)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: '#334155' }}>
                       Fine-Tune Window Height:
@@ -733,8 +733,8 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
 
               {/* 6. On-Screen Navigation & Remote Controls */}
               <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-soft)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 12,
                 padding: '14px 16px'
               }}>
@@ -805,8 +805,8 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
 
               {/* 7. Mouse & Keyboard Navigation Cheatsheet */}
               <div style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
+                background: 'var(--glass-bg)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 10,
                 padding: '10px 14px',
                 fontSize: 12,
@@ -897,7 +897,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
                   </span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 34 }}>
-                  <div style={{ background: '#f8fafc', padding: 8, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <div style={{ background: 'var(--glass-soft)', padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
                       ✅ "Force activities to be resizable"
                     </div>
@@ -906,7 +906,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ background: '#f8fafc', padding: 8, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <div style={{ background: 'var(--glass-soft)', padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
                       ✅ "Enable freeform windows" ya "Force desktop mode"
                     </div>

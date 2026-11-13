@@ -105,7 +105,7 @@ app.get('/api/mcp/config', (req, res) => {
     json: JSON.stringify({ mcpServers: { streamfusion: { command: 'node', args: [script], ...(env ? { env } : {}) } } }, null, 2)
   });
 });
-const webRouter = createWebRouter();
+const webRouter = createWebRouter({ runAdb });
 app.use('/api/web', webRouter);
 app.use('/api/agent', createAgentRouter({ tools: { ...deviceRouter.TOOLS, ...webRouter.TOOLS } }));
 

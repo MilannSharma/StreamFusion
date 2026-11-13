@@ -28,7 +28,7 @@ export const ResourcesCard: React.FC = () => {
 
   if (!cfg) return null;
   return (
-    <div style={{ background: 'var(--bg-card, #f8fafc)', border: '1px solid #e2e8f0', borderRadius: 14, padding: '18px 20px' }}>
+    <div style={{ background: 'var(--bg-card, #f8fafc)', border: '1px solid var(--border-subtle)', borderRadius: 14, padding: '18px 20px' }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>Emulator resources</div>
       <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Tune how much of your PC the emulator may use. Changes apply the next time it starts{running ? ' (it is running now)' : ''}.</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -42,7 +42,7 @@ export const ResourcesCard: React.FC = () => {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
         <button onClick={save} style={{ background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Save</button>
-        {defaults && <button onClick={() => setCfg(defaults)} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}>Reset to defaults</button>}
+        {defaults && <button onClick={() => setCfg(defaults)} style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}>Reset to defaults</button>}
         {saved && <span style={{ fontSize: 12, color: '#16a34a' }}>{saved}</span>}
       </div>
     </div>

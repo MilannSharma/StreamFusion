@@ -80,8 +80,8 @@ Dono tarike chalenge, user jo chahe chune. Dono ek hi tool layer (M2) use karte 
 - [x] Playwright Chromium, alag persistent profile (`web-profile`), on-demand install button (not bundled), browser path `%LOCALAPPDATA%\StreamFusion\browsers`
 - [x] 16 tools (`web_*`): navigate, snapshot (a11y tree), screenshot, click, fill, press, select, wait, text, console, network, cookies, tabs, emulate (mobile presets), eval (dangerous), close. Agent + REST (`/api/web`) + MCP teeno use karte hain
 - [x] Test mode report ka screenshot web ya phone, jo last use hua
-- [ ] Emulator ke andar Chrome/WebView: `adb forward` se DevTools socket (CDP) connect
-- [ ] Web tab / live browser preview UI
+- [x] Emulator ke andar Chrome/WebView: `web_attach_android` (adb forward + CDP). Chrome pehle ek baar khol ke welcome screen skip karna padta hai; WebView sirf debuggable apps mein
+- [x] Web tab: live browser preview (click/scroll/type, URL bar, device emulation, Emulator Chrome button), chat hide/show
 
 ### Test Mode (M5/M6 ka pehla hissa)
 - [x] Toggle in AI Agent: user test cases chat mein likhe ya files attach kare (.txt/.md/.csv/.json/.yaml)
