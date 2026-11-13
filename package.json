@@ -63,10 +63,6 @@
       {
         "from": "scrcpy-bin",
         "to": "scrcpy-bin"
-      },
-      {
-        "from": "emulator-bin",
-        "to": "emulator-bin"
       }
     ],
     "electronLanguages": [
