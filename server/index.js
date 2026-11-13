@@ -109,7 +109,7 @@ app.use('/api/mcp/live', mcpActivity.router);
 const deviceRouter = createDeviceRouter({ runAdb, adbExe, scrcpyBin });
 app.use('/api/device', deviceRouter);
 app.get('/api/mcp/config', (req, res) => {
-  const script = path.join(rootDir, 'server', 'mcp', 'streamfusion-mcp.mjs');
+  const script = path.join(rootDir, 'server', 'mcp', 'streamfusion-mcp.mjs').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep); // external node cannot read inside app.asar
   const env = PORT === 3001 ? undefined : { SF_PORT: String(PORT) };
   res.json({
     success: true, script,

@@ -95,3 +95,8 @@ Measured baseline (v3.1.2): installer 92.7 MB · one 1.21 MB JS bundle · `App.t
 3. **Phase 2 (speed and tokens):** D (screenshot speed, tool-definition trimming, prompt cache, Sonnet default, JPEG).
 4. **Phase 3 (size):** E (asar, lazy pages, dynamic imports).
 5. **Phase 4:** C (version, packaged paths, clean-VM test) → build → ship. F and G can follow the release.
+
+## Status (v3.2.0 build)
+Done: Phase 1 correctness, Phase 2 speed/tokens (prompt caching, Sonnet default, 1 image kept, screenshot/ui_tree cache), Phase 3 size (lazy views, entry 1.21 MB → 119 KB, logo 350 KB → 32 KB, asar on), Phase 4 (installer v3.2.0 ~94.3 MB, `StreamFusion.exe --cli` runs saved tests headless, secrets scan of source clean).
+Changed/honest notes: screenshot gain is limited (image tokens depend on pixels, not format); JPEG evidence dropped; installer is slightly larger than 3.1.2 (92.7 MB) because of added features.
+Not verified: clean-VM install, Windows toast/tray from the installed EXE, ui_tree slowness on the vivo phone (~12 s, device-side), API key rotation (user action).

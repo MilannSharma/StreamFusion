@@ -11,6 +11,15 @@ let serverProcess = null;
 let logFd = null;
 let tray = null;
 let isQuitting = false;
+// StreamFusion.exe --cli <args>: run saved automated tests headless (same as sf-run.mjs), no window
+if (process.argv.includes('--cli')) {
+  const { spawn } = require('child_process');
+  const script = path.join(__dirname, '../server/cli/sf-run.mjs').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+  const args = process.argv.slice(process.argv.indexOf('--cli') + 1);
+  const p = spawn(process.execPath, [script, ...args], { stdio: 'inherit', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+  p.on('exit', c => process.exit(c == null ? 1 : c));
+  return;
+}
 const startHidden = process.argv.includes('--hidden'); // started by Windows at login: tray only, no window
 
 const PORT = 3001;

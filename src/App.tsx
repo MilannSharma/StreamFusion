@@ -1,20 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import lottie from 'lottie-web';
-import catAnimationData from './assets/cat-animation.json';
-import pkg from '../package.json';
-import welcomeAnimationData from './assets/welcome-animation.json';
-import FileManager from './components/FileManager/FileManager';
-import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal';
-import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModal';
-import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
-import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
-import { GuideExtra } from './components/Guide/GuideExtra';
 import { FirstRunTutorial, TUTORIAL_KEY } from './components/Tutorial/FirstRunTutorial';
 import { Coach, resetCoaches, type CoachGuide } from './components/Tutorial/Coach';
-import { ProjectsPage } from './components/Projects/ProjectsPage';
-import { WebStudio } from './components/Emulator/WebStudio';
-import { ApiSection, EmulatorSection, WebSection, AppearanceSection } from './components/Settings/SettingsSections';
-import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
@@ -22,6 +8,39 @@ import {
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
   Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff, Info, Briefcase
 } from 'lucide-react';
+
+// lottie-web (300 KB) and the animation files load only when an animation is actually shown
+function playLottie(container: HTMLElement, load: () => Promise<any>, loop: boolean, onFail?: () => void) {
+  let anim: any = null, dead = false;
+  Promise.all([import('lottie-web'), load()]).then(([l, d]) => {
+    if (dead) return;
+    anim = l.default.loadAnimation({ container, renderer: 'svg', loop, autoplay: true, animationData: d.default });
+    anim.addEventListener('data_failed', () => onFail?.());
+  }).catch(() => onFail?.());
+  return { destroy: () => { dead = true; try { anim?.destroy(); } catch (e) {} } };
+}
+
+// Pages and dialogs load when first used, so the first screen needs far less JavaScript.
+function lazyView(load: () => Promise<any>, pick?: string): React.ComponentType<any> {
+  const L = React.lazy(() => load().then(m => ({ default: pick ? m[pick] : m.default })));
+  return (props: any) => <React.Suspense fallback={null}><L {...props} /></React.Suspense>;
+}
+const FileManager = lazyView(() => import('./components/FileManager/FileManager'));
+const FixConnectionModal = lazyView(() => import('./components/Diagnostics/FixConnectionModal'), 'FixConnectionModal');
+const ClipboardSyncModal = lazyView(() => import('./components/ClipboardSync/ClipboardSyncModal'), 'ClipboardSyncModal');
+const WebcamStudioModal = lazyView(() => import('./components/WebcamStudio/WebcamStudioModal'), 'WebcamStudioModal');
+const VirtualScreenModal = lazyView(() => import('./components/VirtualScreen/VirtualScreenModal'), 'VirtualScreenModal');
+const GuideExtra = lazyView(() => import('./components/Guide/GuideExtra'), 'GuideExtra');
+const ProjectsPage = lazyView(() => import('./components/Projects/ProjectsPage'), 'ProjectsPage');
+const WebStudio = lazyView(() => import('./components/Emulator/WebStudio'), 'WebStudio');
+const ApiSection = lazyView(() => import('./components/Settings/SettingsSections'), 'ApiSection');
+const EmulatorSection = lazyView(() => import('./components/Settings/SettingsSections'), 'EmulatorSection');
+const WebSection = lazyView(() => import('./components/Settings/SettingsSections'), 'WebSection');
+const AppearanceSection = lazyView(() => import('./components/Settings/SettingsSections'), 'AppearanceSection');
+const EmulatorStudioModal = lazyView(() => import('./components/Emulator/EmulatorStudioModal'), 'EmulatorStudioModal');
+const EmulatorStudioView = lazyView(() => import('./components/Emulator/EmulatorStudioModal'), 'EmulatorStudioView');
+declare const __APP_VERSION__: string;
+const pkg = { version: __APP_VERSION__ };
 
 declare global {
   interface Window {
@@ -73,13 +92,7 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
 
     if (containerRef.current) {
       try {
-        anim = lottie.loadAnimation({
-          container: containerRef.current,
-          renderer: 'svg',
-          loop: false,
-          autoplay: true,
-          animationData: welcomeAnimationData
-        });
+        anim = playLottie(containerRef.current, () => import('./assets/welcome-animation.json'), false);
       } catch (e) {
         console.error('Welcome Lottie error:', e);
       }
@@ -302,16 +315,7 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
     let anim: any = null;
     if (containerRef.current) {
       try {
-        anim = lottie.loadAnimation({
-          container: containerRef.current,
-          renderer: 'svg',
-          loop: true,
-          autoplay: true,
-          animationData: catAnimationData
-        });
-        anim.addEventListener('data_failed', () => {
-          setLoadError(true);
-        });
+        anim = playLottie(containerRef.current, () => import('./assets/cat-animation.json'), true, () => setLoadError(true));
       } catch (e) {
         console.error('Cat Lottie error:', e);
         setLoadError(true);
@@ -1135,7 +1139,7 @@ export default function App() {
         {/* StreamFusion Logo & Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <img
-            src="/StreamFusion.png"
+            src="/StreamFusion-128.png"
             alt="StreamFusion Logo"
             style={{ width: 34, height: 34, objectFit: 'contain' }}
           />
@@ -1344,7 +1348,7 @@ export default function App() {
         </div>
 
         {/* Content Main Panel */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px 30px', position: 'relative', background: 'var(--bg-deep)' }}>
+        <main style={{ flex: 1, overflowY: activeTab === 'emulator' ? 'hidden' : 'auto', padding: activeTab === 'emulator' ? '16px 24px' : '24px 30px', position: 'relative', background: 'var(--bg-deep)', ...(activeTab === 'emulator' ? { display: 'flex', flexDirection: 'column' as const, minHeight: 0 } : {}) }}>
           {/* TAB 1: SCREEN MIRROR (HOME) */}
           {activeTab === 'devices' && (
             <div>
@@ -2333,7 +2337,7 @@ export default function App() {
 
           {/* TAB 6: STREAMFUSION ANDROID EMULATOR (FULL PAGE DEDICATED VIEW) */}
           {activeTab === 'emulator' && (
-            <div className="glass-panel" style={{ padding: 0, overflow: 'hidden', minHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
+            <div className="glass-panel" style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <EmulatorStudioView
                 onToast={(msg, icon) => showToast(msg, icon)}
                 onStartMirror={(serial) => startMirror(serial)}

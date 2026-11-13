@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 
 const BASE = process.env.SF_EMULATOR_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'StreamFusion');
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const MCP_SCRIPT = path.join(rootDir, 'server', 'mcp', 'streamfusion-mcp.mjs');
+const MCP_SCRIPT = path.join(rootDir, 'server', 'mcp', 'streamfusion-mcp.mjs').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep); // external node cannot read inside app.asar
 export const INTERNAL_CLIENT = 'StreamFusion chat';
 const PREFIX = 'mcp__streamfusion__';
 

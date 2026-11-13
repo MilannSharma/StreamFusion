@@ -1,7 +1,7 @@
 {
   "name": "streamfusion",
-  "version": "3.1.2",
-  "description": "StreamFusion v3.1.2 - Premium Android Mobile Mirroring, Wireless Streaming, File Transfer & Control powered by scrcpy",
+  "version": "3.2.0",
+  "description": "StreamFusion v3.2.0 - Premium Android Mobile Mirroring, Wireless Streaming, File Transfer & Control powered by scrcpy",
   "author": "Milann Sharma <https://github.com/Milannsharma>",
   "main": "electron/main.cjs",
   "type": "module",
@@ -46,9 +46,9 @@
   },
   "build": {
     "appId": "com.milannsharma.streamfusion",
-    "productName": "StreamFusion v3.1.2",
-    "artifactName": "StreamFusion-v3.1.2-Setup.${ext}",
-    "asar": false,
+    "productName": "StreamFusion v3.2.0",
+    "artifactName": "StreamFusion-v3.2.0-Setup.${ext}",
+    "asar": true,
     "publish": [
       {
         "provider": "github",
@@ -68,7 +68,14 @@
       "StreamFusion.png",
       "package.json",
       "!**/*.map",
-      "!node_modules/**/{test,tests,docs,*.md}"
+      "!node_modules/**/{test,tests,docs,*.md}",
+      "!server/**/*.test.mjs",
+      "!scripts/**",
+      "!**/*.md",
+      "!**/*.ts",
+      "!**/.github/**",
+      "!**/{CHANGELOG,LICENSE,README}*",
+      "!**/node_modules/*/{test,tests,docs,example,examples,.github}/**"
     ],
     "extraResources": [
       {
@@ -97,8 +104,15 @@
       "include": "build/installer.nsh",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "StreamFusion v3.1.2",
+      "shortcutName": "StreamFusion v3.2.0",
       "runAfterFinish": true
-    }
+    },
+    "asarUnpack": [
+      "node_modules/playwright-core/**",
+      "server/mcp/**",
+      "server/cli/**",
+      "StreamFusion.png",
+      "StreamFusion.ico"
+    ]
   }
 }
