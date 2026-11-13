@@ -8,13 +8,14 @@ import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal'
 import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModal';
 import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
+import { WebStudio } from './components/Emulator/WebStudio';
 import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe
 } from 'lucide-react';
 
 declare global {
@@ -325,7 +326,9 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator'>('devices');
+  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator' | 'web'>('devices');
+  const [webVisited, setWebVisited] = useState(false);
+  useEffect(() => { if (activeTab === 'web') setWebVisited(true); }, [activeTab]);
   const [devices, setDevices] = useState<any[]>([]);
   const [emulatorDevices, setEmulatorDevices] = useState<any[]>([]); // shown in the Emulator tab only
   const [savedDevices, setSavedDevices] = useState<any[]>([]);
@@ -1272,6 +1275,13 @@ export default function App() {
               }}
             >
               <Gamepad2 size={16} color="#6366f1" /> Android Emulator
+            </button>
+            <button
+              onClick={() => setActiveTab('web')}
+              className={`sidebar-tab ${activeTab === 'web' ? 'active' : ''}`}
+              style={{ marginTop: 6, fontWeight: 700 }}
+            >
+              <Globe size={16} color="#6366f1" /> Web Testing
             </button>
           </div>
 
@@ -2230,6 +2240,11 @@ export default function App() {
                 onStartMirror={(serial) => startMirror(serial)}
                 isFullPageView={true}
               />
+            </div>
+          )}
+          {webVisited && (
+            <div style={{ display: activeTab === 'web' ? 'block' : 'none' }}>
+              <WebStudio active={activeTab === 'web'} />
             </div>
           )}
         </main>

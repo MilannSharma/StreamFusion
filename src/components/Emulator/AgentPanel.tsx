@@ -8,6 +8,7 @@ interface AgentPanelProps {
   emu: EmulatorApi;
   world?: 'phone' | 'web';
   active?: boolean;
+  fill?: boolean; // full-page use: take the whole window height
 }
 
 type Msg =
@@ -42,7 +43,7 @@ const saveKey = async (v: string) => {
 const border = '1px solid var(--border-color, #e2e8f0)';
 const card: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 12 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', active = true }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', active = true, fill = false }) => {
   const isWeb = world === 'web';
   const serial = emu.status.serial || 'emulator-5554';
   const connected = emu.phase === 'running';
@@ -230,16 +231,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
   return (
-    <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: 1, minHeight: 440, maxHeight: 'calc(100vh - 300px)' }}>
+    <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 440, ...(fill ? { height: 'calc(100vh - 215px)' } : { maxHeight: 'calc(100vh - 300px)' }) }}>
       {/* ---------- left: chat ---------- */}
-      <div style={{ ...card, flex: 1, minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, flex: '0 0 clamp(300px, 32%, 380px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: border, flexWrap: 'wrap' }}>
           <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
             {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <select value={mode} onChange={e => setMode(e.target.value as any)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }} title="Dangerous actions: shell, uninstall, clear data, install APK">
-            <option value="ask">Ask before risky actions</option>
-            <option value="auto">Auto (no prompts)</option>
+            <option value="ask">Ask first</option>
+            <option value="auto">Auto</option>
           </select>
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
             {fmt(tokens.input)} in · {fmt(tokens.output)} out{tokens.cached ? ` · ${fmt(tokens.cached)} cached` : ''}
@@ -345,7 +346,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       )}
       {/* ---------- right: phone / browser ---------- */}
       {isWeb && <WebPane active={active} serial={serial} busy={busy} />}
-      <div style={{ display: isWeb ? 'none' : 'flex', width: chatHidden ? 340 : 290, margin: chatHidden ? '0 auto' : undefined, flexShrink: 0, flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: isWeb ? 'none' : 'flex', flex: 1, minWidth: 260, maxWidth: 460, margin: '0 auto', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <div style={{ background: '#0f172a', borderRadius: 34, padding: 10, boxShadow: '0 10px 30px rgba(15,23,42,0.35)', width: '100%', flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {shot
             ? <img ref={imgRef} src={shot} onClick={onScreenClick} alt="Device screen" draggable={false}

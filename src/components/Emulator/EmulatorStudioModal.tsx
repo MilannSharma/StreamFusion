@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Smartphone, Bot, Package, Terminal, SlidersHorizontal, Power, Upload, Play, Trash2, RefreshCw, MonitorPlay, RotateCcw, CheckCircle2, AlertTriangle, Globe } from 'lucide-react';
+import { Smartphone, Bot, Package, Terminal, SlidersHorizontal, Power, Upload, Play, Trash2, RefreshCw, MonitorPlay, RotateCcw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { AgentPanel } from './AgentPanel';
 import { ResourcesCard } from './ResourcesCard';
 import { PowerPanel, startEmulator } from './PowerControl';
@@ -13,7 +13,7 @@ interface EmulatorStudioModalProps {
   isFullPageView?: boolean;
 }
 
-type Tab = 'emulator' | 'agent' | 'web' | 'apps' | 'logs' | 'settings';
+type Tab = 'emulator' | 'agent' | 'apps' | 'logs' | 'settings';
 
 const border = '1px solid var(--border-subtle, #e2e8f0)';
 const card: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 14, padding: '18px 20px' };
@@ -37,8 +37,8 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
   const { status, phase } = emu;
   const running = phase === 'running';
   const [tab, setTab] = useState<Tab>('emulator');
-  const [visited, setVisited] = useState<{ agent?: boolean; web?: boolean }>({});
-  useEffect(() => { if (tab === 'agent' || tab === 'web') setVisited(v => (v[tab] ? v : { ...v, [tab]: true })); }, [tab]);
+  const [visited, setVisited] = useState<{ agent?: boolean }>({});
+  useEffect(() => { if (tab === 'agent') setVisited({ agent: true }); }, [tab]);
 
   // ---- APK install ----
   const [apkPath, setApkPath] = useState('');
@@ -93,7 +93,6 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'emulator', label: 'Emulator', icon: <Smartphone size={15} /> },
     { id: 'agent', label: 'AI Agent', icon: <Bot size={15} /> },
-    { id: 'web', label: 'Web', icon: <Globe size={15} /> },
     { id: 'apps', label: `Apps${running ? ` (${apps.length})` : ''}`, icon: <Package size={15} /> },
     { id: 'logs', label: 'Logs', icon: <Terminal size={15} /> },
     { id: 'settings', label: 'Settings', icon: <SlidersHorizontal size={15} /> }
@@ -127,7 +126,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
       </div>
 
       {/* Body */}
-      <div style={{ padding: 24, overflowY: tab === 'agent' || tab === 'web' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {tab === 'emulator' && (<>
           <div style={{ ...card, display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ flex: '0 0 300px', display: 'flex', justifyContent: 'center' }}>
@@ -163,7 +162,6 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
         </>)}
 
         {(visited.agent || tab === 'agent') && <AgentPanel emu={emu} world="phone" active={tab === 'agent'} />}
-        {(visited.web || tab === 'web') && <AgentPanel emu={emu} world="web" active={tab === 'web'} />}
 
         {tab === 'apps' && (
           <div style={card}>

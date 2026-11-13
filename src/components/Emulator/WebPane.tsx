@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, Globe, Smartphone, X, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCw, Globe, X, Download, Loader2 } from 'lucide-react';
 
 const border = '1px solid var(--glass-border, #e2e8f0)';
 const post = (path: string, body?: any) => fetch('/api/web/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -50,8 +50,11 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
 
   const go = async () => { setErr(''); const r = await tool('web_navigate', { url: url.trim() || 'about:blank' }); if (!r.ok) setErr(r.error || 'Failed'); setEditing(false); };
   const onClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    // the image is letterboxed (object-fit: contain), so map through the drawn area
     const r = e.currentTarget.getBoundingClientRect();
-    tool('web_click_at', { x: Math.round((e.clientX - r.left) / r.width * vp.w), y: Math.round((e.clientY - r.top) / r.height * vp.h) });
+    const sc = Math.min(r.width / vp.w, r.height / vp.h);
+    const ox = (r.width - vp.w * sc) / 2, oy = (r.height - vp.h * sc) / 2;
+    tool('web_click_at', { x: Math.round((e.clientX - r.left - ox) / sc), y: Math.round((e.clientY - r.top - oy) / sc) });
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (editing) return;
@@ -92,15 +95,13 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
           <option value="">Desktop</option>
           {devices.filter(d => /Pixel|iPhone|iPad|Galaxy/.test(d)).map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        <button style={btn} onClick={async () => { setErr(''); const r = await tool('web_attach_android', { serial }); if (!r.ok) setErr(r.error || 'Failed'); }} title="Control Chrome running inside the Android emulator"><Smartphone size={14} /> Emulator Chrome</button>
         {open && <button style={btn} onClick={() => post('close')} title="Close browser"><X size={14} /></button>}
       </div>
-      {status.mode === 'android' && <div style={{ fontSize: 11.5, color: '#4f46e5' }}>Connected to Chrome on the Android emulator. Close the browser to switch back to desktop.</div>}
       {err && <div style={{ fontSize: 12, color: '#b91c1c' }}>{err}</div>}
       <div tabIndex={0} onKeyDown={onKey} style={{ flex: 1, minHeight: 0, border, borderRadius: 14, overflow: 'hidden', background: 'rgba(15,23,42,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}
         onWheel={e => { if (open) tool('web_eval', { expression: `window.scrollBy(0, ${Math.round(e.deltaY)})` }); }}>
         {shot
-          ? <img ref={imgRef} src={shot} onClick={onClick} draggable={false} alt="Browser" style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', cursor: 'pointer' }} />
+          ? <img ref={imgRef} src={shot} onClick={onClick} draggable={false} alt="Browser" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
           : <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
               <Globe size={28} />
               <div>{open ? 'Loading…' : 'Browser is closed'}</div>

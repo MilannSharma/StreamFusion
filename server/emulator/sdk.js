@@ -90,7 +90,7 @@ function run(file, args, { input, onPercent } = {}) {
 
 // User-tunable resources (Settings -> Engine Specs). Applied to the AVD each time it starts.
 const CONFIG_FILE = path.join(BASE, 'emulator-config.json');
-export const DEFAULT_CONFIG = { ramMB: 2048, cores: 4, heapMB: 384 };
+export const DEFAULT_CONFIG = { ramMB: 6144, cores: 4, heapMB: 384 };
 const LIMITS = { ramMB: [1024, 8192], cores: [1, 16], heapMB: [128, 1024] };
 export function getConfig() {
   let c = {};
