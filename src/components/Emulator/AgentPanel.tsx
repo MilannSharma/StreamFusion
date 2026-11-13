@@ -384,7 +384,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   ];
 
   return (
-    <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 520, height: fill ? 'calc(100vh - 215px)' : 'calc(100vh - 238px)' }}>
+    <div style={{ display: active ? 'flex' : 'none', gap: 16, ...(fill ? { flex: '0 0 auto', minHeight: 520, height: 'calc(100vh - 215px)' } : { flex: 1, minHeight: 0 }) }}>
       {/* ---------- left: chat ---------- */}
       <div style={{ ...card, flex: '0 0 clamp(340px, 40%, 560px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: border, flexWrap: 'wrap', background: 'transparent' }}>
@@ -482,7 +482,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       <div style={{ display: isWeb ? 'none' : 'flex', flex: 1, minWidth: 220, flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 12 }}>
         <div style={{ minHeight: 0, height: '100%', display: 'flex', justifyContent: 'center', minWidth: 0 }}>
         {/* premium phone: titanium frame, black bezel, dynamic island, side buttons (all sizes scale with the phone width) */}
-        <div style={{ height: '100%', maxHeight: 'min(840px, calc(100vh - 250px))', alignSelf: 'center', aspectRatio: '9 / 19.5', maxWidth: '100%', minWidth: 0, minHeight: 0, position: 'relative', containerType: 'inline-size' as any, filter: 'drop-shadow(0 22px 34px rgba(15,23,42,0.32))' }}>
+        <div style={{ height: '100%', maxHeight: fill ? 'min(840px, calc(100vh - 250px))' : 840, alignSelf: 'center', aspectRatio: '9 / 19.5', maxWidth: '100%', minWidth: 0, minHeight: 0, position: 'relative', containerType: 'inline-size' as any, filter: 'drop-shadow(0 22px 34px rgba(15,23,42,0.32))' }}>
           {[[16, 6], [25, 11], [38, 11]].map(([top, h], i) => <span key={'l' + i} style={{ position: 'absolute', left: '-0.9cqw', top: top + '%', width: '1.2cqw', height: h + '%', maxHeight: '11%', borderRadius: '0.6cqw 0 0 0.6cqw', background: 'linear-gradient(90deg,#8d8f94,#c9cbd0 60%,#9a9ca1)' } as any} />)}
           <span style={{ position: 'absolute', right: '-0.9cqw', top: '30%', width: '1.2cqw', height: '14%', borderRadius: '0 0.6cqw 0.6cqw 0', background: 'linear-gradient(270deg,#8d8f94,#c9cbd0 60%,#9a9ca1)' } as any} />
           <div style={{ position: 'absolute', inset: 0, borderRadius: '17cqw', background: 'linear-gradient(145deg,#e4e5e8 0%,#9b9da3 22%,#d9dadd 48%,#85878d 74%,#c4c5c9 100%)', padding: '1.5cqw', boxSizing: 'border-box' } as any}>
