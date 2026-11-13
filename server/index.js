@@ -10,6 +10,7 @@ import { createDiagnosticsRouter } from './routes/diagnostics.js';
 import { createNotificationsRouter } from './routes/notifications.js';
 import { createEmulatorRouter } from './emulator/router.js';
 import { createDeviceRouter } from './device/router.js';
+import { createAgentRouter } from './agent/router.js';
 
 let APP_VERSION = '0.0.0';
 try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version; } catch (e) {}
@@ -92,7 +93,18 @@ app.use('/api/settings', createSettingsRouter(dataDir));
 app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
 app.use('/api/notifications', createNotificationsRouter({ runAdb }));
 app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
-app.use('/api/device', createDeviceRouter({ runAdb, adbExe, scrcpyBin }));
+const deviceRouter = createDeviceRouter({ runAdb, adbExe, scrcpyBin });
+app.use('/api/device', deviceRouter);
+app.get('/api/mcp/config', (req, res) => {
+  const script = path.join(rootDir, 'server', 'mcp', 'streamfusion-mcp.mjs');
+  const env = PORT === 3001 ? undefined : { SF_PORT: String(PORT) };
+  res.json({
+    success: true, script,
+    claudeCode: `claude mcp add streamfusion${env ? ` -e SF_PORT=${PORT}` : ''} -- node "${script}"`,
+    json: JSON.stringify({ mcpServers: { streamfusion: { command: 'node', args: [script], ...(env ? { env } : {}) } } }, null, 2)
+  });
+});
+app.use('/api/agent', createAgentRouter({ tools: deviceRouter.TOOLS }));
 
 function getSavedDevices() {
   try {

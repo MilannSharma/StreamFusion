@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification, screen, safeStorage } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -168,6 +168,22 @@ function createWindow() {
 
   ipcMain.on('open-path', (event, targetPath) => {
     if (targetPath) shell.openPath(targetPath);
+  });
+
+  // Encrypted secrets (API keys) via the OS keychain-backed safeStorage
+  const secretsFile = () => path.join(app.getPath('userData'), 'secrets.json');
+  const readSecrets = () => { try { return JSON.parse(fs.readFileSync(secretsFile(), 'utf8')); } catch (e) { return {}; } };
+  ipcMain.handle('secrets:set', (event, key, value) => {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage unavailable');
+    const all = readSecrets();
+    if (value) all[key] = safeStorage.encryptString(String(value)).toString('base64'); else delete all[key];
+    fs.writeFileSync(secretsFile(), JSON.stringify(all));
+    return true;
+  });
+  ipcMain.handle('secrets:get', (event, key) => {
+    const v = readSecrets()[key];
+    if (!v || !safeStorage.isEncryptionAvailable()) return '';
+    try { return safeStorage.decryptString(Buffer.from(v, 'base64')); } catch (e) { return ''; }
   });
 
   ipcMain.handle('create-shortcuts', async () => {

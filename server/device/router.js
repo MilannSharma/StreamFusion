@@ -29,5 +29,6 @@ export function createDeviceRouter({ runAdb, adbExe, scrcpyBin }) {
     res.type('png').send(Buffer.from(r.imageBase64, 'base64'));
   });
 
+  router.TOOLS = TOOLS;
   return router;
 }

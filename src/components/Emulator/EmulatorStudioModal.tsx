@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { AgentPanel } from './AgentPanel';
 import {
   Gamepad2, Play, Square, Upload, RefreshCw, Smartphone, CheckCircle,
   AlertCircle, Sparkles, Trash2, ArrowUpRight, Cpu, Layers, HardDrive,
@@ -54,7 +55,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({
   const [apkPathInput, setApkPathInput] = useState('');
   const [installedApps, setInstalledApps] = useState<{ package: string; name: string }[]>([]);
   const [isLoadingApps, setIsLoadingApps] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'apps' | 'logs' | 'guide' | 'specs'>('control');
+  const [activeTab, setActiveTab] = useState<'control' | 'agent' | 'apps' | 'logs' | 'guide' | 'specs'>('control');
   const [logs, setLogs] = useState<EmulatorLog[]>([]);
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
@@ -599,6 +600,25 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({
               }}
             >
               <Zap size={14} /> Emulator &amp; APK Testing
+            </button>
+
+            <button
+              onClick={() => setActiveTab('agent')}
+              style={{
+                padding: '10px 16px',
+                fontSize: 13,
+                fontWeight: 700,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                color: activeTab === 'agent' ? '#4f46e5' : 'var(--text-muted, #64748b)',
+                borderBottom: activeTab === 'agent' ? '3px solid #4f46e5' : '3px solid transparent'
+              }}
+            >
+              <Cpu size={14} /> AI Agent
             </button>
 
             <button
@@ -1336,6 +1356,10 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'agent' && (
+              <AgentPanel serial={status.serial || 'emulator-5554'} connected={!!status.adbConnected} />
             )}
 
             {activeTab === 'guide' && (

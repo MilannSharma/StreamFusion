@@ -58,20 +58,20 @@ ADB based, real device aur emulator dono pe kaam karega.
 Dono tarike chalenge, user jo chahe chune. Dono ek hi tool layer (M2) use karte hain.
 
 **A. Built-in Chat Agent (app ke andar)**
-- [ ] Emulator Studio split layout: **left = chat/agent panel, right = live phone screen** (scrcpy). Tabs: Chat | Steps log | Test cases | Reports
-- [ ] Chat mein user instruction de, agent loop chalta hai: observe -> think -> act -> verify. Har step ek card (action, result, pass/fail)
-- [ ] Stop button, manual click on phone screen (user bhi control kar sake), agent ke tap ka marker
+- [x] Emulator Studio split layout: **left = chat/agent panel, right = live phone screen** (scrcpy). Tabs: Chat | Steps log | Test cases | Reports
+- [x] Chat mein user instruction de, agent loop chalta hai: observe -> think -> act -> verify. Har step ek card (action, result, pass/fail)
+- [x] Stop button, manual click on phone screen (user bhi control kar sake), agent ke tap ka marker (phone = polled screenshots ~1/sec; scrcpy live video baad mein)
 - [ ] APK chat mein drop karke "isse test karo" support
-- [ ] Permission mode: "har action puchho" / "auto chalne do"
-- [ ] Provider dropdown: Claude, OpenAI, Gemini, OpenRouter, Ollama (local, free)
-- [ ] Login = **API key**: Settings mein paste, Electron `safeStorage` mein encrypted. (Claude.ai subscription login third-party apps ke liye allowed nahi hai: build karne se pehle current Anthropic policy dobara check karni hai)
-- [ ] Token saving: UI tree diffs, screenshot sirf failure pe, step limit
+- [x] Permission mode: "har action puchho" / "auto chalne do"
+- [ ] Provider dropdown: abhi sirf Claude (Opus/Sonnet/Haiku 5.5). OpenAI, Gemini, OpenRouter, Ollama baad mein
+- [x] Login = **API key**: Settings mein paste, Electron `safeStorage` mein encrypted. (Claude.ai subscription login third-party apps ke liye allowed nahi hai: build karne se pehle current Anthropic policy dobara check karni hai)
+- [ ] Token saving: DONE = purane screenshots history se hatte hain (sirf 2 latest), system+tools cached, 40 step limit. BAAKI = UI tree diffs
 
 **B. MCP Server (bahar ke AI ke liye)**
-- [ ] `streamfusion-mcp` jo M2 tools expose kare (Claude Code, Claude Desktop, Cursor, koi bhi MCP client)
+- [x] `streamfusion-mcp` jo M2 tools expose kare (Claude Code, Claude Desktop, Cursor, koi bhi MCP client) (`server/mcp/streamfusion-mcp.mjs`, stdio, 28 tools)
 - [ ] Login user ke apne AI client ka rehta hai (e.g. Claude Code subscription), StreamFusion ko key nahi chahiye
-- [ ] Settings mein "Connect AI" button: MCP config ek click mein copy
-- [ ] Same permission/approval rules jo chat agent ke liye hain (M7)
+- [x] Settings mein "Connect AI" button: MCP config ek click mein copy
+- [ ] Same approval rules MCP pe (abhi MCP client ka apna permission prompt hi chalta hai) (M7)
 
 **C. Baad mein (policy confirm hone par)**
 - [ ] Chat box peeche `claude` CLI headless chalaye (user already logged in), sirf tab jab policy allow kare
