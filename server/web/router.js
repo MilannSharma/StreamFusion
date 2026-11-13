@@ -10,6 +10,7 @@ export function createWebRouter({ runAdb } = {}) {
   router.get('/devices', (req, res) => res.json({ success: true, devices: web.listDevices() }));
   router.post('/install', (req, res) => { web.install(); res.json({ success: true }); });
   router.post('/config', async (req, res) => { await web.configure({ headless: req.body?.headless, device: req.body?.device }); res.json({ success: true }); });
+  router.post('/attach-chrome', async (req, res) => { try { res.json({ success: true, ...(await web.attachDesktop()) }); } catch (e) { res.json({ success: false, error: e.message }); } });
   router.post('/close', async (req, res) => { await web.closeBrowser(); res.json({ success: true }); });
 
   router.get('/tools', (req, res) => res.json({ success: true, tools: Object.values(TOOLS).map(({ handler, ...t }) => t) }));

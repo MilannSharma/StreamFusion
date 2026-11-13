@@ -110,6 +110,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
               <Globe size={28} />
               <div>{open ? 'Loading…' : 'Browser is closed'}</div>
               {!open && <button style={{ ...btn, background: '#4f46e5', color: '#fff', border: 'none', padding: '8px 16px', fontWeight: 700 }} onClick={() => tool('web_navigate', { url: 'https://www.google.com' })}>Open browser</button>}
+              {!open && <button style={btn} title="Opens your own Chrome/Edge in its own window. Log in or pass any check there yourself; the agent then controls that same browser." onClick={async () => { const r = await (await post('attach-chrome')).json(); if (!r.success) alert(r.error || 'Could not open Chrome'); }}>Connect to my Chrome</button>}
             </div>}
       </div>
       <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Click, scroll and type here to control the page. The agent uses the same browser.</div>

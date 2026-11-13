@@ -118,6 +118,41 @@ async function attachAndroid(runAdb, serial, target, pid) {
   return { socket, pages: ctx.pages().length };
 }
 
+// ---------- attach to the user's own desktop Chrome / Edge (they log in themselves, e.g. through bot checks) ----------
+const DESKTOP_PORT = 9333;
+function findDesktopBrowser() {
+  const pf = process.env['ProgramFiles'] || 'C:/Program Files', pf86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)', la = process.env.LOCALAPPDATA || '';
+  const c = [
+    pf + '/Google/Chrome/Application/chrome.exe', pf86 + '/Google/Chrome/Application/chrome.exe', la + '/Google/Chrome/Application/chrome.exe',
+    pf86 + '/Microsoft/Edge/Application/msedge.exe', pf + '/Microsoft/Edge/Application/msedge.exe'
+  ];
+  return c.find(p => { try { return fs.existsSync(p); } catch (e) { return false; } }) || null;
+}
+async function cdpAlive() { try { const r = await fetch('http://127.0.0.1:' + DESKTOP_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }); return r.ok; } catch (e) { return false; } }
+export async function attachDesktop({ launch = true } = {}) {
+  if (!isInstalled()) throw new Error('Playwright browser support is not installed. Install it first (Settings -> Web).');
+  if (!(await cdpAlive())) {
+    if (!launch) throw new Error('Chrome is not running with remote debugging on port ' + DESKTOP_PORT + '.');
+    const exe = findDesktopBrowser();
+    if (!exe) throw new Error('Chrome or Edge was not found on this PC.');
+    // A separate profile folder is required for remote debugging; it keeps your logins between sessions.
+    const dir = path.join(BASE, 'own-chrome-profile');
+    fs.mkdirSync(dir, { recursive: true });
+    spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', 'about:blank'], { detached: true, stdio: 'ignore' }).unref();
+    for (let i = 0; i < 40 && !(await cdpAlive()); i++) await new Promise(r => setTimeout(r, 500));
+    if (!(await cdpAlive())) throw new Error('Chrome started but did not open the debugging port.');
+  }
+  await closeBrowser();
+  remote = await playwright().chromium.connectOverCDP('http://127.0.0.1:' + DESKTOP_PORT, { timeout: 15000 });
+  ctx = remote.contexts()[0];
+  ctx.on('page', wirePage);
+  for (let i = 0; i < 20 && !ctx.pages().length; i++) await new Promise(r => setTimeout(r, 250));
+  page = ctx.pages()[ctx.pages().length - 1] || await ctx.newPage();
+  wirePage(page); page.__wired = true;
+  state.mode = 'chrome';
+  return { pages: ctx.pages().length };
+}
+
 export function createWebTools({ runAdb } = {}) {
   const TOOLS = {};
   const def = (name, description, properties, required, handler, dangerous = false) => {
@@ -221,6 +256,10 @@ export function createWebTools({ runAdb } = {}) {
   def('web_attach_android', 'Connect the web_* tools to Chrome or a debuggable WebView running on the Android device/emulator (via adb + DevTools). After this, web_snapshot/click/etc. act on the phone. Use web_close to disconnect.', { serial: { type: 'string', description: 'adb serial, default emulator-5554' }, target: { type: 'string', enum: ['chrome', 'webview'] }, pid: { type: 'string', description: 'WebView process id (optional)' } }, [], async (a) => {
     if (!runAdb) return { ok: false, error: 'adb not available' };
     const r = await attachAndroid(runAdb, a.serial || 'emulator-5554', a.target || 'chrome', a.pid);
+    return { ok: true, ...r, ...(await state0(page)) };
+  });
+  def('web_attach_chrome', "Use the user's own desktop Chrome/Edge (opened with a dedicated profile and remote debugging) instead of the built-in Chromium. The user can log in or solve any check themselves in that window; then web_* tools act on it. Use web_close to disconnect (Chrome stays open).", {}, [], async () => {
+    const r = await attachDesktop();
     return { ok: true, ...r, ...(await state0(page)) };
   });
   def('web_close', 'Close the browser.', {}, [], async () => { await closeBrowser(); return { ok: true }; });
