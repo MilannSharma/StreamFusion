@@ -2,34 +2,13 @@ import express from 'express';
 import { spawn, exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import * as sdk from './sdk.js';
 import { checkPortOpen, scanActiveEmulatorPorts, qemuStatus, checkProcessRunning } from './helpers.js';
 
 export function createEmulatorRouter({ runAdb, rootDir }) {
   const router = express.Router();
 
-  // Locate emulator binaries
-  const candidateDirs = [
-    process.env.SF_RESOURCES ? path.join(process.env.SF_RESOURCES, 'emulator-bin') : null,
-    process.resourcesPath ? path.join(process.resourcesPath, 'emulator-bin') : null,
-    path.join(rootDir, 'emulator-bin')
-  ].filter(Boolean);
-
-  let emulatorBin = path.join(rootDir, 'emulator-bin');
-  if (!fs.existsSync(emulatorBin)) {
-    try { fs.mkdirSync(emulatorBin, { recursive: true }); } catch (e) {}
-  }
-
-  let emulatorExe = path.join(emulatorBin, 'StreamFusionEmulator.exe');
-  let emulatorEngineExe = path.join(emulatorBin, 'StreamFusionEngine.exe');
-
-  for (const dir of candidateDirs) {
-    if (fs.existsSync(path.join(dir, 'StreamFusionEmulator.exe'))) {
-      emulatorBin = dir;
-      emulatorExe = path.join(dir, 'StreamFusionEmulator.exe');
-      emulatorEngineExe = path.join(dir, 'StreamFusionEngine.exe');
-      break;
-    }
-  }
+  const emulatorBin = path.join(sdk.SDK_ROOT, 'emulator');
 
   // Live in-memory circular log buffer
   const MAX_LOGS = 250;
@@ -57,63 +36,60 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
   }
 
   // Installation state tracking
-  const installMarkerPath = path.join(emulatorBin, 'emulator_installed.json');
-  let installState = {
-    isInstalling: false,
-    progress: 0,
-    stage: ''
-  };
-
-  function isEmulatorInstalled() {
-    return fs.existsSync(installMarkerPath);
-  }
-
   const checkQemuStatus = () => qemuStatus(emulatorBin);
 
-  // Active child process reference
-  let activeEmulatorProcess = null;
+  // ---- Real emulator lifecycle (M1) ----
+  sdk.setLogger(addEmulatorLog);
 
-  // 1. GET /api/emulator/status
   router.get('/status', async (req, res) => {
-    const installed = isEmulatorInstalled();
-    const isRunning = await checkProcessRunning();
-    const port5555Open = await checkPortOpen(5555);
-
-    // Check if ADB detects an emulator connected (on 5555 or emulator-*)
+    const installed = sdk.isInstalled();
     const adbRes = await runAdb(['devices'], 2000);
-    const adbOut = adbRes.output || '';
-    const adbConnected = adbOut.includes('localhost:5555') ||
-                         adbOut.includes('127.0.0.1:5555') ||
-                         adbOut.includes('emulator-') ||
-                         adbOut.includes('127.0.0.1:');
-
-    // Extract any active serial
-    let detectedSerial = 'localhost:5555';
-    const lines = adbOut.split(/\r?\n/);
-    for (const l of lines) {
-      if (l.includes('\tdevice')) {
-        const s = l.split('\t')[0].trim();
-        if (s.includes('5555') || s.includes('emulator') || s.includes('127.0.0.1:')) {
-          detectedSerial = s;
-          break;
-        }
-      }
-    }
-
+    const out = adbRes.output || '';
+    const online = out.split(/\r?\n/).some(l => l.startsWith(sdk.SERIAL + '\t') && l.includes('device'));
     res.json({
-      success: true,
-      name: 'StreamFusion Android Emulator',
-      installed,
-      isInstalling: installState.isInstalling,
-      installProgress: installState.progress,
-      installStage: installState.stage,
-      isRunning,
-      port5555Open,
-      adbConnected,
-      serial: detectedSerial,
-      port: 5555,
-      emulatorExe: installed ? emulatorExe : null
+      success: true, name: 'StreamFusion Android Emulator', installed,
+      isInstalling: sdk.state.isInstalling, installProgress: sdk.state.progress,
+      installStage: sdk.state.stage, installError: sdk.state.error,
+      isRunning: sdk.isProcessAlive(), booting: sdk.state.booting, booted: sdk.state.booted,
+      headless: sdk.state.headless,
+      port5555Open: online, adbConnected: online && sdk.state.booted, serial: sdk.SERIAL, port: sdk.EMULATOR_PORT
     });
+  });
+
+  router.get('/hardware', async (req, res) => res.json({ success: true, ...(await sdk.hardwareCheck()) }));
+
+  router.post('/install', (req, res) => {
+    if (sdk.state.isInstalling) return res.json({ success: true, message: 'Installation already in progress' });
+    sdk.install();
+    res.json({ success: true, message: 'Installation started' });
+  });
+
+  router.post('/start', async (req, res) => {
+    if (!sdk.isInstalled()) return res.status(400).json({ success: false, message: 'Emulator is not installed yet. Please click Install.' });
+    try {
+      await sdk.start(runAdb, { headless: !!req.body?.headless, wipe: !!req.body?.wipe, gpu: req.body?.gpu || 'auto' });
+      res.json({ success: true, message: 'Emulator starting...' });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+  router.post('/stop', async (req, res) => {
+    await sdk.stop(runAdb);
+    res.json({ success: true, message: 'Emulator stopped' });
+  });
+
+  router.post('/reset', async (req, res) => {
+    await sdk.stop(runAdb);
+    await new Promise(r => setTimeout(r, 1500));
+    try { await sdk.start(runAdb, { wipe: true, headless: sdk.state.headless }); res.json({ success: true, message: 'Resetting to factory state...' }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+  router.post('/snapshot/:action', async (req, res) => {
+    const { action } = req.params;
+    const name = String(req.body?.name || 'default').replace(/[^\w-]/g, '') || 'default';
+    if (!['save', 'load', 'del'].includes(action)) return res.status(400).json({ success: false, message: 'Bad action' });
+    const r = await sdk.snapshot(runAdb, action, name);
+    res.json({ success: r.success, message: (r.output || '').trim() });
   });
 
   // 2. GET /api/emulator/logs
@@ -213,122 +189,6 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
         message: 'Port is open but ADB connection was not completed: ' + out,
         output: out
       });
-    }
-  });
-
-  // 7. POST /api/emulator/install
-  // Real installer arrives in M1 (Android SDK emulator download). The old simulated installer was removed.
-  router.post('/install', (req, res) => {
-    addEmulatorLog('warn', 'Install requested but the real installer is not implemented yet (planned: M1)');
-    res.status(501).json({ success: false, message: 'Emulator installer not implemented yet (coming in M1).' });
-  });
-
-  // 8. POST /api/emulator/start
-  router.post('/start', async (req, res) => {
-    if (!isEmulatorInstalled()) {
-      addEmulatorLog('warn', 'Start attempted before installation');
-      return res.status(400).json({
-        success: false,
-        message: 'StreamFusion Android Emulator is not installed yet. Please click Install.'
-      });
-    }
-
-    // Diagnostics pre-check
-    const qemuCheck = await checkQemuStatus();
-    addEmulatorLog('info', `Engine pre-flight: QEMU status = ${qemuCheck.available ? 'Found (' + qemuCheck.path + ')' : 'Not in PATH'}`);
-
-    try {
-      if (fs.existsSync(emulatorExe)) {
-        addEmulatorLog('info', `Spawning ${path.basename(emulatorExe)} with piped stdio...`);
-
-        if (activeEmulatorProcess) {
-          try { activeEmulatorProcess.kill(); } catch (e) {}
-        }
-
-        activeEmulatorProcess = spawn(emulatorExe, [], {
-          cwd: emulatorBin,
-          detached: false,
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
-
-        activeEmulatorProcess.stdout.on('data', (data) => {
-          const text = data.toString().trim();
-          if (text) {
-            addEmulatorLog('info', `[ENGINE STDOUT] ${text}`);
-          }
-        });
-
-        activeEmulatorProcess.stderr.on('data', (data) => {
-          const text = data.toString().trim();
-          if (text) {
-            addEmulatorLog('error', `[ENGINE STDERR] ${text}`);
-          }
-        });
-
-        activeEmulatorProcess.on('error', (err) => {
-          addEmulatorLog('error', `Engine process error: ${err.message}`);
-        });
-
-        activeEmulatorProcess.on('exit', (code, signal) => {
-          addEmulatorLog('warn', `Engine process exited with code ${code} (signal: ${signal || 'none'})`);
-        });
-      } else {
-        addEmulatorLog('error', `Binary not found at ${emulatorExe}`);
-      }
-
-      // Safe Sentinel Port Poller (Prevents Error 10061 completely)
-      addEmulatorLog('info', 'Waiting for port 5555 to open before attempting ADB connection...');
-      let attempts = 0;
-      const pollInterval = setInterval(async () => {
-        attempts++;
-        const isOpen = await checkPortOpen(5555);
-        if (isOpen) {
-          clearInterval(pollInterval);
-          addEmulatorLog('success', 'Port 5555 is actively listening! Connecting ADB bridge...');
-          runAdb(['connect', 'localhost:5555'])
-            .then(res => addEmulatorLog('info', `ADB connect result: ${res.output || 'OK'}`))
-            .catch(e => addEmulatorLog('error', `ADB connect error: ${e.message}`));
-        } else if (attempts >= 8) {
-          clearInterval(pollInterval);
-          addEmulatorLog('warn', 'Port 5555 did not open within timeout. Check if QEMU or virtualization requires elevated privileges.');
-        }
-      }, 1500);
-
-      res.json({
-        success: true,
-        message: 'StreamFusion Android Emulator launch initiated!'
-      });
-    } catch (e) {
-      addEmulatorLog('error', `Failed to launch emulator: ${e.message}`);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to launch emulator: ' + e.message
-      });
-    }
-  });
-
-  // 9. POST /api/emulator/stop
-  router.post('/stop', async (req, res) => {
-    addEmulatorLog('info', 'Stopping StreamFusion Emulator instances...');
-    try {
-      if (activeEmulatorProcess) {
-        try { activeEmulatorProcess.kill(); } catch (e) {}
-        activeEmulatorProcess = null;
-      }
-      exec('taskkill /F /IM StreamFusionEmulator.exe /T', () => {});
-      exec('taskkill /F /IM StreamFusionEngine.exe /T', () => {});
-      exec('taskkill /F /IM SoulAndroid.exe /T', () => {});
-      exec('taskkill /F /IM soul.exe /T', () => {});
-      await runAdb(['disconnect', 'localhost:5555'], 2000);
-      addEmulatorLog('info', 'StreamFusion Android Emulator processes terminated.');
-
-      res.json({
-        success: true,
-        message: 'StreamFusion Android Emulator stopped'
-      });
-    } catch (e) {
-      addEmulatorLog('warn', `Stop signal result: ${e.message}`);
-      res.json({ success: true, message: 'Stop signal sent' });
     }
   });
 
@@ -449,7 +309,7 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
 
   // 12. GET /api/emulator/apps
   router.get('/apps', async (req, res) => {
-    const serial = req.query?.serial || 'localhost:5555';
+    const serial = req.query?.serial || sdk.SERIAL;
     const pmRes = await runAdb(['-s', serial, 'shell', 'pm', 'list', 'packages', '-3'], 5000);
     if (!pmRes.success) {
       return res.json({ success: true, apps: [] });

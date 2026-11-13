@@ -41,11 +41,11 @@
 - [x] `.gitignore` fix (emulator-bin ignored, extraResources local build ke liye as-is)
 
 ### M1: Emulator Manager (real install)
-- [ ] Download `cmdline-tools`, `emulator`, `platform-tools`, system image (progress + resume)
-- [ ] Hardware check (virtualization/WHPX) + enable guide
-- [ ] AVD create (2GB RAM, 4 cores, quick-boot snapshot)
-- [ ] Endpoints: start, stop, reset, snapshot save/load
-- [ ] `EmulatorStudioModal` ko real backend se jodo
+- [x] Download `cmdline-tools`, `emulator`, `platform-tools`, system image (progress + resume)
+- [x] Hardware check (virtualization/WHPX) + enable guide
+- [x] AVD create (2GB RAM, 4 cores, quick-boot snapshot)
+- [x] Endpoints: start, stop, reset, snapshot save/load
+- [x] `EmulatorStudioModal` ko real backend se jodo
 
 ### M2: Device Control Layer (AI ko 100% access)
 ADB based, real device aur emulator dono pe kaam karega.
