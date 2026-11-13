@@ -44,13 +44,57 @@ const Row: React.FC<{ label: string; first?: boolean; children: React.ReactNode 
   </div>
 );
 
+// Pick an app that is already on the phone, or upload an .apk to install it there
+const AppPicker: React.FC<{ serial: string; onPick: (pkg: string) => void; onNote?: (m: string) => void }> = ({ serial, onPick, onNote }) => {
+  const [apps, setApps] = useState<{ package: string; label: string }[] | null>(null);
+  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [q, setQ] = useState(''), [note, setNote] = useState('');
+  const apkRef = useRef<HTMLInputElement>(null);
+  const load = async () => {
+    setOpen(o => !o);
+    if (apps) return;
+    try { setApps(((await (await fetch('/api/devices/' + encodeURIComponent(serial) + '/apps')).json()).apps || [])); } catch (e) { setApps([]); }
+  };
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setBusy(true); setNote('');
+    try {
+      const r = await (await fetch('/api/devices/' + encodeURIComponent(serial) + '/install-apk', { method: 'POST', headers: { 'Content-Type': 'application/vnd.android.package-archive' }, body: file })).json();
+      if (r.success) { if (r.package) onPick(r.package); setApps(null); setNote(r.package ? 'Installed ' + r.package : 'Updated on the phone'); }
+      else setNote('Install failed: ' + (r.message || 'unknown error'));
+    } catch (e: any) { setNote('Install failed: ' + e.message); }
+    setBusy(false);
+  };
+  const shown = (apps || []).filter(a => !q || (a.label + a.package).toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div style={{ position: 'relative', display: 'flex', gap: 10, flexShrink: 0 }}>
+      <button style={linkBtn} onClick={load}>Installed</button>
+      <button style={linkBtn} disabled={busy} onClick={() => apkRef.current?.click()}>{busy ? 'Installing…' : 'APK'}</button>
+      {note && <div style={{ position: 'absolute', right: 0, top: 'calc(100% - 2px)', fontSize: 11, color: SUB, whiteSpace: 'nowrap', background: 'var(--bg-card, #fff)', padding: '2px 6px', borderRadius: 6, zIndex: 5 }}>{note}</div>}
+      <input ref={apkRef} type="file" accept=".apk" style={{ display: 'none' }} onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+      {open && (
+        <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 260, maxHeight: 280, overflowY: 'auto', background: 'var(--bg-card, #fff)', border: `1px solid ${LINE}`, borderRadius: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.18)', padding: 6 }}>
+          <input autoFocus style={{ ...field, width: '100%', padding: '6px 8px' }} value={q} onChange={e => setQ(e.target.value)} placeholder="Search apps" />
+          {apps === null && <div style={{ padding: 10, fontSize: 12, color: SUB }}>Loading…</div>}
+          {apps && !shown.length && <div style={{ padding: 10, fontSize: 12, color: SUB }}>No apps found</div>}
+          {shown.map(a => (
+            <div key={a.package} onClick={() => { onPick(a.package); setOpen(false); setQ(''); }} style={{ padding: '7px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: INK }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.10)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              <div>{a.label}</div><div style={{ fontSize: 11, color: SUB }}>{a.package}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface Props {
+  serial?: string; onNote?: (msg: string) => void;
   projects: { id: string; name: string }[]; projectId: string; onPickProject: (id: string) => void; modules: string[]; onModule: (name: string) => void;
   isWeb: boolean; brief: Brief; setBrief: (b: Brief) => void; files: BriefFile[];
   addFiles: (list: FileList | null, kind: 'cases' | 'docs') => void; removeFile: (i: number) => void;
 }
 
-export const TestBrief: React.FC<Props> = ({ projects, projectId, onPickProject, modules, onModule, isWeb, brief, setBrief, files, addFiles, removeFile }) => {
+export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId, onPickProject, modules, onModule, isWeb, brief, setBrief, files, addFiles, removeFile }) => {
   const casesRef = useRef<HTMLInputElement>(null), docsRef = useRef<HTMLInputElement>(null);
   const hasExtras = !!(brief.login.trim() || brief.notes.trim() || files.some(f => f.kind === 'docs'));
   const [more, setMore] = useState(hasExtras);
@@ -81,6 +125,7 @@ export const TestBrief: React.FC<Props> = ({ projects, projectId, onPickProject,
         </Row>
         <Row label={isWeb ? 'URL' : 'App'} first={false}>
           <input style={field} value={brief.target} onChange={set('target')} placeholder={isWeb ? 'https://staging.example.com' : 'App name or package'} />
+          {!isWeb && serial && <AppPicker serial={serial} onPick={pkg => setBrief({ ...brief, target: pkg })} onNote={onNote} />}
         </Row>
       </div>
 

@@ -1154,7 +1154,7 @@ export default function App() {
             }}>
               StreamFusion
             </span>
-            <span className="badge badge-cyan" style={{ fontSize: 10, padding: '2px 7px' }}>v1.0</span>
+            <span className="badge badge-cyan" style={{ fontSize: 10, padding: '2px 7px' }}>v{pkg.version}</span>
           </div>
         </div>
 

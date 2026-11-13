@@ -559,6 +559,25 @@ app.get('/api/mirror/status', (req, res) => {
   });
 });
 
+// 4.0 POST /api/devices/:serial/install-apk (raw .apk body from the browser; installs on that phone and says which app is new)
+app.post('/api/devices/:serial/install-apk', express.raw({ type: '*/*', limit: '600mb' }), async (req, res) => {
+  const serial = String(req.params.serial);
+  if (!/^[\w.:-]+$/.test(serial)) return res.status(400).json({ success: false, message: 'Bad serial' });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return res.status(400).json({ success: false, message: 'No APK received' });
+  const tmp = path.join(os.tmpdir(), 'sf-upload-' + Date.now() + '.apk');
+  const list = async () => new Set(((await runAdb(['-s', serial, 'shell', 'pm', 'list', 'packages', '-3'], 15000)).output || '').split(/\r?\n/).map(l => l.replace('package:', '').trim()).filter(Boolean));
+  try {
+    fs.writeFileSync(tmp, req.body);
+    const before = await list();
+    const r = await runAdb(['-s', serial, 'install', '-r', '-g', tmp], 180000);
+    if (!/Success/i.test(r.output || '')) return res.json({ success: false, message: (r.output || 'Install failed').split(/\r?\n/).filter(Boolean).pop() });
+    const after = await list();
+    const added = [...after].filter(p => !before.has(p));
+    res.json({ success: true, package: added[0] || '', isNew: added.length > 0 });
+  } catch (e) { res.json({ success: false, message: e.message }); }
+  finally { try { fs.unlinkSync(tmp); } catch (e) {} }
+});
+
 // 4.1 GET /api/devices/:serial/apps (Query launchable apps for Virtual Display)
 app.get('/api/devices/:serial/apps', async (req, res) => {
   const { serial } = req.params;

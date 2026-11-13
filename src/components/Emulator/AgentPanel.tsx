@@ -422,7 +422,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
         )}
 
         {formMode ? (
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief projects={projects} projectId={projectId} onPickProject={pickProject} modules={(projectData?.modules || []).map((m: any) => m.name)} onModule={onModule} isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} /></div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief serial={isWeb ? undefined : (connected ? serial : undefined)} projects={projects} projectId={projectId} onPickProject={pickProject} modules={(projectData?.modules || []).map((m: any) => m.name)} onModule={onModule} isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} /></div>
         ) : (
         <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (
