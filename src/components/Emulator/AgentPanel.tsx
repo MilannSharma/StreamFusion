@@ -4,7 +4,8 @@ import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
 import { loadKey } from './secrets';
-import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref } from './ConnectOptions';
+import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref, installClaude, startClaudeSignIn } from './ConnectOptions';
+import { Coach, type CoachGuide } from '../Tutorial/Coach';
 
 interface AgentPanelProps {
   emu: EmulatorApi;
@@ -274,6 +275,51 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   };
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
+  // ---------- avatar guides: what to do next, until the task is done ----------
+  const [webSt, setWebSt] = useState<any>(null);
+  useEffect(() => {
+    if (!isWeb || !active) return;
+    let stop = false;
+    const tick = async () => { try { const j = await (await fetch('/api/web/status')).json(); if (!stop) setWebSt(j); } catch (e) {} if (!stop) setTimeout(tick, 2500); };
+    tick();
+    return () => { stop = true; };
+  }, [isWeb, active]);
+  const hasSent = msgs.some(m => m.kind === 'user');
+  const ready = engine !== 'none' || mcpLive.connected;
+  const askStep = { title: 'Tell the agent what to test', mood: 'listening' as const, done: hasSent,
+    body: <>Type it in the chat on the left, for example <i>{isWeb ? '"Open example.com and check the heading"' : '"Open Settings and tell me the Android version"'}</i>. Turn on <b>Test mode</b> if you want a PDF/DOCX report with screenshots.</> };
+  const guides: CoachGuide[] = [
+    { id: 'ai', enabled: !cli.loading, doneTitle: 'AI connected', doneBody: 'Now type what you want to test in the chat and press Enter.',
+      steps: [
+        { title: 'Get Claude on this PC', mood: 'working', done: cli.installed || ready,
+          body: 'The AI agent runs through Claude Code in the background. Press Install and wait about a minute. It downloads and sets itself up, no admin needed.',
+          action: { label: cli.installing ? (cli.stage || 'Installing…') : 'Install Claude', onClick: () => installClaude(), busy: !!cli.installing }, error: cli.error,
+          note: <>Prefer an API key or your own terminal? <a href="#" onClick={e => { e.preventDefault(); setShowConnect(true); }}>See the other options</a>.</> },
+        { title: 'Sign in with your Claude account', mood: 'listening', done: cli.loggedIn || ready,
+          body: 'A browser tab opens. Sign in there and come back. This card moves on by itself.',
+          action: { label: 'Sign in with Claude', onClick: () => { startClaudeSignIn(); } },
+          note: <>Or <a href="#" onClick={e => { e.preventDefault(); setShowConnect(true); }}>use an API key / MCP</a> instead.</> }
+      ] },
+    isWeb
+      ? { id: 'web', enabled: webSt !== null, doneTitle: 'First web test is running', doneBody: 'Results show in the chat. Open the report icon for PDF/DOCX reports with screenshots.',
+          steps: [
+            { title: 'Get a browser', mood: 'working', done: !!webSt?.installed, body: 'Web testing drives your own Google Chrome. I could not find Chrome or Edge, so I can download Chrome for you.',
+              action: { label: webSt?.isInstalling ? (webSt.stage || 'Installing…') : 'Install Chrome', onClick: () => fetch('/api/web/install', { method: 'POST' }), busy: !!webSt?.isInstalling }, error: webSt?.error },
+            { title: 'Open the browser', mood: 'happy', done: !!webSt?.open, body: 'Press Open Chrome. Your own Chrome opens in its own window and shows up here too.',
+              action: { label: 'Open Chrome', onClick: async () => { await fetch('/api/web/tool/web_navigate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://www.google.com' }) }); } } },
+            { title: 'Log in if your site needs it', mood: 'thinking', body: 'If your site has a login or a bot check, do it yourself once in the Chrome window. It is remembered, so the agent can continue without you.' },
+            askStep
+          ] }
+      : { id: 'emu', enabled: emu.reachable !== false, doneTitle: 'Emulator ready', doneBody: 'Results show in the chat. Open the report icon for PDF/DOCX reports with screenshots.',
+          steps: [
+            { title: 'Install the emulator', mood: 'working', done: emu.phase !== 'not_installed' && emu.phase !== 'installing', body: 'One-time download of the Android emulator (about 5 GB). It is only installed because you opened this page.' + (emu.phase === 'installing' ? ' ' + Math.round(emu.status.installProgress || 0) + '% ' + (emu.status.installStage || '') : ''),
+              action: { label: emu.phase === 'installing' ? 'Installing…' : 'Install emulator', onClick: () => emu.install(), busy: emu.phase === 'installing' || emu.busy }, error: emu.status.installError },
+            { title: 'Power on the phone', mood: 'happy', done: connected, body: 'The first start takes 1 to 2 minutes, later starts are much faster.',
+              action: { label: emu.phase === 'booting' ? 'Starting…' : 'Power on', onClick: () => { startEmulator(emu); }, busy: emu.phase === 'booting' || emu.busy } },
+            askStep
+          ] }
+  ];
+
   return (
     <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 520, height: fill ? 'calc(100vh - 215px)' : 'calc(100vh - 238px)' }}>
       {/* ---------- left: chat ---------- */}
@@ -393,6 +439,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           ))}
         </div>
       </div>
+      <Coach guides={guides} active={active} />
     </div>
   );
 };

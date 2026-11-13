@@ -13,11 +13,67 @@ const MCP_SCRIPT = path.join(rootDir, 'server', 'mcp', 'streamfusion-mcp.mjs');
 export const INTERNAL_CLIENT = 'StreamFusion chat';
 const PREFIX = 'mcp__streamfusion__';
 
+// ---------- find / install Claude Code ----------
+// A fresh install is not on this process's PATH yet, so also look in the installer's default folders.
+let binCache = null;
+export function claudeBin() {
+  if (binCache && fs.existsSync(binCache)) return binCache;
+  const exe = process.platform === 'win32' ? 'claude.exe' : 'claude';
+  const dirs = [...String(process.env.PATH || '').split(path.delimiter), path.join(os.homedir(), '.local', 'bin'), path.join(process.env.APPDATA || '', 'npm')].filter(Boolean);
+  for (const d of dirs) {
+    for (const n of process.platform === 'win32' ? [exe, 'claude.cmd'] : [exe]) { const p = path.join(d, n); try { if (fs.existsSync(p)) return (binCache = p); } catch (e) {} }
+  }
+  return null;
+}
+export const installState = { installing: false, stage: '', error: null };
+
+const runCapture = (cmd, args, onData) => new Promise((resolve) => {
+  let out = '';
+  const c = spawn(cmd, args, { windowsHide: true });
+  c.stdout.on('data', d => { out += d; onData?.(String(d)); }); c.stderr.on('data', d => { out += d; onData?.(String(d)); });
+  c.on('error', (e) => resolve({ code: -1, out: out + e.message }));
+  c.on('close', (code) => resolve({ code, out }));
+});
+
+// One click "Install Claude": downloads Anthropic's official installer script (claude.ai/install.ps1) and runs it for this user only.
+// Falls back to npm when the script cannot run. Nothing needs admin rights.
+export async function installClaude() {
+  if (installState.installing || claudeBin()) return;
+  if (process.platform !== 'win32') { installState.error = 'Automatic install is available on Windows. See claude.com/claude-code for other systems.'; return; }
+  Object.assign(installState, { installing: true, stage: 'Downloading the Claude installer...', error: null });
+  try {
+    const dir = path.join(BASE, 'downloads');
+    fs.mkdirSync(dir, { recursive: true });
+    let ok = false, log = '';
+    try {
+      const res = await fetch('https://claude.ai/install.ps1');
+      const body = res.ok ? await res.text() : '';
+      if (!body || body.length > 2_000_000 || /<html/i.test(body.slice(0, 200))) throw new Error('unexpected installer response (HTTP ' + res.status + ')');
+      const file = path.join(dir, 'claude-install.ps1');
+      fs.writeFileSync(file, body);
+      installState.stage = 'Installing Claude (about a minute)...';
+      const r = await runCapture('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file]);
+      log = r.out; ok = !!claudeBin();
+      fs.rmSync(file, { force: true });
+    } catch (e) { log = String(e.message || e); }
+    if (!ok) { // fallback: npm
+      installState.stage = 'Installing Claude with npm...';
+      const r = await runCapture(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '-g', '@anthropic-ai/claude-code']);
+      log += '\n' + r.out; ok = !!claudeBin();
+    }
+    for (let i = 0; i < 15 && !claudeBin(); i++) await new Promise(r => setTimeout(r, 1000));
+    if (!claudeBin()) throw new Error(log.trim().split('\n').slice(-2).join(' ').slice(0, 240) || 'unknown error');
+    installState.stage = '';
+  } catch (e) {
+    installState.error = 'Install failed: ' + String(e.message || e).slice(0, 260) + '. You can also install it yourself from claude.com/claude-code.';
+  } finally { installState.installing = false; cache = { at: 0, v: null }; }
+}
+
 // ---------- install / sign-in state ----------
 const run = (args, timeout = 15000) => new Promise((resolve) => {
   let out = '';
   let child;
-  try { child = spawn('claude', args, { windowsHide: true }); } catch (e) { return resolve({ code: -1, out: '', error: e.message }); }
+  const bin = claudeBin(); if (!bin) return resolve({ code: -1, out: '', error: 'not-installed' }); try { child = spawn(bin, args, { windowsHide: true }); } catch (e) { return resolve({ code: -1, out: '', error: e.message }); }
   const t = setTimeout(() => { try { child.kill(); } catch (e) {} }, timeout);
   child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
   child.on('error', (e) => { clearTimeout(t); resolve({ code: -1, out, error: e.code === 'ENOENT' ? 'not-installed' : e.message }); });
@@ -26,7 +82,7 @@ const run = (args, timeout = 15000) => new Promise((resolve) => {
 
 let cache = { at: 0, v: null };
 export async function authStatus(force = false) {
-  if (!force && cache.v && Date.now() - cache.at < 4000) return cache.v;
+  if (!force && cache.v && Date.now() - cache.at < 4000) return { ...cache.v, ...installState };
   const r = await run(['auth', 'status']);
   let v;
   if (r.error === 'not-installed') v = { installed: false, loggedIn: false };
@@ -35,14 +91,14 @@ export async function authStatus(force = false) {
     v = { installed: true, loggedIn: !!j.loggedIn, method: j.authMethod || null, email: j.email || j.account?.email || null, provider: j.apiProvider || null };
   }
   cache = { at: Date.now(), v };
-  return v;
+  return { ...v, ...installState };
 }
 
 // Opens the browser sign-in page. The UI polls authStatus until loggedIn flips.
 let loginProc = null;
 export function startLogin({ console: useConsole = false } = {}) {
   if (loginProc) return { started: false, reason: 'A sign-in is already open in your browser.' };
-  const child = spawn('claude', ['auth', 'login', useConsole ? '--console' : '--claudeai'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(claudeBin() || 'claude', ['auth', 'login', useConsole ? '--console' : '--claudeai'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   loginProc = child;
   let out = '';
   child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
@@ -98,7 +154,7 @@ export async function runClaudeCli({ sessionId, message, serial, mode, model, te
   const resume = sessions.get(sessionId);
   if (resume) args.push('--resume', resume);
 
-  const child = spawn('claude', args, { windowsHide: true, cwd: BASE, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(claudeBin() || 'claude', args, { windowsHide: true, cwd: BASE, stdio: ['pipe', 'pipe', 'pipe'] });
   const onAbort = () => { try { child.kill(); } catch (e) {} };
   signal.addEventListener('abort', onAbort, { once: true });
   child.stdin.end(message);

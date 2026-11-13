@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { LogIn, KeyRound, Plug, Check, Copy, Loader2 } from 'lucide-react';
+import { LogIn, KeyRound, Plug, Check, Copy, Loader2, Download } from 'lucide-react';
 import { openSettings } from './secrets';
 
-export interface CliStatus { installed: boolean; loggedIn: boolean; email?: string | null; loading: boolean }
+export interface CliStatus { installed: boolean; loggedIn: boolean; email?: string | null; loading: boolean; installing?: boolean; stage?: string; error?: string | null }
+export const installClaude = () => fetch('/api/agent/claude/install', { method: 'POST' }).catch(() => {});
+export const startClaudeSignIn = async (): Promise<{ ok: boolean; message?: string }> => {
+  try { const j = await (await fetch('/api/agent/claude/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json(); return { ok: !!j.success || /already/i.test(j.message || ''), message: j.message }; } catch (e) { return { ok: false, message: 'Could not reach StreamFusion.' }; }
+};
 export type Engine = 'claude' | 'api' | 'none';
 
 const PREF = 'sf_engine';
@@ -15,13 +19,14 @@ export const resolveEngine = (pref: string, cli: CliStatus, hasKey: boolean): En
 export function useClaudeStatus(active = true, fast = false) {
   const [cli, setCli] = useState<CliStatus>({ installed: true, loggedIn: false, loading: true });
   const refresh = useCallback(async (force = false) => {
-    try { const j = await (await fetch('/api/agent/claude/status' + (force ? '?force=1' : ''))).json(); setCli({ installed: !!j.installed, loggedIn: !!j.loggedIn, email: j.email, loading: false }); } catch (e) { setCli(c => ({ ...c, loading: false })); }
+    try { const j = await (await fetch('/api/agent/claude/status' + (force ? '?force=1' : ''))).json(); setCli({ installed: !!j.installed, loggedIn: !!j.loggedIn, email: j.email, loading: false, installing: !!j.installing, stage: j.stage || '', error: j.error || null }); } catch (e) { setCli(c => ({ ...c, loading: false })); }
   }, []);
   useEffect(() => {
     if (!active) return;
-    refresh(); const t = setInterval(() => refresh(fast), fast ? 2000 : 8000);
+    const quick = fast || !!cli.installing;
+    refresh(); const t = setInterval(() => refresh(quick), quick ? 1500 : 8000);
     return () => clearInterval(t);
-  }, [active, fast, refresh]);
+  }, [active, fast, cli.installing, refresh]);
   return { cli, refresh };
 }
 
@@ -43,8 +48,8 @@ export const ConnectOptions: React.FC<{ hasKey: boolean; onChanged?: () => void 
 
   const signIn = async () => {
     setMsg('');
-    const j = await (await fetch('/api/agent/claude/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-    if (j.success || /already/i.test(j.message || '')) { t0.current = Date.now(); setWaiting(true); setMsg('A browser tab opened. Sign in with your Claude account there, then come back. This updates by itself.'); }
+    const j = await startClaudeSignIn();
+    if (j.ok) { t0.current = Date.now(); setWaiting(true); setMsg('A browser tab opened. Sign in with your Claude account there, then come back. This updates by itself.'); }
     else setMsg(j.message || 'Could not start sign-in.');
   };
   const signOut = async () => { await fetch('/api/agent/claude/logout', { method: 'POST' }); await refresh(true); onChanged?.(); };
@@ -60,11 +65,9 @@ export const ConnectOptions: React.FC<{ hasKey: boolean; onChanged?: () => void 
       <div style={box}>
         <div style={title}><LogIn size={14} /> 1. Sign in with Claude <span style={{ ...muted, fontWeight: 500 }}>(easiest, no API key)</span></div>
         {!cli.installed ? (<>
-          <div style={muted}>Uses Claude Code on this PC in the background. It is not installed yet. Install it once, then press Sign in:</div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <code style={{ flex: 1, fontSize: 11.5, background: '#0f172a', color: '#e2e8f0', padding: '6px 8px', borderRadius: 8, userSelect: 'text' }}>{installCmd}</code>
-            <button className="btn-secondary" style={{ padding: '5px 8px' }} onClick={() => copy(installCmd)}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>
-          </div>
+          <div style={muted}>This uses Claude Code on this PC in the background. It is not installed yet. One click downloads and sets it up for you (about a minute, no admin needed).</div>
+          <div><button className="btn-primary" disabled={!!cli.installing} onClick={() => installClaude()}>{cli.installing ? <><Loader2 size={14} style={{ animation: 'sf-spin 1s linear infinite' }} /> {cli.stage || 'Installing…'}</> : <><Download size={14} /> Install Claude</>}</button></div>
+          {cli.error && <div style={{ ...muted, color: '#b91c1c' }}>{cli.error}</div>}
         </>) : cli.loggedIn ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: '#16a34a' }}>● Signed in{cli.email ? ' as ' + cli.email : ''}</span>

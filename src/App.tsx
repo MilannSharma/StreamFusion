@@ -10,6 +10,7 @@ import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
 import { GuideExtra } from './components/Guide/GuideExtra';
 import { FirstRunTutorial, TUTORIAL_KEY } from './components/Tutorial/FirstRunTutorial';
+import { Coach, resetCoaches, type CoachGuide } from './components/Tutorial/Coach';
 import { WebStudio } from './components/Emulator/WebStudio';
 import { ApiSection, EmulatorSection, WebSection, AppearanceSection } from './components/Settings/SettingsSections';
 import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
@@ -1991,7 +1992,7 @@ export default function App() {
               <div className="glass-panel" style={{ padding: 22, marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 8, letterSpacing: '0.05em' }}>GETTING STARTED TOUR</div>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>A short guided tour with our assistant: mirror a phone, connect the AI, install the browser and run a sample test.</p>
-                <button className="btn-primary" onClick={() => setTutorialOpen(true)}>Start the tour</button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn-primary" onClick={() => setTutorialOpen(true)}>Start the tour</button><button className="btn-secondary" onClick={() => resetCoaches()} title="Show the step-by-step help cards again on every page">Show page guides again</button></div>
                 <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 12 }}>Assistant avatar: "Grok bot" from Bible Strong Avatar Lab by @_smontlouis (MIT license).</p>
               </div>
               {/* Software Updates (Phase 0.5) */}
@@ -2882,6 +2883,28 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Avatar guides for the non-AI pages (the AI pages render their own inside the chat panel) */}
+      {(activeTab === 'devices' || activeTab === 'files' || activeTab === 'recordings') && (() => {
+        const guides: CoachGuide[] = [
+          { id: 'mirror', doneTitle: 'Mirroring works', doneBody: 'Click and type in the mirror window to control your phone. Recordings are saved under My Recordings.',
+            steps: [
+              { title: 'Turn on USB debugging', mood: 'thinking', body: 'On the phone: Settings, About phone, tap Build number 7 times. Then Settings, Developer options, turn on USB debugging.' },
+              { title: 'Plug in your phone', mood: 'listening', done: devices.length > 0, body: 'Use a USB cable, unlock the phone and tap Allow when it asks. Then press Scan for Phone.',
+                action: { label: 'Scan for Phone', onClick: () => { fetchDevices(); } }, note: <>No cable? Use <b>Setup Wireless Mirror</b> instead.</> },
+              { title: 'Start mirroring', mood: 'happy', done: !!mirrorStatus.isMirroring, body: 'Press Start Mirror on your phone card. Then click, scroll and type in the window to control the phone.' }
+            ] },
+          { id: 'files', doneTitle: 'File transfer ready', doneBody: 'Drag files in to upload, or select files to download them to this PC.',
+            steps: [
+              { title: 'Connect your phone first', mood: 'listening', done: devices.length > 0, body: 'File transfer needs the phone connected with USB debugging on.', action: { label: 'Go to Screen Mirror', onClick: () => setActiveTab('devices') } },
+              { title: 'Browse and move files', mood: 'happy', body: 'Open folders on the phone. Drag files from this PC to upload, or select files and download them.' }
+            ] },
+          { id: 'recordings', doneTitle: 'Got it', doneBody: 'Recordings from Screen Mirror will appear here.',
+            steps: [{ title: 'Your recordings live here', mood: 'happy', body: 'Start a recording with the Record button while mirroring. Finished videos are listed here, ready to play or open in their folder.' }] }
+        ];
+        const mine = guides.filter(g => (activeTab === 'devices' ? g.id === 'mirror' : g.id === activeTab));
+        return <Coach guides={mine} active={!tutorialOpen && !showSplash} />;
+      })()}
 
       {/* 7. Full-Screen Pitch Black Welcome Splash Screen with White Cursive Animation */}
       {tutorialOpen && (

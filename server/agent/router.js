@@ -1,6 +1,6 @@
 import express from 'express';
 import { listRuns, getRun, shotPath, buildDocx, buildPdf, createRun, saveShot, addCheck, finishRun } from '../testmode/runs.js';
-import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession } from './claude-cli.js';
+import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
 
@@ -68,6 +68,7 @@ export function createAgentRouter({ tools }) {
   // Sign in with the installed Claude Code (no API key)
   router.get('/claude/status', async (req, res) => res.json({ success: true, ...(await authStatus(req.query.force === '1')) }));
   router.post('/claude/login', async (req, res) => { const st = await authStatus(true); if (!st.installed) return res.json({ success: false, message: 'Claude Code is not installed.' }); const r = startLogin({ console: !!req.body?.console }); res.json({ success: r.started, message: r.reason }); });
+  router.post('/claude/install', (req, res) => { installClaude(); res.json({ success: true }); });
   router.post('/claude/logout', async (req, res) => res.json({ success: await logout() }));
   router.post('/claude/install-mcp', async (req, res) => { const r = await installMcp(parseInt(process.env.SF_PORT || '3001', 10)); res.json({ success: r.ok, message: r.output }); });
 
