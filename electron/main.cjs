@@ -18,6 +18,7 @@ const isDev = !app.isPackaged;
 // Ensure single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  console.log('[StreamFusion] Another StreamFusion instance is already running (installed app?). Close it, or run: npm run dev:force');
   app.quit();
   process.exit(0);
 } else {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AgentPanel } from './AgentPanel';
+import { ResourcesCard } from './ResourcesCard';
 import {
   Gamepad2, Play, Square, Upload, RefreshCw, Smartphone, CheckCircle,
   AlertCircle, Sparkles, Trash2, ArrowUpRight, Cpu, Layers, HardDrive,
@@ -1447,6 +1448,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({
             {activeTab === 'specs' && (
               /* ENGINE SPECS & CONTROLS TAB */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <ResourcesCard />
                 <div style={{
                   background: 'var(--bg-card, #f8fafc)',
                   border: '1px solid #e2e8f0',
@@ -1461,7 +1463,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({
                     <div style={{ padding: 12, background: 'var(--bg-main, #ffffff)', borderRadius: 10, border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: 11, color: '#64748b' }}>RAM Footprint</div>
                       <div style={{ fontSize: 15, fontWeight: 800, color: '#16a34a', marginTop: 2 }}>
-                        ~500 MB Base (70% Less than BlueStacks)
+                        Set in "Emulator resources" (default 2 GB)
                       </div>
                     </div>
 

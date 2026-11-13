@@ -6,6 +6,8 @@
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/dev-check.cjs",
+    "dev:force": "node scripts/dev-check.cjs --kill && npm run dev",
     "dev": "concurrently -k -n \"SERVER,CLIENT,ELECTRON\" -c \"cyan,magenta,yellow\" \"node --watch server/index.js\" \"vite\" \"electron .\"",
     "dev:server": "node --watch server/index.js",
     "dev:client": "vite",

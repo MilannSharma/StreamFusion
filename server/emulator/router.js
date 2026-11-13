@@ -56,6 +56,14 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
     });
   });
 
+  router.get('/config', (req, res) => res.json({ success: true, config: sdk.getConfig(), defaults: sdk.DEFAULT_CONFIG, running: sdk.isProcessAlive() }));
+  router.post('/config', (req, res) => {
+    const b = req.body || {};
+    const patch = {};
+    for (const k of ['ramMB', 'cores', 'heapMB']) if (b[k] !== undefined) patch[k] = b[k];
+    res.json({ success: true, config: sdk.setConfig(patch), restartRequired: sdk.isProcessAlive() });
+  });
+
   router.get('/hardware', async (req, res) => res.json({ success: true, ...(await sdk.hardwareCheck()) }));
 
   router.post('/install', (req, res) => {

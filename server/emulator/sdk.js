@@ -85,10 +85,32 @@ function run(file, args, { input, onPercent } = {}) {
   });
 }
 
+// User-tunable resources (Settings -> Engine Specs). Applied to the AVD each time it starts.
+const CONFIG_FILE = path.join(BASE, 'emulator-config.json');
+export const DEFAULT_CONFIG = { ramMB: 2048, cores: 4, heapMB: 384 };
+const LIMITS = { ramMB: [1024, 8192], cores: [1, 16], heapMB: [128, 1024] };
+export function getConfig() {
+  let c = {};
+  try { c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch (e) {}
+  const out = { ...DEFAULT_CONFIG };
+  for (const k of Object.keys(DEFAULT_CONFIG)) {
+    const n = Math.round(Number(c[k]));
+    if (Number.isFinite(n)) out[k] = Math.min(LIMITS[k][1], Math.max(LIMITS[k][0], n));
+  }
+  return out;
+}
+export function setConfig(patch) {
+  const next = { ...getConfig(), ...patch };
+  fs.mkdirSync(BASE, { recursive: true });
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2));
+  return getConfig();
+}
+
 function tuneAvd() {
+  const cfg = getConfig();
   const wanted = {
-    'hw.ramSize': '2048', 'hw.cpu.ncore': '4', 'disk.dataPartition.size': '6G',
-    'hw.keyboard': 'yes', 'hw.gpu.mode': 'auto', 'fastboot.forceColdBoot': 'no', 'showDeviceFrame': 'no'
+    'hw.ramSize': String(cfg.ramMB), 'hw.cpu.ncore': String(cfg.cores), 'vm.heapSize': String(cfg.heapMB),
+    'disk.dataPartition.size': '6G', 'hw.keyboard': 'yes', 'hw.gpu.mode': 'auto', 'fastboot.forceColdBoot': 'no', 'showDeviceFrame': 'no'
   };
   let lines = fs.readFileSync(avdConfig, 'utf8').split(/\r?\n/).filter(l => l.trim());
   for (const [k, v] of Object.entries(wanted)) {
@@ -160,6 +182,7 @@ export async function install() {
 export async function start(runAdb, { headless = false, wipe = false, gpu = 'auto' } = {}) {
   if (!isInstalled()) throw new Error('Emulator is not installed');
   if (isProcessAlive()) return;
+  tuneAvd();
   const args = ['-avd', AVD_NAME, '-port', String(EMULATOR_PORT), '-no-audio', '-no-boot-anim',
     '-netdelay', 'none', '-netspeed', 'full', '-gpu', gpu];
   if (headless) args.push('-no-window');
@@ -182,6 +205,9 @@ async function waitForBoot(runAdb) {
       // boot_completed fires before shared storage is mounted; wait so push/pull/install work right away
       for (let i = 0; i < 20; i++) { const d = await runAdb(['-s', SERIAL, 'shell', 'test -d /sdcard/Download && echo ok'], 4000); if ((d.output || '').includes('ok')) break; await new Promise(r => setTimeout(r, 1500)); }
       Object.assign(state, { booting: false, booted: true });
+      // Test emulators: never block automation behind crash/ANR dialogs
+      await runAdb(['-s', SERIAL, 'shell', 'settings', 'put', 'global', 'hide_error_dialogs', '1'], 4000);
+      await runAdb(['-s', SERIAL, 'shell', 'settings', 'put', 'secure', 'anr_show_background', '0'], 4000);
       // Standard for automation: no animations => UI is idle sooner, fewer flaky taps/dumps
       for (const k of ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale']) await runAdb(['-s', SERIAL, 'shell', 'settings', 'put', 'global', k, '0'], 4000);
       log('success', `Emulator booted in ${Math.round((Date.now() - t0) / 1000)}s (${SERIAL})`);
