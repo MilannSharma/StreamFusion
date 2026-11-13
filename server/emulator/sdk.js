@@ -61,7 +61,7 @@ async function download(url, dest, from, to, label) {
 function extract(zip, dir) {
   fs.mkdirSync(dir, { recursive: true });
   return new Promise((resolve, reject) =>
-    execFile(path.join(process.env.SystemRoot || 'C:\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', dir], { windowsHide: true }, (e) => (e ? reject(e) : resolve())));
+    execFile(path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', dir], { windowsHide: true }, (e) => (e ? reject(e) : resolve())));
 }
 
 // Runs a .bat/.exe, feeds optional stdin, reports % lines from sdkmanager.
