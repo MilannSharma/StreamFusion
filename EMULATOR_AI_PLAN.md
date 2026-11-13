@@ -77,10 +77,17 @@ Dono tarike chalenge, user jo chahe chune. Dono ek hi tool layer (M2) use karte 
 - [ ] Chat box peeche `claude` CLI headless chalaye (user already logged in), sirf tab jab policy allow kare
 
 ### M4: Chromium Web Testing
-- [ ] Playwright Chromium, alag persistent profile
-- [ ] Tools: `navigate`, `click`, `fill`, `snapshot` (a11y tree), `screenshot`, `network`, `console`, `cookies`, `tabs` (MCP se expose)
+- [x] Playwright Chromium, alag persistent profile (`web-profile`), on-demand install button (not bundled), browser path `%LOCALAPPDATA%\StreamFusion\browsers`
+- [x] 16 tools (`web_*`): navigate, snapshot (a11y tree), screenshot, click, fill, press, select, wait, text, console, network, cookies, tabs, emulate (mobile presets), eval (dangerous), close. Agent + REST (`/api/web`) + MCP teeno use karte hain
+- [x] Test mode report ka screenshot web ya phone, jo last use hua
 - [ ] Emulator ke andar Chrome/WebView: `adb forward` se DevTools socket (CDP) connect
-- [ ] Mobile device emulation presets
+- [ ] Web tab / live browser preview UI
+
+### Test Mode (M5/M6 ka pehla hissa)
+- [x] Toggle in AI Agent: user test cases chat mein likhe ya files attach kare (.txt/.md/.csv/.json/.yaml)
+- [x] AI har test case ke baad `report_check` (pass/fail/blocked + evidence), screenshot auto-attach; end pe `finish_report`
+- [x] PDF + DOCX report (summary, results table, evidence screenshots, action log), reports list + download
+- [ ] Video (screenrecord), flaky detection, AI bug summary, history dashboard
 
 ### M5: Test Automation Engine
 - [ ] Test cases YAML/JSON mein (plain-English steps support)

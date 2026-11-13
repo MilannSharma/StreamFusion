@@ -29,7 +29,12 @@ async function listTools() {
       annotations: t.dangerous ? { destructiveHint: true } : undefined
     };
   });
-  return [...EMULATOR_TOOLS, ...device];
+  let web = [];
+  try {
+    const w = await api('/api/web/tools');
+    web = w.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, annotations: t.dangerous ? { destructiveHint: true } : undefined }));
+  } catch (e) { /* older server without web tools */ }
+  return [...EMULATOR_TOOLS, ...device, ...web];
 }
 
 const text = (v) => ({ content: [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v) }] });
@@ -39,6 +44,12 @@ async function callTool(name, args = {}) {
   if (name === 'emulator_start') return text(await api('/api/emulator/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ headless: !!args.headless, wipe: !!args.wipe }) }));
   if (name === 'emulator_stop') return text(await api('/api/emulator/stop', { method: 'POST' }));
 
+  if (name.startsWith('web_')) {
+    const w = await api('/api/web/tool/' + encodeURIComponent(name), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+    if (name === 'web_screenshot' && w.ok) return { content: [{ type: 'image', data: w.imageBase64, mimeType: w.mime }, { type: 'text', text: 'Page ' + w.url }] };
+    const { imageBase64: _i, ...wr } = w;
+    return { ...text(wr), ...(w.ok ? {} : { isError: true }) };
+  }
   const r = await api(`/api/device/tool/${encodeURIComponent(name)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ serial: DEFAULT_SERIAL, ...args })

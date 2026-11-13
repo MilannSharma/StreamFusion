@@ -11,6 +11,7 @@ import { createNotificationsRouter } from './routes/notifications.js';
 import { createEmulatorRouter } from './emulator/router.js';
 import { createDeviceRouter } from './device/router.js';
 import { createAgentRouter } from './agent/router.js';
+import { createWebRouter } from './web/router.js';
 
 let APP_VERSION = '0.0.0';
 try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version; } catch (e) {}
@@ -104,7 +105,9 @@ app.get('/api/mcp/config', (req, res) => {
     json: JSON.stringify({ mcpServers: { streamfusion: { command: 'node', args: [script], ...(env ? { env } : {}) } } }, null, 2)
   });
 });
-app.use('/api/agent', createAgentRouter({ tools: deviceRouter.TOOLS }));
+const webRouter = createWebRouter();
+app.use('/api/web', webRouter);
+app.use('/api/agent', createAgentRouter({ tools: { ...deviceRouter.TOOLS, ...webRouter.TOOLS } }));
 
 // The Android emulator lives in its own tab; it must never be saved/auto-reconnected as a Wi-Fi phone.
 const isEmulatorAddress = (v) => /^(emulator-|localhost:|127\.0\.0\.1:|10\.0\.2\.)/.test(String(v || ''));

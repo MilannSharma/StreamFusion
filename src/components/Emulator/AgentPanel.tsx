@@ -59,6 +59,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
   const [showReports, setShowReports] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [web, setWeb] = useState<any>(null);
+  useEffect(() => {
+    if (!showSettings) return;
+    let stop = false;
+    const tick = async () => { try { const j = await (await fetch('/api/web/status')).json(); if (!stop) setWeb(j); } catch (e) {} if (!stop) setTimeout(tick, 2000); };
+    tick();
+    return () => { stop = true; };
+  }, [showSettings]);
+  const webPost = (p: string, body?: any) => fetch('/api/web/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
   const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
   useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
@@ -245,6 +254,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
                 <button disabled={!keyDraft.trim()} onClick={async () => { const k = keyDraft.trim(); await saveKey(k); setApiKey(k); setKeyDraft(''); setShowSettings(false); }} style={primaryBtn}>Save</button>
               </div>
               <div style={{ color: 'var(--text-muted, #64748b)', marginTop: 4 }}>Stored encrypted on this PC and sent only to Anthropic. Get one at console.anthropic.com.</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Web testing (Chromium) {web?.installed && <span style={{ color: '#16a34a' }}>· installed</span>}</div>
+              {!web ? <div style={{ color: 'var(--text-muted, #64748b)' }}>Checking…</div> : web.isInstalling ? (
+                <div style={{ color: 'var(--text-muted, #64748b)' }}>{web.stage || 'Installing…'}</div>
+              ) : !web.installed ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button onClick={() => webPost('install')} style={primaryBtn}>Install Chromium</button>
+                  <span style={{ color: 'var(--text-muted, #64748b)' }}>One-time download (~150 MB). Lets the agent test websites.{web.error ? ' ' + web.error : ''}</span>
+                </div>
+              ) : (
+                <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                  <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={!web.headless} onChange={e => webPost('config', { headless: !e.target.checked })} />
+                  <span>Show the browser window while the agent tests</span>
+                </label>
+              )}
             </div>
             {mcp && (
               <div>

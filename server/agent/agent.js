@@ -15,6 +15,7 @@ How to work:
 - Act with tap_element (by text/desc/id) when possible; use raw tap/swipe coordinates from ui_tree otherwise. Coordinates are device pixels.
 - After each meaningful action, verify the result (ui_tree or logcat) before moving on. Screens may need a moment to load: if ui_tree shows the old screen, observe again.
 - If something fails, try one alternative, then report what you tried instead of looping.
+- You can also drive a Chromium browser with the web_* tools (web_navigate, web_snapshot, web_click, web_fill ...) to test websites. Use web_snapshot (accessibility tree) before clicking and check web_console / web_network for errors.
 - Never use shell, uninstall_app, clear_data or install_apk unless the user asked for it.
 - When testing, end with a short result: PASS or FAIL per check, with the evidence (what you saw). Keep messages brief.`;
 
@@ -62,6 +63,9 @@ function pruneImages(messages, keep = 2) {
 }
 
 function toResultContent(name, r) {
+  if (name === 'web_screenshot' && r.ok) {
+    return [{ type: 'image', source: { type: 'base64', media_type: r.mime, data: r.imageBase64 } }, { type: 'text', text: 'Page ' + r.url }];
+  }
   if (name === 'screenshot' && r.ok) {
     return [
       { type: 'image', source: { type: 'base64', media_type: r.mime, data: r.imageBase64 } },
@@ -75,6 +79,9 @@ function toResultContent(name, r) {
 const summarize = (name, r) => {
   if (!r.ok) return `error: ${r.error}`;
   if (name === 'ui_tree') return `${r.count} elements on ${r.foreground}`;
+  if (name === 'web_screenshot') return 'page screenshot';
+  if (name === 'web_snapshot') return 'snapshot of ' + (r.title || r.url);
+  if (name === 'web_navigate') return (r.status || '') + ' ' + (r.title || r.url);
   if (name === 'screenshot') return `${r.imageWidth}x${r.imageHeight} image`;
   if (name === 'tap_element') return `tapped "${r.tapped?.text || r.tapped?.desc || r.tapped?.id}"`;
   return 'ok';
@@ -93,6 +100,7 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
     emit({ type: 'run_started', runId: run.id });
   }
   let runEnded = false;
+  let lastWorld = 'device';
   const endRun = (reason) => { if (run && !runEnded) { runEnded = true; finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status }); } };
   const emitDone = emit;
   emit = (ev) => { emitDone(ev); if (ev.type === 'done') endRun(ev.reason); if (ev.type === 'error') endRun('error'); };
@@ -127,12 +135,13 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
       const results = [];
       for (const c of calls) {
         const tool = tools[c.name];
+        if (c.name.startsWith('web_')) lastWorld = 'web'; else if (tool) lastWorld = 'device';
         if (run && (c.name === 'report_check' || c.name === 'finish_report')) {
           let r = { ok: true };
           if (c.name === 'report_check') {
             const status = ['pass', 'fail', 'blocked'].includes(c.input.status) ? c.input.status : 'blocked';
             let shot = null;
-            try { const sc = await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
+            try { const sc = lastWorld === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
             addCheck(run, { id: c.input.id, title: String(c.input.title || ''), status, evidence: String(c.input.evidence || ''), screenshot: shot });
             emit({ type: 'check', check: { id: c.input.id, title: c.input.title, status, evidence: c.input.evidence } });
           } else { run.summary = String(c.input.summary || ''); }
