@@ -9,6 +9,7 @@ import { createFilesRouter } from './routes/files.js';
 import { createDiagnosticsRouter } from './routes/diagnostics.js';
 import { createNotificationsRouter } from './routes/notifications.js';
 import { createEmulatorRouter } from './emulator/router.js';
+import { createDeviceRouter } from './device/router.js';
 
 let APP_VERSION = '0.0.0';
 try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version; } catch (e) {}
@@ -91,6 +92,7 @@ app.use('/api/settings', createSettingsRouter(dataDir));
 app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
 app.use('/api/notifications', createNotificationsRouter({ runAdb }));
 app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
+app.use('/api/device', createDeviceRouter({ runAdb, adbExe, scrcpyBin }));
 
 function getSavedDevices() {
   try {

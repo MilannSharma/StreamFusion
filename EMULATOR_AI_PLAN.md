@@ -49,10 +49,10 @@
 
 ### M2: Device Control Layer (AI ko 100% access)
 ADB based, real device aur emulator dono pe kaam karega.
-- [ ] `tap`, `swipe`, `long_press`, `type_text`, `key` (back/home/enter)
-- [ ] `screenshot` (downscaled) + `ui_tree` (uiautomator dump, compact JSON). Text-first, screenshot sirf zarurat pe
-- [ ] `install_apk`, `launch`, `clear_data`, `permissions`, `logcat`, `shell`
-- [ ] GPS / network / battery mock, rotate, file push/pull
+- [x] `tap`, `swipe`, `long_press`, `type_text`, `key` (back/home/enter)
+- [x] `screenshot` (downscaled) + `ui_tree` (uiautomator dump, compact JSON). Text-first, screenshot sirf zarurat pe
+- [x] `install_apk`, `launch`, `clear_data`, `permissions`, `logcat`, `shell`
+- [x] GPS / network / battery mock, rotate, file push/pull  (25 tools: `server/device/tools.js`, REST `GET /api/device/tools`, `POST /api/device/tool/:name`)
 
 ### M3: AI Connection Layer
 Dono tarike chalenge, user jo chahe chune. Dono ek hi tool layer (M2) use karte hain.

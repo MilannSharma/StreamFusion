@@ -179,7 +179,11 @@ async function waitForBoot(runAdb) {
   while (isProcessAlive() && Date.now() - t0 < 240000) {
     const r = await runAdb(['-s', SERIAL, 'shell', 'getprop', 'sys.boot_completed'], 4000);
     if (r.success && (r.output || '').trim() === '1') {
+      // boot_completed fires before shared storage is mounted; wait so push/pull/install work right away
+      for (let i = 0; i < 20; i++) { const d = await runAdb(['-s', SERIAL, 'shell', 'test -d /sdcard/Download && echo ok'], 4000); if ((d.output || '').includes('ok')) break; await new Promise(r => setTimeout(r, 1500)); }
       Object.assign(state, { booting: false, booted: true });
+      // Standard for automation: no animations => UI is idle sooner, fewer flaky taps/dumps
+      for (const k of ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale']) await runAdb(['-s', SERIAL, 'shell', 'settings', 'put', 'global', k, '0'], 4000);
       log('success', `Emulator booted in ${Math.round((Date.now() - t0) / 1000)}s (${SERIAL})`);
       return;
     }
