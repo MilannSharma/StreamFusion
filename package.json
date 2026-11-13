@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@bible-strong/avatar-react": "^0.2.0",
     "docx": "^9.15.3",
     "electron-updater": "^6.8.11",
     "express": "^4.21.2",

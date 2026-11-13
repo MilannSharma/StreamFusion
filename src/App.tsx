@@ -9,6 +9,7 @@ import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModa
 import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
 import { GuideExtra } from './components/Guide/GuideExtra';
+import { FirstRunTutorial, TUTORIAL_KEY } from './components/Tutorial/FirstRunTutorial';
 import { WebStudio } from './components/Emulator/WebStudio';
 import { ApiSection, EmulatorSection, WebSection, AppearanceSection } from './components/Settings/SettingsSections';
 import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
@@ -352,6 +353,16 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [showSplash, setShowSplash] = useState<boolean>(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  useEffect(() => {
+    // First-run tour: after the welcome screens are closed (welcome_seen is set by them)
+    if (showSplash || showWelcome) return;
+    let done = false, seen = false;
+    try { done = localStorage.getItem(TUTORIAL_KEY) === '1'; seen = !!localStorage.getItem('streamfusion_v3_welcome_seen'); } catch (e) {}
+    if (done || !seen) return;
+    const t = setTimeout(() => setTutorialOpen(true), 1800);
+    return () => clearTimeout(t);
+  }, [showSplash, showWelcome]);
 
   // Probe centralized settings store on launch to check welcomeSeen
   useEffect(() => {
@@ -1977,6 +1988,12 @@ export default function App() {
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>About</h1>
               <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>StreamFusion v{APP_VERSION}</p>
+              <div className="glass-panel" style={{ padding: 22, marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 8, letterSpacing: '0.05em' }}>GETTING STARTED TOUR</div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>A short guided tour with our assistant: mirror a phone, connect the AI, install the browser and run a sample test.</p>
+                <button className="btn-primary" onClick={() => setTutorialOpen(true)}>Start the tour</button>
+                <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 12 }}>Assistant avatar: "Grok bot" from Bible Strong Avatar Lab by @_smontlouis (MIT license).</p>
+              </div>
               {/* Software Updates (Phase 0.5) */}
               <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>
@@ -2867,6 +2884,10 @@ export default function App() {
       )}
 
       {/* 7. Full-Screen Pitch Black Welcome Splash Screen with White Cursive Animation */}
+      {tutorialOpen && (
+        <FirstRunTutorial onClose={() => setTutorialOpen(false)} onGoto={(t) => setActiveTab(t)} />
+      )}
+
       {showSplash && (
         <WelcomeSplash onFinish={() => setShowSplash(false)} />
       )}

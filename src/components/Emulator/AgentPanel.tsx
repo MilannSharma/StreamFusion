@@ -52,6 +52,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [showReports, setShowReports] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const h = (e: any) => { if (e.detail?.world !== world) return; setInput(e.detail.text || ''); if (e.detail.testMode) setTestMode(true); };
+    window.addEventListener('sf-prefill-chat', h);
+    return () => window.removeEventListener('sf-prefill-chat', h);
+  }, [world]);
   useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
   const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
   useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
