@@ -587,3 +587,6 @@ aside.sb-collapsed .sb-hide { display: none; }
 aside:not(.sb-collapsed) { box-shadow: var(--shadow-lg), var(--glass-edge); }
 .sidebar-tab { white-space: nowrap; }
 .sidebar-tab svg { flex: 0 0 auto; }
+/* expanded sidebar floats over the page: make it solid enough that nothing shows through or gets cut mid-word */
+aside:not(.sb-collapsed) { background: rgba(255, 255, 255, 0.93) !important; }
+aside .sidebar-tab:hover { background: rgba(99, 102, 241, 0.08); }

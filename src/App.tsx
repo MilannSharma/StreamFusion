@@ -331,6 +331,8 @@ export default function App() {
   const [sbPinned, setSbPinned] = useState(() => { try { return localStorage.getItem('sf_sb_pinned') === '1'; } catch (e) { return false; } });
   const [sbHover, setSbHover] = useState(false);
   const sbExpanded = sbPinned || sbHover;
+  const sbTimer = React.useRef<any>(null);
+  const sbIntent = (on: boolean) => { clearTimeout(sbTimer.current); sbTimer.current = setTimeout(() => setSbHover(on), on ? 120 : 280); };
   useEffect(() => { try { localStorage.setItem('sf_sb_pinned', sbPinned ? '1' : '0'); } catch (e) {} }, [sbPinned]);
   useEffect(() => { if (activeTab === 'web') setWebVisited(true); }, [activeTab]);
   const [devices, setDevices] = useState<any[]>([]);
@@ -1218,7 +1220,7 @@ export default function App() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Floating Sidebar Dock */}
         <div style={{ width: sbPinned ? 246 : 84, flexShrink: 0, position: 'relative', transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
-        <aside className={sbExpanded ? '' : 'sb-collapsed'} onMouseEnter={() => setSbHover(true)} onMouseLeave={() => setSbHover(false)} style={{
+        <aside className={sbExpanded ? '' : 'sb-collapsed'} onMouseEnter={() => sbIntent(true)} onMouseLeave={() => sbIntent(false)} style={{
           position: 'absolute', top: 16, bottom: 16, left: 16,
           width: sbExpanded ? 230 : 56,
           transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s',
