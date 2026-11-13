@@ -15,6 +15,7 @@ interface AgentPanelProps {
   world?: 'phone' | 'web';
   active?: boolean;
   fill?: boolean; // full-page use: take the whole window height
+  deviceSerial?: string;
 }
 
 type Msg =
@@ -37,10 +38,10 @@ const MODELS = [
 const border = '1px solid var(--border-color, #e2e8f0)';
 const card: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 12 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', active = true, fill = false }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', active = true, fill = false, deviceSerial }) => {
   const isWeb = world === 'web';
-  const serial = emu.status.serial || 'emulator-5554';
-  const connected = emu.phase === 'running';
+  const serial = deviceSerial || emu.status.serial || 'emulator-5554';
+  const connected = deviceSerial ? true : emu.phase === 'running'; // a real phone chosen on the Emulator page is always "on"
   const hideKey = 'sf_chat_hidden_' + world;
   const [chatHidden, setChatHidden] = useState(() => { try { return localStorage.getItem(hideKey) === '1'; } catch (e) { return false; } });
   useEffect(() => { try { localStorage.setItem(hideKey, chatHidden ? '1' : '0'); } catch (e) {} }, [chatHidden, hideKey]);
@@ -213,7 +214,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     }
     setInput('');
     if (!alreadyShown) setMsgs(m => [...m, { kind: 'user', text }]);
-    if (!isWeb && (emu.phase === 'not_installed' || emu.phase === 'installing')) {
+    if (!isWeb && !deviceSerial && (emu.phase === 'not_installed' || emu.phase === 'installing')) {
       setMsgs(m => [...m, { kind: 'info', text: emu.phase === 'installing' ? 'The emulator is still installing. Send again when it finishes.' : 'The emulator is not installed yet. Use the Install button on the phone, then send again.' }]);
       return;
     }

@@ -37,6 +37,14 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
   const { status, phase } = emu;
   const running = phase === 'running';
   const [tab, setTab] = useState<Tab>('emulator');
+  const [device, setDevice] = useState(''); // '' = built-in emulator, otherwise the serial of a real phone
+  const [phones, setPhones] = useState<any[]>([]);
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => { try { const j = await (await fetch('/api/devices')).json(); if (!stop) setPhones((j.devices || []).filter((d: any) => !['emulator-', 'localhost:', '127.0.0.1:'].some(p => String(d.serial).startsWith(p)))); } catch (e) {} if (!stop) setTimeout(tick, 4000); };
+    tick();
+    return () => { stop = true; };
+  }, []);
   const [visited, setVisited] = useState<{ agent?: boolean }>({});
   useEffect(() => { if (tab === 'agent') setVisited({ agent: true }); }, [tab]);
 
@@ -104,13 +112,13 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: isFullPageView ? '18px 24px' : '18px 64px 18px 24px', borderBottom: border }}>
         <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}><Smartphone size={22} /></div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>Android Emulator</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Android 14 virtual phone for app testing and AI automation</div>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>Android Testing</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Test on the built-in emulator or your own phone, with AI</div>
         </div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, border, background: 'var(--bg-card, #fff)' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: label.color }} />{label.text}{running && <span style={{ fontWeight: 400, color: 'var(--text-muted, #64748b)' }}>· {status.serial}</span>}
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: label.color }} />{device ? 'Testing on your phone' : label.text}{(device || running) && <span style={{ fontWeight: 400, color: 'var(--text-muted, #64748b)' }}>· {device || status.serial}</span>}
         </span>
-        {phase === 'stopped' && <button style={btn(true)} onClick={() => startEmulator(emu)} disabled={emu.busy}><Power size={14} /> Power on</button>}
+        {phase === 'stopped' && !device && <button style={btn(true)} onClick={() => startEmulator(emu)} disabled={emu.busy}><Power size={14} /> Power on</button>}
         {running && <button style={btn(false, true)} onClick={() => emu.stop()} disabled={emu.busy}><Power size={14} /> Power off</button>}
         {phase === 'booting' && <button style={btn()} onClick={() => emu.stop()}>Cancel</button>}
       </div>
@@ -127,41 +135,57 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
 
       {/* Body */}
       <div style={{ padding: tab === 'agent' ? 14 : 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {tab === 'emulator' && (<>
-          <div style={{ ...card, display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ flex: '0 0 300px', display: 'flex', justifyContent: 'center' }}>
-              <PowerPanel emu={emu} />
+        {tab === 'emulator' && (
+          <div style={{ width: '100%', maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div><div style={{ fontSize: 16, fontWeight: 800 }}>Where do you want to test?</div><div style={sub}>Pick one. The AI chat opens right after, working on that phone.</div></div>
+
+            <div style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Smartphone size={20} /></div>
+              <div style={{ flex: 1, minWidth: 170 }}>
+                <div style={h3}>Built-in emulator</div>
+                <div style={sub}>Android 14 virtual phone · {label.text}{running ? ' · ' + status.serial : ''}</div>
+              </div>
+              {phase === 'not_installed' || phase === 'installing'
+                ? <button style={btn(true)} onClick={() => emu.install()} disabled={phase === 'installing' || emu.busy}>{phase === 'installing' ? 'Installing…' : 'Install emulator'}</button>
+                : <button style={btn(true)} onClick={() => { setDevice(''); if (phase === 'stopped') startEmulator(emu); setTab('agent'); }} disabled={emu.busy}>{running ? <><Bot size={14} /> Test here</> : phase === 'booting' ? <><Bot size={14} /> Open chat</> : <><Power size={14} /> Power on &amp; test</>}</button>}
+              {running && <>
+                {onStartMirror && <button style={btn()} onClick={() => onStartMirror(status.serial)}><MonitorPlay size={14} /> Mirror</button>}
+                <button style={btn()} title="Power off" onClick={() => emu.stop()} disabled={emu.busy}><Power size={14} /></button>
+              </>}
             </div>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div style={h3}>Virtual phone</div>
-              <div style={sub}>Google Android 14 (API 34) · x86_64 · Google APIs</div>
-              {running ? (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
-                  <button style={btn(true)} onClick={() => setTab('agent')}><Bot size={14} /> Open AI Agent</button>
-                  {onStartMirror && <button style={btn()} onClick={() => onStartMirror(status.serial)}><MonitorPlay size={14} /> Mirror in StreamFusion</button>}
-                  <button style={btn()} onClick={() => { if (window.confirm('Erase all emulator data and restart?')) emu.reset(); }}><RotateCcw size={14} /> Factory reset</button>
+
+            {phones.map(d => (
+              <div key={d.serial} style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderColor: device === d.serial ? '#4f46e5' : undefined }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Smartphone size={20} /></div>
+                <div style={{ flex: 1, minWidth: 170 }}>
+                  <div style={h3}>{d.displayName || d.model || d.serial}</div>
+                  <div style={sub}>Your phone · {d.isWifi ? 'Wi-Fi' : 'USB'}{d.androidVersion ? ' · ' + d.androidVersion : ''}{d.battery != null ? ' · battery ' + d.battery + '%' : ''}{d.state !== 'device' ? ' · ' + d.state : ''}</div>
                 </div>
-              ) : (
-                <div style={{ ...sub, marginTop: 10 }}>{phase === 'stopped' ? 'Power on to use the AI agent, install apps and run tests.' : ''}</div>
-              )}
-              <button style={{ ...btn(), marginTop: 12 }} onClick={() => setTab('settings')}><SlidersHorizontal size={14} /> Resources (RAM, CPU)</button>
+                <button style={btn(true)} disabled={d.state !== 'device'} onClick={() => { setDevice(d.serial); setTab('agent'); }}><Bot size={14} /> Test on this phone</button>
+                {onStartMirror && <button style={btn()} onClick={() => onStartMirror(d.serial)}><MonitorPlay size={14} /> Mirror</button>}
+              </div>
+            ))}
+            {phones.length === 0 && <div style={{ ...sub, textAlign: 'center' }}>Connect your phone by USB or Wi-Fi in StreamFusion and it appears here as a second option.</div>}
+
+            {running && !device && (
+              <div style={{ ...card, padding: '12px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ ...h3, fontSize: 13 }}>Install an app (.apk)</div>
+                  <input value={apkPath} onChange={e => setApkPath(e.target.value)} placeholder="Path to app-debug.apk" onKeyDown={e => { if (e.key === 'Enter') installApk(); }}
+                    style={{ flex: 1, minWidth: 160, padding: '7px 11px', borderRadius: 10, border, fontSize: 12.5, background: 'var(--bg-card, #fff)' }} />
+                  <button style={btn()} onClick={browseApk}><Upload size={14} /> Browse</button>
+                  <button style={btn(true)} onClick={() => installApk()} disabled={installingApk || !apkPath.trim()}>{installingApk ? 'Installing…' : 'Install'}</button>
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button style={btn()} onClick={() => setTab('settings')}><SlidersHorizontal size={14} /> Resources (RAM, CPU)</button>
+              {running && <button style={btn()} onClick={() => { if (window.confirm('Erase all emulator data and restart?')) emu.reset(); }}><RotateCcw size={14} /> Factory reset</button>}
             </div>
           </div>
+        )}
 
-          <div style={card}>
-            <div style={h3}>Install an app (.apk)</div>
-            <div style={sub}>{running ? 'Pick an APK from your PC to install and test it.' : 'Power on the emulator to install apps.'}</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <input value={apkPath} onChange={e => setApkPath(e.target.value)} placeholder="C:\Downloads\app-debug.apk" disabled={!running}
-                onKeyDown={e => { if (e.key === 'Enter') installApk(); }}
-                style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border, fontSize: 13, background: running ? 'var(--bg-card, #fff)' : 'var(--bg-input, #f1f5f9)' }} />
-              <button style={btn()} onClick={browseApk} disabled={!running}><Upload size={14} /> Browse</button>
-              <button style={btn(true)} onClick={() => installApk()} disabled={!running || installingApk || !apkPath.trim()}>{installingApk ? 'Installing…' : 'Install'}</button>
-            </div>
-          </div>
-        </>)}
-
-        {(visited.agent || tab === 'agent') && <AgentPanel emu={emu} world="phone" active={tab === 'agent'} />}
+        {(visited.agent || tab === 'agent') && <AgentPanel key={device || 'emulator'} emu={emu} world="phone" active={tab === 'agent'} deviceSerial={device || undefined} />}
 
         {tab === 'apps' && (
           <div style={card}>
