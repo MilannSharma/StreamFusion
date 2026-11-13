@@ -1219,7 +1219,7 @@ export default function App() {
       {/* 2. Main Workspace (Floating Sidebar + Content) */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Floating Sidebar Dock */}
-        <div style={{ width: sbPinned ? 246 : 84, flexShrink: 0, position: 'relative', transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ width: sbExpanded ? 246 : 84, flexShrink: 0, position: 'relative', transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
         <aside className={sbExpanded ? '' : 'sb-collapsed'} onMouseEnter={() => sbIntent(true)} onMouseLeave={() => sbIntent(false)} style={{
           position: 'absolute', top: 16, bottom: 16, left: 16,
           width: sbExpanded ? 230 : 56,

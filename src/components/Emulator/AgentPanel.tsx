@@ -233,7 +233,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   return (
     <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 440, ...(fill ? { height: 'calc(100vh - 215px)' } : { maxHeight: 'calc(100vh - 300px)' }) }}>
       {/* ---------- left: chat ---------- */}
-      <div style={{ ...card, flex: '0 0 clamp(300px, 32%, 380px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, flex: isWeb ? '0 0 clamp(340px, 38%, 520px)' : '0 0 clamp(300px, 32%, 380px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: border, flexWrap: 'wrap' }}>
           <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
             {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
