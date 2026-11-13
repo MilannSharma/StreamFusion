@@ -9,13 +9,14 @@ import { ClipboardSyncModal } from './components/ClipboardSync/ClipboardSyncModa
 import { WebcamStudioModal } from './components/WebcamStudio/WebcamStudioModal';
 import { VirtualScreenModal } from './components/VirtualScreen/VirtualScreenModal';
 import { WebStudio } from './components/Emulator/WebStudio';
+import { ApiSection, EmulatorSection, WebSection, AppearanceSection } from './components/Settings/SettingsSections';
 import { EmulatorStudioModal, EmulatorStudioView } from './components/Emulator/EmulatorStudioModal';
 import {
   Smartphone, Wifi, Folder, Video, Settings, HelpCircle,
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff, Info
 } from 'lucide-react';
 
 declare global {
@@ -326,7 +327,13 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator' | 'web'>('devices');
+  const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator' | 'web' | 'about'>('devices');
+  const [settingsSection, setSettingsSection] = useState<'mirror' | 'emulator' | 'web' | 'ai' | 'appearance'>('mirror');
+  useEffect(() => {
+    const h = (e: any) => { setSettingsSection(e.detail || 'ai'); setActiveTab('settings'); setIsEmulatorStudioOpen(false); };
+    window.addEventListener('sf-open-settings', h);
+    return () => window.removeEventListener('sf-open-settings', h);
+  }, []);
   const [webVisited, setWebVisited] = useState(false);
   const [sbPinned, setSbPinned] = useState(() => { try { return localStorage.getItem('sf_sb_pinned') === '1'; } catch (e) { return false; } });
   const [sbHover, setSbHover] = useState(false);
@@ -1265,7 +1272,7 @@ export default function App() {
               onClick={() => setActiveTab('settings')}
               className={`sidebar-tab ${activeTab === 'settings' ? 'active' : ''}`}
             >
-              <Settings size={16} /> Display &amp; Quality
+              <Settings size={16} /> Settings
             </button>
 
             <button
@@ -1294,6 +1301,14 @@ export default function App() {
               style={{ marginTop: 6, fontWeight: 700 }}
             >
               <Globe size={16} color="#6366f1" /> Web Testing
+            </button>
+
+            <button
+              onClick={() => setActiveTab('about')}
+              className={`sidebar-tab ${activeTab === 'about' ? 'active' : ''}`}
+              style={{ marginTop: 6 }}
+            >
+              <Info size={16} /> About
             </button>
           </div>
 
@@ -1843,11 +1858,16 @@ export default function App() {
           {/* TAB 4: QUALITY & SETTINGS */}
           {activeTab === 'settings' && (
             <div>
-              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>Display Quality &amp; Settings</h1>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-                Choose stream quality presets and screen preferences.
-              </p>
-
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>Settings</h1>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Everything in one place: mirroring, emulator, web testing, AI key and appearance.</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+                {([['mirror', 'Mirror'], ['emulator', 'Android Emulator'], ['web', 'Web'], ['ai', 'AI & API'], ['appearance', 'Appearance']] as const).map(([id, l]) => (
+                  <button key={id} onClick={() => setSettingsSection(id)} className="btn-secondary"
+                    style={settingsSection === id ? { borderColor: '#6366f1', color: '#4338ca', background: 'var(--glass-strong)', fontWeight: 700, boxShadow: '0 4px 14px -4px rgba(79,70,229,0.35)' } : {}}>{l}</button>
+                ))}
+              </div>
+              {settingsSection === 'mirror' && (
+                <div>
               {/* Quality Presets */}
               <div className="glass-panel" style={{ padding: 22, marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 12 }}>ONE-CLICK QUALITY PRESETS</div>
@@ -1939,6 +1959,20 @@ export default function App() {
                 </div>
               </div>
 
+                </div>
+              )}
+              {settingsSection === 'emulator' && <EmulatorSection />}
+              {settingsSection === 'web' && <WebSection />}
+              {settingsSection === 'ai' && <ApiSection />}
+              {settingsSection === 'appearance' && <AppearanceSection />}
+            </div>
+          )}
+
+          {/* ABOUT: version, updates, welcome tour */}
+          {activeTab === 'about' && (
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>About</h1>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>StreamFusion v{APP_VERSION}</p>
               {/* Software Updates (Phase 0.5) */}
               <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>

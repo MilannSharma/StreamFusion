@@ -3,6 +3,7 @@ import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, 
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
+import { loadKey, openSettings } from './secrets';
 
 interface AgentPanelProps {
   emu: EmulatorApi;
@@ -28,18 +29,6 @@ const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5 (cheapest)' }
 ];
 
-// API key lives in Electron safeStorage (encrypted by the OS); falls back to localStorage in a plain browser.
-const secrets = (window as any).electronAPI?.secrets;
-const KEY_NAME = 'anthropic_api_key';
-const loadKey = async (): Promise<string> => {
-  try { if (secrets) return (await secrets.get(KEY_NAME)) || ''; } catch (e) {}
-  try { return localStorage.getItem(KEY_NAME) || ''; } catch (e) { return ''; }
-};
-const saveKey = async (v: string) => {
-  try { if (secrets) return await secrets.set(KEY_NAME, v); } catch (e) {}
-  try { localStorage.setItem(KEY_NAME, v); } catch (e) {}
-};
-
 const border = '1px solid var(--border-color, #e2e8f0)';
 const card: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 12 };
 
@@ -54,28 +43,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [apiKey, setApiKey] = useState('');
-  const [keyDraft, setKeyDraft] = useState('');
   const [model, setModel] = useState(() => { try { return localStorage.getItem('sf_agent_model') || MODELS[0].id; } catch (e) { return MODELS[0].id; } });
   const [mode, setMode] = useState<'ask' | 'auto'>('ask');
   const [tokens, setTokens] = useState({ input: 0, output: 0, cached: 0 });
-  const [showSettings, setShowSettings] = useState(false);
-  const [mcp, setMcp] = useState<{ claudeCode: string; json: string } | null>(null);
-  const [copied, setCopied] = useState('');
   const [pending, setPending] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(() => { try { return localStorage.getItem('sf_test_mode') === '1'; } catch (e) { return false; } });
   const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
   const [showReports, setShowReports] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [web, setWeb] = useState<any>(null);
-  useEffect(() => {
-    if (!showSettings) return;
-    let stop = false;
-    const tick = async () => { try { const j = await (await fetch('/api/web/status')).json(); if (!stop) setWeb(j); } catch (e) {} if (!stop) setTimeout(tick, 2000); };
-    tick();
-    return () => { stop = true; };
-  }, [showSettings]);
-  const webPost = (p: string, body?: any) => fetch('/api/web/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
   const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
   useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
@@ -92,7 +68,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadKey().then((k) => { setApiKey(k); if (!k) setShowSettings(true); }); }, []);
+  useEffect(() => {
+    const load = () => loadKey().then(setApiKey);
+    load();
+    window.addEventListener('sf-key-changed', load);
+    return () => window.removeEventListener('sf-key-changed', load);
+  }, []);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs]);
   useEffect(() => { try { localStorage.setItem('sf_agent_model', model); } catch (e) {} }, [model]);
 
@@ -136,8 +117,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     const text = (override ?? input).trim();
     if (!text || busy) return;
     if (!apiKey) {
-      setShowSettings(true);
-      setMsgs(m => [...m, { kind: 'user', text }, { kind: 'error', text: 'Agent is not connected. Add your Anthropic API key (key icon above) and send again.' }]);
+      setMsgs(m => [...m, { kind: 'user', text }, { kind: 'error', text: 'Agent is not connected. Add your Anthropic API key in Settings → AI & API, then send again.' }]);
       setInput('');
       return;
     }
@@ -227,12 +207,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     sessionId.current = 'sf-' + Math.random().toString(36).slice(2, 10);
     setMsgs([]); setTokens({ input: 0, output: 0, cached: 0 });
   };
-  const openMcp = async () => {
-    if (!mcp) { try { setMcp(await (await fetch('/api/mcp/config')).json()); } catch (e) {} }
-    setShowSettings(true);
-  };
-  const copy = (id: string, v: string) => { navigator.clipboard?.writeText(v); setCopied(id); setTimeout(() => setCopied(''), 1500); };
-
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
   return (
@@ -254,48 +228,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
             style={{ ...iconBtn, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
           <button onClick={() => setShowReports(v => !v)} title="Saved test reports" style={iconBtn}><FileText size={14} /></button>
-          <button onClick={openMcp} title="Connect Claude Code / other AI via MCP" style={iconBtn}><Plug size={14} /></button>
-          <button onClick={() => setShowSettings(s => !s)} title="API key" style={iconBtn}><KeyRound size={14} /></button>
+          <button onClick={() => openSettings('ai')} title="API key and AI settings" style={iconBtn}><KeyRound size={14} /></button>
           <button onClick={reset} title="New chat" style={iconBtn}><Trash2 size={14} /></button>
         </div>
-
-        {showSettings && (
-          <div style={{ padding: 14, borderBottom: border, background: 'rgba(79,70,229,0.04)', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>Anthropic API key {apiKey && <span style={{ color: '#16a34a' }}>· saved</span>}</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input type="password" placeholder="sk-ant-..." value={keyDraft} onChange={e => setKeyDraft(e.target.value)} style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border, fontSize: 12 }} />
-                <button disabled={!keyDraft.trim()} onClick={async () => { const k = keyDraft.trim(); await saveKey(k); setApiKey(k); setKeyDraft(''); setShowSettings(false); }} style={primaryBtn}>Save</button>
-              </div>
-              <div style={{ color: 'var(--text-muted, #64748b)', marginTop: 4 }}>Stored encrypted on this PC and sent only to Anthropic. Get one at console.anthropic.com.</div>
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>Web testing (Chromium) {web?.installed && <span style={{ color: '#16a34a' }}>· installed</span>}</div>
-              {!web ? <div style={{ color: 'var(--text-muted, #64748b)' }}>Checking…</div> : web.isInstalling ? (
-                <div style={{ color: 'var(--text-muted, #64748b)' }}>{web.stage || 'Installing…'}</div>
-              ) : !web.installed ? (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button onClick={() => webPost('install')} style={primaryBtn}>Install Chromium</button>
-                  <span style={{ color: 'var(--text-muted, #64748b)' }}>One-time download (~150 MB). Lets the agent test websites.{web.error ? ' ' + web.error : ''}</span>
-                </div>
-              ) : (
-                <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                  <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={!web.headless} onChange={e => webPost('config', { headless: !e.target.checked })} />
-                  <span>Show the browser window while the agent tests</span>
-                </label>
-              )}
-            </div>
-            {mcp && (
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Use Claude Code / Claude Desktop instead (no key needed here)</div>
-                <div style={{ color: 'var(--text-muted, #64748b)', marginBottom: 4 }}>Keep StreamFusion open, then run once in a terminal:</div>
-                <CodeLine text={mcp.claudeCode} onCopy={() => copy('cc', mcp.claudeCode)} done={copied === 'cc'} />
-                <div style={{ color: 'var(--text-muted, #64748b)', margin: '6px 0 4px' }}>Other MCP clients (Claude Desktop, Cursor) config:</div>
-                <CodeLine text={mcp.json} onCopy={() => copy('js', mcp.json)} done={copied === 'js'} multiline />
-              </div>
-            )}
-          </div>
-        )}
 
         {showReports && (
           <div style={{ padding: 12, borderBottom: border, background: 'rgba(79,70,229,0.04)', fontSize: 12, maxHeight: 190, overflowY: 'auto' }}>
@@ -326,7 +261,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
         {!apiKey && (
           <div style={{ padding: '8px 12px', borderTop: border, background: '#fef2f2', color: '#b91c1c', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
             <ShieldAlert size={14} /> <b>Agent not connected.</b> <span>An Anthropic API key is needed.</span>
-            <button onClick={() => setShowSettings(true)} style={{ ...iconBtn, padding: '2px 10px', fontSize: 11, marginLeft: 'auto' }}><KeyRound size={12} /> Add API key</button>
+            <button onClick={() => openSettings('ai')} style={{ ...iconBtn, padding: '2px 10px', fontSize: 11, marginLeft: 'auto' }}><KeyRound size={12} /> Add API key</button>
           </div>
         )}
         {testMode && (
@@ -380,13 +315,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
 const iconBtn: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 8, padding: '5px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-main, #0f172a)' };
 const linkBtn: React.CSSProperties = { ...iconBtn, padding: '2px 8px', fontSize: 11, textDecoration: 'none' };
 const primaryBtn: React.CSSProperties = { background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };
-
-const CodeLine: React.FC<{ text: string; onCopy: () => void; done: boolean; multiline?: boolean }> = ({ text, onCopy, done, multiline }) => (
-  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-    <pre style={{ flex: 1, margin: 0, padding: '6px 8px', background: '#0f172a', color: '#e2e8f0', borderRadius: 8, fontSize: 11, overflowX: 'auto', whiteSpace: multiline ? 'pre' : 'pre-wrap', wordBreak: 'break-all' }}>{text}</pre>
-    <button onClick={onCopy} style={iconBtn}>{done ? <Check size={13} /> : <Copy size={13} />}</button>
-  </div>
-);
 
 const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void; onStart: () => void; onCancelStart: () => void }> = ({ m, onAnswer, onStart, onCancelStart }) => {
   if (m.kind === 'startPrompt') return (
