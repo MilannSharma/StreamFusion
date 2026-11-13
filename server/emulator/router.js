@@ -51,7 +51,7 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
       isInstalling: sdk.state.isInstalling, installProgress: sdk.state.progress,
       installStage: sdk.state.stage, installError: sdk.state.error,
       isRunning: sdk.isProcessAlive(), booting: sdk.state.booting, booted: sdk.state.booted,
-      headless: sdk.state.headless,
+      headless: sdk.state.headless, bootMode: sdk.state.bootMode, fastBoot: sdk.hasSnapshot(),
       port5555Open: online, adbConnected: online && sdk.state.booted, serial: sdk.SERIAL, port: sdk.EMULATOR_PORT
     });
   });

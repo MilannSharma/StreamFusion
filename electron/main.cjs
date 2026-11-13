@@ -387,12 +387,31 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => {
+// Powering the emulator off cleanly writes its quick-boot snapshot; killing the app mid-run would lose it.
+function stopEmulatorGracefully() {
+  const http = require('http');
+  const call = (method, p, timeout) => new Promise((resolve) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method, timeout }, (res) => {
+      let body = ''; res.on('data', (d) => (body += d)); res.on('end', () => resolve(body));
+    });
+    req.on('error', () => resolve('')); req.on('timeout', () => { req.destroy(); resolve(''); });
+    req.end();
+  });
+  return call('GET', '/api/emulator/status', 1500).then((b) => {
+    if (!/"isRunning":true/.test(b)) return;
+    return call('POST', '/api/emulator/stop', 60000);
+  });
+}
+
+let quitReady = false;
+app.on('before-quit', (e) => {
   isQuitting = true;
-  cleanExit();
+  if (quitReady || !serverProcess) { cleanExit(); return; }
+  e.preventDefault();
+  quitReady = true;
+  stopEmulatorGracefully().catch(() => {}).finally(() => { cleanExit(); app.quit(); });
 });
 
 app.on('window-all-closed', () => {
-  cleanExit();
   if (process.platform !== 'darwin') app.quit();
 });

@@ -327,6 +327,7 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator'>('devices');
   const [devices, setDevices] = useState<any[]>([]);
+  const [emulatorDevices, setEmulatorDevices] = useState<any[]>([]); // shown in the Emulator tab only
   const [savedDevices, setSavedDevices] = useState<any[]>([]);
   const [selectedSerial, setSelectedSerial] = useState<string>('');
   const [mirrorStatus, setMirrorStatus] = useState<any>({ isMirroring: false, isRecording: false, device: null });
@@ -554,12 +555,16 @@ export default function App() {
       const res = await fetch('/api/devices');
       const data = await res.json();
       if (data.success) {
-        setDevices(data.devices || []);
+        const all: any[] = data.devices || [];
+        const isEmu = (d: any) => d.isEmulator || /^(emulator-|localhost:|127\.0\.0\.1:|10\.0\.2\.)/.test(d.serial || '');
+        setDevices(all.filter(d => !isEmu(d)));
+        setEmulatorDevices(all.filter(isEmu));
         if (data.savedDevices) {
           setSavedDevices(data.savedDevices);
         }
-        if (!selectedSerial && data.devices && data.devices.length > 0) {
-          setSelectedSerial(data.devices[0].serial);
+        const phones = all.filter((d: any) => !isEmu(d));
+        if (!selectedSerial && phones.length > 0) {
+          setSelectedSerial(phones[0].serial);
         }
       }
     } catch (e) {
@@ -763,7 +768,7 @@ export default function App() {
       if (typeof param2 === 'string') serialToUse = param2;
     }
 
-    const deviceObj = devices.find(d => d.serial === serialToUse) || selectedDevice;
+    const deviceObj = devices.find(d => d.serial === serialToUse) || emulatorDevices.find(d => d.serial === serialToUse) || selectedDevice;
 
     if (!serialToUse || !deviceObj) {
       showToast('Please connect an Android phone first!', '⚠️');
@@ -1346,25 +1351,6 @@ export default function App() {
                     <span>HD Webcam</span>
                   </button>
                   <button
-                    onClick={() => setIsEmulatorStudioOpen(true)}
-                    className="btn-secondary"
-                    style={{
-                      padding: '8px 14px',
-                      fontSize: 12,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(79,70,229,0.14))',
-                      borderColor: '#a5b4fc',
-                      color: '#4338ca',
-                      fontWeight: 700
-                    }}
-                    title="Run Android Apps on Windows with StreamFusion Emulator"
-                  >
-                    <Gamepad2 size={14} color="#6366f1" />
-                    <span>Android Emulator</span>
-                  </button>
-                  <button
                     onClick={fetchDevices}
                     className="btn-secondary"
                     style={{ padding: '8px 14px', fontSize: 12 }}
@@ -1472,23 +1458,6 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <button onClick={fetchDevices} className="btn-primary" style={{ padding: '10px 22px' }}>
                       <RefreshCw size={15} className={isScanning ? 'pulse' : ''} /> Scan for Phone
-                    </button>
-                    <button
-                      onClick={() => setIsEmulatorStudioOpen(true)}
-                      className="btn-secondary"
-                      style={{
-                        padding: '10px 20px',
-                        background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(79,70,229,0.15))',
-                        borderColor: '#a5b4fc',
-                        color: '#4338ca',
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8
-                      }}
-                    >
-                      <Gamepad2 size={16} color="#6366f1" />
-                      <span>Launch Android Emulator</span>
                     </button>
                     <button onClick={() => openWirelessMirrorModal()} className="btn-secondary" style={{ padding: '10px 20px' }}>
                       <Wifi size={15} /> Setup Wireless Mirror

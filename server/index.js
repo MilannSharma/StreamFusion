@@ -106,17 +106,23 @@ app.get('/api/mcp/config', (req, res) => {
 });
 app.use('/api/agent', createAgentRouter({ tools: deviceRouter.TOOLS }));
 
+// The Android emulator lives in its own tab; it must never be saved/auto-reconnected as a Wi-Fi phone.
+const isEmulatorAddress = (v) => /^(emulator-|localhost:|127\.0\.0\.1:|10\.0\.2\.)/.test(String(v || ''));
+
 function getSavedDevices() {
   try {
     if (fs.existsSync(savedDevicesFile)) {
-      return JSON.parse(fs.readFileSync(savedDevicesFile, 'utf8'));
+      const all = JSON.parse(fs.readFileSync(savedDevicesFile, 'utf8'));
+      const clean = all.filter(d => !isEmulatorAddress(d.serial) && !isEmulatorAddress(d.ip));
+      if (clean.length !== all.length) fs.writeFileSync(savedDevicesFile, JSON.stringify(clean, null, 2), 'utf8'); // purge old emulator entries
+      return clean;
     }
   } catch (e) {}
   return [];
 }
 
 function saveDevice(device) {
-  if (!device || !device.ipAddress) return;
+  if (!device || !device.ipAddress || device.isEmulator || isEmulatorAddress(device.ipAddress) || isEmulatorAddress(device.serial)) return;
   try {
     const list = getSavedDevices();
     const port = device.isWifi && device.serial.includes(':') ? parseInt(device.serial.split(':')[1], 10) : 5555;

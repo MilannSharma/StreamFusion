@@ -12,13 +12,15 @@ export interface EmulatorStatus {
   booting: boolean;
   booted: boolean;
   headless: boolean;
+  bootMode: 'quick' | 'cold';
+  fastBoot: boolean;
   adbConnected: boolean;
   serial: string;
 }
 
 const EMPTY: EmulatorStatus = {
   installed: false, isInstalling: false, installProgress: 0, installStage: '', installError: null,
-  isRunning: false, booting: false, booted: false, headless: false, adbConnected: false, serial: 'emulator-5554'
+  isRunning: false, booting: false, booted: false, headless: false, bootMode: 'cold', fastBoot: false, adbConnected: false, serial: 'emulator-5554'
 };
 
 export function phaseOf(s: EmulatorStatus): EmulatorPhase {

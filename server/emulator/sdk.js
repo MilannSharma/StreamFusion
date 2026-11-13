@@ -26,7 +26,7 @@ const avdConfig = path.join(AVD_HOME, `${AVD_NAME}.avd`, 'config.ini');
 
 export const state = {
   isInstalling: false, progress: 0, stage: '', error: null,
-  booting: false, booted: false, headless: false
+  booting: false, booted: false, headless: false, bootMode: 'cold'
 };
 let proc = null;
 let log = () => {};
@@ -35,6 +35,9 @@ export function setLogger(fn) { log = fn; }
 export function isInstalled() {
   return fs.existsSync(emulatorExe) && fs.existsSync(imageDir) && fs.existsSync(avdConfig);
 }
+// Quick-boot snapshot: when present, the next start resumes the saved Android state (seconds instead of minutes).
+const snapshotFile = path.join(AVD_HOME, `${AVD_NAME}.avd`, 'snapshots', 'default_boot', 'snapshot.pb');
+export function hasSnapshot() { return fs.existsSync(snapshotFile); }
 export function isProcessAlive() { return !!proc && proc.exitCode === null; }
 
 function env() {
@@ -186,7 +189,8 @@ export async function start(runAdb, { headless = false, wipe = false, gpu = 'aut
   const args = ['-avd', AVD_NAME, '-port', String(EMULATOR_PORT), '-no-audio', '-no-boot-anim',
     '-netdelay', 'none', '-netspeed', 'full', '-gpu', gpu];
   if (headless) args.push('-no-window');
-  if (wipe) args.push('-wipe-data');
+  if (wipe) args.push('-wipe-data', '-no-snapshot-load');
+  state.bootMode = !wipe && hasSnapshot() ? 'quick' : 'cold';
   proc = spawn(emulatorExe, args, { env: env(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   Object.assign(state, { booting: true, booted: false, headless });
   proc.stdout.on('data', d => { const t = d.toString().trim(); if (t) log('debug', '[emu] ' + t.slice(0, 300)); });
@@ -219,8 +223,15 @@ async function waitForBoot(runAdb) {
 }
 
 export async function stop(runAdb) {
-  await runAdb(['-s', SERIAL, 'emu', 'kill'], 5000);
-  if (proc) { await new Promise(r => setTimeout(r, 1500)); try { proc.kill(); } catch (e) {} }
+  const wasBooted = state.booted;
+  if (isProcessAlive() && wasBooted) {
+    log('info', 'Saving emulator state so the next start is fast...');
+    await runAdb(['-s', SERIAL, 'emu', 'avd', 'snapshot', 'save', 'default_boot'], 90000);
+  }
+  await runAdb(['-s', SERIAL, 'emu', 'kill'], 8000);
+  const t0 = Date.now();
+  while (isProcessAlive() && Date.now() - t0 < 30000) await new Promise(r => setTimeout(r, 500));
+  if (isProcessAlive()) { try { proc.kill(); } catch (e) {} }
   Object.assign(state, { booting: false, booted: false });
 }
 

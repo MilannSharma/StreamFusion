@@ -53,8 +53,12 @@ export const PowerPanel: React.FC<Props> = ({ emu, dark, onStarted }) => {
   if (phase === 'booting') return (
     <div style={wrap}>{spin}
       <Loader2 size={34} className="sf-spin" color="#818cf8" />
-      <div style={{ fontWeight: 800, fontSize: 15 }}>Starting Android…</div>
-      <div style={{ fontSize: 12, color: muted, maxWidth: 240, lineHeight: 1.5 }}>The first boot takes 1–2 minutes. Later starts are faster.</div>
+      <div style={{ fontWeight: 800, fontSize: 15 }}>{status.bootMode === 'quick' ? 'Resuming Android…' : 'Starting Android…'}</div>
+      <div style={{ fontSize: 12, color: muted, maxWidth: 250, lineHeight: 1.5 }}>
+        {status.bootMode === 'quick'
+          ? 'Resuming the saved state. This usually takes under a minute.'
+          : 'First start: Android is preparing itself and can take several minutes. Later starts resume a saved state and are much faster. Please power off from here (not by closing the app) so the state is saved.'}
+      </div>
       <button onClick={() => emu.stop()} style={{ background: 'none', border: `1px solid ${dark ? '#334155' : '#cbd5e1'}`, color: fg, borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
     </div>
   );
