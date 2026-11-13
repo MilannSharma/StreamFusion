@@ -134,7 +134,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
       </div>
 
       {/* Body */}
-      <div style={{ padding: tab === 'agent' ? 14 : 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: tab === 'agent' ? 8 : 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {tab === 'emulator' && (
           <div style={{ width: '100%', maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div><div style={{ fontSize: 16, fontWeight: 800 }}>Where do you want to test?</div><div style={sub}>Pick one. The AI chat opens right after, working on that phone.</div></div>
