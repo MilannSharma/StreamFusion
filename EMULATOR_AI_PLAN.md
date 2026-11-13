@@ -55,10 +55,26 @@ ADB based, real device aur emulator dono pe kaam karega.
 - [ ] GPS / network / battery mock, rotate, file push/pull
 
 ### M3: AI Connection Layer
-- [ ] **MCP server** (`streamfusion-mcp`) jo M2 tools expose kare (Claude Code, Claude Desktop, koi bhi MCP client)
-- [ ] **Built-in Agent Mode**: user API key daale, goal likhe, loop: observe → think → act → verify
-- [ ] Provider adapters: Claude, OpenAI, Gemini
+Dono tarike chalenge, user jo chahe chune. Dono ek hi tool layer (M2) use karte hain.
+
+**A. Built-in Chat Agent (app ke andar)**
+- [ ] Emulator Studio split layout: **left = chat/agent panel, right = live phone screen** (scrcpy). Tabs: Chat | Steps log | Test cases | Reports
+- [ ] Chat mein user instruction de, agent loop chalta hai: observe -> think -> act -> verify. Har step ek card (action, result, pass/fail)
+- [ ] Stop button, manual click on phone screen (user bhi control kar sake), agent ke tap ka marker
+- [ ] APK chat mein drop karke "isse test karo" support
+- [ ] Permission mode: "har action puchho" / "auto chalne do"
+- [ ] Provider dropdown: Claude, OpenAI, Gemini, OpenRouter, Ollama (local, free)
+- [ ] Login = **API key**: Settings mein paste, Electron `safeStorage` mein encrypted. (Claude.ai subscription login third-party apps ke liye allowed nahi hai: build karne se pehle current Anthropic policy dobara check karni hai)
 - [ ] Token saving: UI tree diffs, screenshot sirf failure pe, step limit
+
+**B. MCP Server (bahar ke AI ke liye)**
+- [ ] `streamfusion-mcp` jo M2 tools expose kare (Claude Code, Claude Desktop, Cursor, koi bhi MCP client)
+- [ ] Login user ke apne AI client ka rehta hai (e.g. Claude Code subscription), StreamFusion ko key nahi chahiye
+- [ ] Settings mein "Connect AI" button: MCP config ek click mein copy
+- [ ] Same permission/approval rules jo chat agent ke liye hain (M7)
+
+**C. Baad mein (policy confirm hone par)**
+- [ ] Chat box peeche `claude` CLI headless chalaye (user already logged in), sirf tab jab policy allow kare
 
 ### M4: Chromium Web Testing
 - [ ] Playwright Chromium, alag persistent profile
@@ -98,6 +114,7 @@ ADB based, real device aur emulator dono pe kaam karega.
 
 Sabse zyada value **M2 + M3** mein hai (yahan se Claude emulator control karne lagta hai). Tokens kam hon to M0–M3 pehle.
 
-## 5. Open Decision
+## 5. Decisions
 
-M1 shuru karne se pehle: **Google Android Emulator** (stable, ~1.5GB) ya **BlissOS/QEMU** (halka, risky)? Recommendation: Google Android Emulator.
+- Emulator: **Google Android Emulator** (final). Installer ke saath nahi jata, user Install button dabaye tab download hota hai (~5.4GB disk: system image 4.2GB, emulator 1.1GB, Java 126MB). Install button ke paas ye size dikhana hai.
+- AI connection: **dono** (built-in chat + MCP server), user jo theek lage.
