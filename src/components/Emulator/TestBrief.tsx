@@ -7,7 +7,7 @@ export const EMPTY_BRIEF: Brief = { product: '', module: '', target: '', login: 
 
 export const briefMissing = (b: Brief, files: BriefFile[], isWeb: boolean): string[] => {
   const m: string[] = [];
-  if (!b.product.trim()) m.push('product name');
+  if (!b.product.trim()) m.push('project name');
   if (!b.module.trim()) m.push('feature / module');
   if (!b.target.trim()) m.push(isWeb ? 'URL' : 'app name or package');
   if (!b.cases.trim() && !files.some(f => f.kind === 'cases')) m.push('test cases');
@@ -49,16 +49,16 @@ export const TestBrief: React.FC<Props> = ({ projects, projectId, onPickProject,
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#4f46e5', fontWeight: 800, fontSize: 13.5 }}><FlaskConical size={15} /> Test brief</div>
       <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)', lineHeight: 1.5, marginTop: -4 }}>The test starts only when the fields marked * are filled. The better the brief, the better the report.</div>
-      <div>
+      {projects.length > 0 && <div>
         <div style={lbl}>Project</div>
         <select style={{ ...inp, resize: 'none' }} value={projectId} onChange={e => onPickProject(e.target.value)}>
           <option value="">New project (saved automatically when you start)</option>
           {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>{projectId ? 'Everything saved for this project is filled in. Change anything, or just press Start.' : 'Everything you enter here is saved as a project, so you do not type it again next time.'}</div>
-      </div>
+      </div>}
       <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Product name *</div><input style={inp} value={brief.product} onChange={set('product')} placeholder="e.g. Rysen HQ" /></div>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>{projectId ? 'Project name *' : 'Project name * (a new project is created with this name)'}</div><input style={inp} value={brief.product} onChange={set('product')} placeholder="e.g. Rysen HQ" /></div>
         <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Feature / module *</div><input style={inp} list="sf-modules" value={brief.module} onChange={e => { setBrief({ ...brief, module: e.target.value }); onModule(e.target.value); }} placeholder="e.g. Login, Fee collection" /><datalist id="sf-modules">{modules.map(m => <option key={m} value={m} />)}</datalist></div>
       </div>
       <div><div style={lbl}>{isWeb ? 'URL(s) to test *' : 'App to test *'}</div><input style={inp} value={brief.target} onChange={set('target')} placeholder={isWeb ? 'https://staging.example.com (one or more, comma separated)' : 'App name or package, e.g. com.example.app (installed on the phone)'} /></div>

@@ -66,6 +66,15 @@ export function saveFromBrief({ projectId, world, brief = {}, files = [] }) {
   return write(p);
 }
 
+// "Add project" on the Projects page: an empty project the user fills in later (files, cases, logins, notes)
+export function createProject(name) {
+  const n = clip(name, 80).trim();
+  if (!n) throw new Error('Enter a project name');
+  const dup = all().find(x => x.name.toLowerCase() === n.toLowerCase());
+  if (dup) return dup;
+  return write({ id: 'proj-' + slug(n) + '-' + Math.random().toString(36).slice(2, 6), name: n, createdAt: new Date().toISOString(), targets: { web: '', app: '' }, notes: '', docs: [], modules: [] });
+}
+
 // Edits made on the Projects page
 export function updateProject(id, b = {}) {
   const p = getProject(id); if (!p) return null;

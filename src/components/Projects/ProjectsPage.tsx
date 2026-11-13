@@ -28,13 +28,31 @@ export const ProjectsPage: React.FC<{ onRun: (world: 'web' | 'phone', detail: an
   const [openId, setOpenId] = useState('');
   const refresh = useCallback(() => fetch('/api/projects').then(r => r.json()).then(j => setList(j.projects || [])).catch(() => setList([])), []);
   useEffect(() => { refresh(); }, [refresh, openId]);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [addErr, setAddErr] = useState('');
+  const create = async () => {
+    const j = await (await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) })).json();
+    if (!j.success) return setAddErr(j.message || 'Could not create');
+    setAdding(false); setNewName(''); setAddErr(''); setOpenId(j.projectId);
+  };
+  const addBox = adding ? (
+    <div className="glass-panel" style={{ padding: 14, marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input autoFocus value={newName} onChange={e => { setNewName(e.target.value); setAddErr(''); }} onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) create(); if (e.key === 'Escape') setAdding(false); }} placeholder="Project name, e.g. Rysen HQ" style={{ ...inp, resize: 'none', flex: 1, minWidth: 200 }} />
+      <button className="btn-primary" disabled={!newName.trim()} onClick={create}>Create project</button>
+      <button className="btn-secondary" onClick={() => { setAdding(false); setAddErr(''); }}>Cancel</button>
+      {addErr && <span style={{ color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>{addErr}</span>}
+    </div>
+  ) : null;
   if (openId) return <Detail id={openId} onBack={() => setOpenId('')} onRun={onRun} />;
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Briefcase size={22} color="#fff" /></div>
         <div><h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)' }}>Projects</h1><p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Everything about a product in one place: test cases, documents, logins and reports.</p></div>
+        <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAdding(true)}><Plus size={14} /> Add project</button>
       </div>
+      {addBox}
       {list === null ? <div style={muted}>Loading…</div> : list.length === 0 ? (
         <div className="glass-panel" style={{ padding: 40, textAlign: 'center' }}>
           <Briefcase size={34} color="#6366f1" style={{ margin: '0 auto 12px' }} />
