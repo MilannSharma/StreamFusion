@@ -5,6 +5,6 @@
     InitPluginsDir
     File /oname=$PLUGINSDIR\CatSetupProgress.exe "${PROJECT_DIR}\build\CatSetupProgress.exe"
     System::Call 'kernel32::GetCurrentProcessId() i .r0'
-    Exec '"$PLUGINSDIR\CatSetupProgress.exe" $0'
+    Exec '"$PLUGINSDIR\CatSetupProgress.exe" $0 ${VERSION}'
   ${EndIf}
 !macroend

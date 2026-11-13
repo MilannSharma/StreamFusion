@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import lottie from 'lottie-web';
 import catAnimationData from './assets/cat-animation.json';
+import pkg from '../package.json';
 import welcomeAnimationData from './assets/welcome-animation.json';
 import FileManager from './components/FileManager/FileManager';
 import { FixConnectionModal } from './components/Diagnostics/FixConnectionModal';
@@ -36,6 +37,8 @@ declare global {
     lottie?: any;
   }
 }
+
+const APP_VERSION: string = (pkg as any).version;
 
 // 1. Sleek Cinematic Apple-Mac Pure Black Frosted Welcome Splash Screen
 function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
@@ -105,8 +108,11 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
     };
   }, []); // Run ONCE on mount to prevent repeated replay loop!
 
+  const completedRef = React.useRef(false);
   const handleComplete = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (completedRef.current) return;
+    completedRef.current = true;
     setIsFading(true);
     setTimeout(() => {
       onFinishRef.current();
@@ -225,7 +231,7 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
             color: '#ffffff',
             fontWeight: 800
           }}>
-            v3.2.0
+            v{APP_VERSION}
           </span>
         </div>
         <div style={{
@@ -323,7 +329,7 @@ export default function App() {
   const [devices, setDevices] = useState<any[]>([]);
   const [savedDevices, setSavedDevices] = useState<any[]>([]);
   const [selectedSerial, setSelectedSerial] = useState<string>('');
-  const [mirrorStatus, setMirrorStatus] = useState({ isMirroring: false, isRecording: false, device: null as any });
+  const [mirrorStatus, setMirrorStatus] = useState<any>({ isMirroring: false, isRecording: false, device: null });
   const [toast, setToast] = useState<{ message: string; icon: string; visible: boolean }>({ message: '', icon: '', visible: false });
   const [isScanning, setIsScanning] = useState(false);
   const [showSplash, setShowSplash] = useState<boolean>(false);
@@ -364,13 +370,13 @@ export default function App() {
             setSetupStage('Configuring Wireless Wi-Fi Auto-Reconnect...');
             setTimeout(() => {
               setSetupProgress(100);
-              setSetupStage('StreamFusion v3.1.2 is Ready to Stream!');
+              setSetupStage(`StreamFusion v${APP_VERSION} is Ready to Stream!`);
             }, 500);
           }, 500);
         })
         .catch(() => {
           setSetupProgress(100);
-          setSetupStage('StreamFusion v3.1.2 Ready!');
+          setSetupStage(`StreamFusion v${APP_VERSION} Ready!`);
         });
     }
   }, [showWelcome]);
@@ -474,7 +480,7 @@ export default function App() {
       window.electronAPI.checkForUpdates();
     } else {
       setTimeout(() => {
-        setUpdaterStatus({ status: 'not-available', message: 'StreamFusion v3.1.2 is currently the latest version!' });
+        setUpdaterStatus({ status: 'not-available', message: `StreamFusion v${APP_VERSION} is currently the latest version!` });
         setIsCheckingUpdate(false);
       }, 1500);
     }
@@ -1280,7 +1286,7 @@ export default function App() {
             </div>
 
             {mirrorStatus.isMirroring && (
-              <button onClick={stopMirror} className="btn-danger" style={{ width: '100%', padding: '8px 0', fontSize: 12 }}>
+              <button onClick={() => stopMirror()} className="btn-danger" style={{ width: '100%', padding: '8px 0', fontSize: 12 }}>
                 <Square size={14} /> Stop Mirroring
               </button>
             )}
@@ -1676,7 +1682,7 @@ export default function App() {
                       <button onClick={() => startMirror(true)} className="btn-secondary">
                         <Video size={14} /> Record Video
                       </button>
-                      <button onClick={stopMirror} className="btn-danger">
+                      <button onClick={() => stopMirror()} className="btn-danger">
                         <Square size={14} /> Stop Mirror
                       </button>
                     </div>
@@ -1944,7 +1950,7 @@ export default function App() {
               {/* Software Updates (Phase 0.5) */}
               <div className="glass-panel" style={{ padding: 22, marginTop: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', marginBottom: 10 }}>
-                  SOFTWARE UPDATES · STREAMFUSION v3.1.2
+                  SOFTWARE UPDATES · STREAMFUSION v{APP_VERSION}
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
                   StreamFusion includes built-in differential background updates powered by GitHub Releases.
@@ -2608,7 +2614,7 @@ export default function App() {
               letterSpacing: 0.3
             }}>
               <Sparkles size={13} />
-              <span>StreamFusion v3.1.2 • Setup &amp; Installation</span>
+              <span>StreamFusion v{APP_VERSION} • Setup &amp; Installation</span>
             </div>
 
             {/* Title & Subtitle */}
@@ -2619,7 +2625,7 @@ export default function App() {
               marginBottom: 6,
               letterSpacing: -0.6
             }}>
-              Welcome to StreamFusion v3.1.2
+              Welcome to StreamFusion v{APP_VERSION}
             </h2>
             <p style={{
               fontSize: 13,
@@ -2792,7 +2798,7 @@ export default function App() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <span>Launch StreamFusion v3.1.2</span>
+              <span>Launch StreamFusion v{APP_VERSION}</span>
               <ArrowRight size={18} />
             </button>
           </div>

@@ -10,6 +10,9 @@ import { createDiagnosticsRouter } from './routes/diagnostics.js';
 import { createNotificationsRouter } from './routes/notifications.js';
 import { createEmulatorRouter } from './emulator/router.js';
 
+let APP_VERSION = '0.0.0';
+try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version; } catch (e) {}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -53,7 +56,7 @@ console.log(`[StreamFusion Server] scrcpy binaries located at: ${scrcpyBin}`);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.1.2',
+    version: APP_VERSION,
     adb: fs.existsSync(adbExe),
     scrcpy: fs.existsSync(scrcpyExe),
     binDir: scrcpyBin
