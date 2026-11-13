@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power } from 'lucide-react';
+import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, FlaskConical, Paperclip, FileText, X, Download } from 'lucide-react';
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 
@@ -14,6 +14,8 @@ type Msg =
   | { kind: 'approval'; id: string; name: string; input: any; answered?: 'allowed' | 'denied' }
   | { kind: 'startPrompt'; pending: string; state: 'ask' | 'starting' | 'cancelled' }
   | { kind: 'info'; text: string }
+  | { kind: 'check'; id?: string; title: string; status: string; evidence: string }
+  | { kind: 'report'; runId: string; status: string }
   | { kind: 'error'; text: string };
 
 const MODELS = [
@@ -52,6 +54,23 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
   const [mcp, setMcp] = useState<{ claudeCode: string; json: string } | null>(null);
   const [copied, setCopied] = useState('');
   const [pending, setPending] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState(() => { try { return localStorage.getItem('sf_test_mode') === '1'; } catch (e) { return false; } });
+  const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
+  const [showReports, setShowReports] = useState(false);
+  const [runs, setRuns] = useState<any[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
+  const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
+  useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
+  const addFiles = async (list: FileList | null) => {
+    if (!list) return;
+    const out: { name: string; text: string }[] = [];
+    for (const f of Array.from(list).slice(0, 10)) {
+      if (f.size > 300_000) { setMsgs(m => [...m, { kind: 'error', text: f.name + ' is too large (max 300 KB). Use a text-based test case file.' }]); continue; }
+      out.push({ name: f.name, text: await f.text() });
+    }
+    setFiles(x => [...x, ...out].slice(0, 10));
+  };
   const sessionId = useRef('sf-' + Math.random().toString(36).slice(2, 10));
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -87,6 +106,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
     return () => { stop = true; };
   }, [connected, serial, busy]);
 
+  const showReportsRef = useRef(false); showReportsRef.current = showReports;
   const callTool = (name: string, args: any) => fetch(`/api/device/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial, ...args }) });
   const onScreenClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -116,7 +136,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
     try {
       const res = await fetch('/api/agent/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
-        body: JSON.stringify({ sessionId: sessionId.current, message: text, apiKey, model, serial, mode })
+        body: JSON.stringify({
+          sessionId: sessionId.current, apiKey, model, serial, mode,
+          message: testMode && files.length ? text + '\n\n' + files.map(f => '--- Attached file: ' + f.name + ' ---\n' + f.text).join('\n\n') : text,
+          ...(testMode ? { testMode: { title: text.split('\n')[0].slice(0, 80), attachments: files.map(f => ({ name: f.name })) } } : {})
+        })
       });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).message || `HTTP ${res.status}`);
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -128,7 +152,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
     } catch (e: any) {
       if (e?.name !== 'AbortError') setMsgs(m => [...m, { kind: 'error', text: e.message || String(e) }]);
     } finally { setBusy(false); abortRef.current = null; }
-  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase]);
+  }, [input, busy, apiKey, model, serial, mode, connected, emu.phase, testMode, files]);
 
   useEffect(() => {
     if (pending && connected && !busy) {
@@ -160,6 +184,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
     else if (ev.type === 'tool_call') setMsgs(m => [...m, { kind: 'tool', id: ev.id, name: ev.name, input: ev.input, state: 'running' }]);
     else if (ev.type === 'tool_result') setMsgs(m => m.map(x => x.kind === 'tool' && x.id === ev.id ? { ...x, state: ev.ok ? 'ok' : 'error', summary: ev.summary } : x));
     else if (ev.type === 'approval') setMsgs(m => [...m, { kind: 'approval', id: ev.id, name: ev.name, input: ev.input }]);
+    else if (ev.type === 'check') setMsgs(m => [...m, { kind: 'check', ...ev.check }]);
+    else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status }]); if (showReportsRef.current) loadRuns(); }
     else if (ev.type === 'usage') setTokens(t => ({ input: t.input + (ev.input || 0), output: t.output + (ev.output || 0), cached: t.cached + (ev.cacheRead || 0) }));
     else if (ev.type === 'error') setMsgs(m => [...m, { kind: 'error', text: ev.message }]);
     else if (ev.type === 'done' && ev.reason !== 'complete') {
@@ -202,6 +228,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
             {fmt(tokens.input)} in · {fmt(tokens.output)} out{tokens.cached ? ` · ${fmt(tokens.cached)} cached` : ''}
           </span>
+          <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
+            style={{ ...iconBtn, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
+          <button onClick={() => setShowReports(v => !v)} title="Saved test reports" style={iconBtn}><FileText size={14} /></button>
           <button onClick={openMcp} title="Connect Claude Code / other AI via MCP" style={iconBtn}><Plug size={14} /></button>
           <button onClick={() => setShowSettings(s => !s)} title="API key" style={iconBtn}><KeyRound size={14} /></button>
           <button onClick={reset} title="New chat" style={iconBtn}><Trash2 size={14} /></button>
@@ -229,6 +258,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
           </div>
         )}
 
+        {showReports && (
+          <div style={{ padding: 12, borderBottom: border, background: 'rgba(79,70,229,0.04)', fontSize: 12, maxHeight: 190, overflowY: 'auto' }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Test reports</div>
+            {runs.length === 0 && <div style={{ color: 'var(--text-muted, #64748b)' }}>No reports yet. Turn on Test mode and send your test cases.</div>}
+            {runs.map(r => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: border }}>
+                <span style={{ fontWeight: 700, color: r.status === 'passed' ? '#16a34a' : r.status === 'failed' ? '#dc2626' : '#d97706' }}>{r.status.toUpperCase()}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title} <span style={{ color: 'var(--text-muted, #64748b)' }}>· {r.pass}/{r.total} passed · {new Date(r.startedAt).toLocaleString()}</span></span>
+                <a href={'/api/agent/reports/' + r.id + '/pdf'} download style={linkBtn}><Download size={11} /> PDF</a>
+                <a href={'/api/agent/reports/' + r.id + '/docx'} download style={linkBtn}><Download size={11} /> DOCX</a>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: 13, maxWidth: 340, lineHeight: 1.6 }}>
@@ -240,14 +284,23 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
         </div>
 
+        {testMode && (
+          <div style={{ padding: '8px 12px', borderTop: border, background: 'rgba(79,70,229,0.06)', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <FlaskConical size={13} color="#4f46e5" /><b style={{ color: '#4f46e5' }}>Test mode</b>
+            <span style={{ color: 'var(--text-muted, #64748b)' }}>Write test cases below or attach files. A report (PDF/DOCX) with screenshots is made at the end.</span>
+            {files.map((f, i) => <span key={i} style={{ background: 'var(--bg-card, #fff)', border, borderRadius: 6, padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{f.name}<X size={11} style={{ cursor: 'pointer' }} onClick={() => setFiles(x => x.filter((_, j) => j !== i))} /></span>)}
+            <button onClick={() => fileRef.current?.click()} style={{ ...iconBtn, padding: '2px 8px', fontSize: 11 }}><Paperclip size={12} /> Attach test cases</button>
+            <input ref={fileRef} type="file" multiple accept=".txt,.md,.csv,.json,.yaml,.yml,.xml,.feature,.tsv" style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+          </div>
+        )}
         <div style={{ padding: 10, borderTop: border, display: 'flex', gap: 8 }}>
           <textarea value={input} onChange={e => setInput(e.target.value)} rows={2}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Instruction for the agent… (Enter to send, Shift+Enter for new line)"
+            placeholder={testMode ? "Test cases or instruction, e.g. TC-01: login with wrong password shows an error…" : "Instruction for the agent… (Enter to send, Shift+Enter for new line)"}
             style={{ flex: 1, resize: 'none', padding: '8px 10px', borderRadius: 10, border, fontSize: 13, fontFamily: 'inherit' }} />
           {busy
             ? <button onClick={stop} style={{ ...primaryBtn, background: '#dc2626' }}><Square size={14} /> Stop</button>
-            : <button onClick={() => send()} disabled={!input.trim()} style={primaryBtn}><Send size={14} /> Send</button>}
+            : <button onClick={() => send()} disabled={!input.trim() && !(testMode && files.length)} style={primaryBtn}><Send size={14} /> Send</button>}
         </div>
       </div>
 
@@ -273,6 +326,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu }) => {
 };
 
 const iconBtn: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 8, padding: '5px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-main, #0f172a)' };
+const linkBtn: React.CSSProperties = { ...iconBtn, padding: '2px 8px', fontSize: 11, textDecoration: 'none' };
 const primaryBtn: React.CSSProperties = { background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };
 
 const CodeLine: React.FC<{ text: string; onCopy: () => void; done: boolean; multiline?: boolean }> = ({ text, onCopy, done, multiline }) => (
@@ -299,6 +353,21 @@ const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void;
   );
   if (m.kind === 'user') return <div style={{ alignSelf: 'flex-end', maxWidth: '85%', background: '#4f46e5', color: '#fff', padding: '8px 12px', borderRadius: '14px 14px 4px 14px', fontSize: 13, whiteSpace: 'pre-wrap' }}>{m.text}</div>;
   if (m.kind === 'agent') return <div style={{ alignSelf: 'flex-start', maxWidth: '92%', background: 'var(--bg-muted, #f1f5f9)', padding: '8px 12px', borderRadius: '14px 14px 14px 4px', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.text}</div>;
+  if (m.kind === 'check') {
+    const c = m.status === 'pass' ? '#16a34a' : m.status === 'fail' ? '#dc2626' : '#d97706';
+    return <div style={{ border, borderLeft: '4px solid ' + c, borderRadius: 8, padding: '6px 10px', fontSize: 12.5, background: 'var(--bg-card, #fff)' }}>
+      <b style={{ color: c }}>{m.status.toUpperCase()}</b> {m.id ? m.id + ' · ' : ''}{m.title}
+      <div style={{ color: 'var(--text-muted, #64748b)', marginTop: 2 }}>{m.evidence}</div></div>;
+  }
+  if (m.kind === 'report') return (
+    <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: 12, fontSize: 13, alignSelf: 'flex-start' }}>
+      <div style={{ fontWeight: 700, color: '#3730a3', marginBottom: 8 }}>Test report ready: {m.status.toUpperCase()}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <a href={'/api/agent/reports/' + m.runId + '/pdf'} download style={{ ...primaryBtn, padding: '6px 14px', textDecoration: 'none' }}><Download size={14} /> PDF</a>
+        <a href={'/api/agent/reports/' + m.runId + '/docx'} download style={{ ...primaryBtn, padding: '6px 14px', textDecoration: 'none' }}><Download size={14} /> DOCX</a>
+      </div>
+    </div>
+  );
   if (m.kind === 'info') return <div style={{ alignSelf: 'center', fontSize: 11.5, color: 'var(--text-muted, #64748b)' }}>{m.text}</div>;
   if (m.kind === 'error') return <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '8px 12px', borderRadius: 10, fontSize: 12.5 }}>{m.text}</div>;
   if (m.kind === 'approval') return (

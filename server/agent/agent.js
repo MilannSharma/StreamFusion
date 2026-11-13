@@ -1,5 +1,6 @@
 // M3-A: Chat agent. A manual tool loop over the M2 device tools using the official Anthropic SDK.
 import Anthropic from '@anthropic-ai/sdk';
+import { createRun, saveShot, addStep, addCheck, finishRun } from '../testmode/runs.js';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (most capable)' },
@@ -16,6 +17,19 @@ How to work:
 - If something fails, try one alternative, then report what you tried instead of looping.
 - Never use shell, uninstall_app, clear_data or install_apk unless the user asked for it.
 - When testing, end with a short result: PASS or FAIL per check, with the evidence (what you saw). Keep messages brief.`;
+
+const TEST_PROMPT = `
+
+TEST MODE is on. You are producing a formal test report.
+- The user's message lists the test cases and may include attached files (test cases, specs). Work through every test case in order.
+- After finishing each test case, call report_check once with: id, title, status (pass | fail | blocked), and evidence (what you actually observed, e.g. the text on screen). A screenshot of the current screen is attached to the report automatically, so make sure the screen shows the result when you call it.
+- Use blocked only when the check could not be executed (app crashed, element missing); explain why. Never mark pass without evidence.
+- When all cases are done, call finish_report with a short overall summary (what was tested, what failed, likely causes). Do not call it earlier.`;
+
+const REPORT_TOOLS = [
+  { name: 'report_check', description: 'Record the result of one test case in the report. Auto-attaches a screenshot of the current screen.', input_schema: { type: 'object', properties: { id: { type: 'string', description: 'Test case id, e.g. TC-01' }, title: { type: 'string' }, status: { type: 'string', enum: ['pass', 'fail', 'blocked'] }, evidence: { type: 'string', description: 'What you observed' } }, required: ['title', 'status', 'evidence'] } },
+  { name: 'finish_report', description: 'Finish the test run with an overall summary. Call once, after all test cases are reported.', input_schema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] } }
+];
 
 const sessions = new Map(); // sessionId -> { messages }
 const pending = new Map();  // approvalId -> resolve(boolean)
@@ -66,10 +80,22 @@ const summarize = (name, r) => {
   return 'ok';
 };
 
-export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL }) {
+export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL, testMode }) {
   if (!apiKey) return emit({ type: 'error', message: 'No API key set. Add your Anthropic API key in the chat settings.' });
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const anthropicTools = toAnthropicTools(tools);
+  let run = null;
+  if (testMode) {
+    let deviceInfo = null;
+    try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
+    run = createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(message).slice(0, 4000), deviceInfo });
+    anthropicTools.push(...REPORT_TOOLS);
+    emit({ type: 'run_started', runId: run.id });
+  }
+  let runEnded = false;
+  const endRun = (reason) => { if (run && !runEnded) { runEnded = true; finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status }); } };
+  const emitDone = emit;
+  emit = (ev) => { emitDone(ev); if (ev.type === 'done') endRun(ev.reason); if (ev.type === 'error') endRun('error'); };
   const s = sessions.get(sessionId) || { messages: [] };
   sessions.set(sessionId, s);
   const messages = s.messages;
@@ -82,7 +108,7 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
       if (signal.aborted) return emit({ type: 'done', reason: 'stopped' });
       const resp = await client.beta.messages.create({
         model, max_tokens: 8000,
-        system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: SYSTEM + (run ? TEST_PROMPT : ''), cache_control: { type: 'ephemeral' } }],
         tools: anthropicTools, messages,
         output_config: { effort },
         betas: useFallback ? ['server-side-fallback-2026-07-01'] : [],
@@ -101,6 +127,18 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
       const results = [];
       for (const c of calls) {
         const tool = tools[c.name];
+        if (run && (c.name === 'report_check' || c.name === 'finish_report')) {
+          let r = { ok: true };
+          if (c.name === 'report_check') {
+            const status = ['pass', 'fail', 'blocked'].includes(c.input.status) ? c.input.status : 'blocked';
+            let shot = null;
+            try { const sc = await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
+            addCheck(run, { id: c.input.id, title: String(c.input.title || ''), status, evidence: String(c.input.evidence || ''), screenshot: shot });
+            emit({ type: 'check', check: { id: c.input.id, title: c.input.title, status, evidence: c.input.evidence } });
+          } else { run.summary = String(c.input.summary || ''); }
+          results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(r) });
+          continue;
+        }
         emit({ type: 'tool_call', id: c.id, name: c.name, input: c.input });
         let r;
         if (!tool) r = { ok: false, error: 'Unknown tool' };
@@ -118,6 +156,7 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
           else { try { r = await tool.handler({ ...c.input, serial }); } catch (e) { r = { ok: false, error: e.message }; } }
         }
         emit({ type: 'tool_result', id: c.id, name: c.name, ok: !!r.ok, summary: summarize(c.name, r) });
+        if (run) addStep(run, { name: c.name, input: c.input, ok: !!r.ok, summary: summarize(c.name, r) });
         results.push({ type: 'tool_result', tool_use_id: c.id, content: toResultContent(c.name, r), ...(r.ok ? {} : { is_error: true }) });
       }
       messages.push({ role: 'user', content: results });
