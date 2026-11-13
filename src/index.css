@@ -580,3 +580,10 @@ input[type="text"]:focus, select:focus, textarea:focus {
 ::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.35); }
 ::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
 .win-ctrl-btn:hover { background: rgba(255, 255, 255, 0.6); }
+
+/* Auto-collapsing sidebar: icon rail that expands on hover */
+aside.sb-collapsed .sidebar-tab { font-size: 0; gap: 0; justify-content: center; padding: 10px 0; }
+aside.sb-collapsed .sb-hide { display: none; }
+aside:not(.sb-collapsed) { box-shadow: var(--shadow-lg), var(--glass-edge); }
+.sidebar-tab { white-space: nowrap; }
+.sidebar-tab svg { flex: 0 0 auto; }

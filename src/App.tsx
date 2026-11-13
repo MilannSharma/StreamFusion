@@ -15,7 +15,7 @@ import {
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff
 } from 'lucide-react';
 
 declare global {
@@ -328,6 +328,10 @@ function CatPlayingLottie({ size = 220 }: { size?: number }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'devices' | 'files' | 'recordings' | 'settings' | 'guide' | 'emulator' | 'web'>('devices');
   const [webVisited, setWebVisited] = useState(false);
+  const [sbPinned, setSbPinned] = useState(() => { try { return localStorage.getItem('sf_sb_pinned') === '1'; } catch (e) { return false; } });
+  const [sbHover, setSbHover] = useState(false);
+  const sbExpanded = sbPinned || sbHover;
+  useEffect(() => { try { localStorage.setItem('sf_sb_pinned', sbPinned ? '1' : '0'); } catch (e) {} }, [sbPinned]);
   useEffect(() => { if (activeTab === 'web') setWebVisited(true); }, [activeTab]);
   const [devices, setDevices] = useState<any[]>([]);
   const [emulatorDevices, setEmulatorDevices] = useState<any[]>([]); // shown in the Emulator tab only
@@ -1213,9 +1217,12 @@ export default function App() {
       {/* 2. Main Workspace (Floating Sidebar + Content) */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Floating Sidebar Dock */}
-        <aside style={{
-          width: 230,
-          margin: '16px 0 16px 16px',
+        <div style={{ width: sbPinned ? 246 : 84, flexShrink: 0, position: 'relative', transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
+        <aside className={sbExpanded ? '' : 'sb-collapsed'} onMouseEnter={() => setSbHover(true)} onMouseLeave={() => setSbHover(false)} style={{
+          position: 'absolute', top: 16, bottom: 16, left: 16,
+          width: sbExpanded ? 230 : 56,
+          transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s',
+          overflow: 'hidden',
           background: 'var(--glass-bg)',
           border: '1px solid var(--border-subtle)',
           borderRadius: 16,
@@ -1223,11 +1230,14 @@ export default function App() {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          padding: '16px 12px',
-          zIndex: 10
+          padding: '16px 8px',
+          zIndex: 50
         }}>
           {/* Navigation Links */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button className="sidebar-tab sb-pin" onClick={() => setSbPinned(p => !p)} title={sbPinned ? 'Auto-hide sidebar' : 'Keep sidebar open'} style={{ marginBottom: 4 }}>
+              {sbPinned ? <PinOff size={16} /> : <Pin size={16} />} {sbPinned ? 'Auto-hide' : 'Keep open'}
+            </button>
             <button
               onClick={() => setActiveTab('devices')}
               className={`sidebar-tab ${activeTab === 'devices' ? 'active' : ''}`}
@@ -1286,7 +1296,7 @@ export default function App() {
           </div>
 
           {/* Connected Phone Status Card */}
-          <div style={{
+          <div className="sb-hide" style={{
             background: 'var(--glass-soft)',
             border: '1px solid var(--border-subtle)',
             borderRadius: 12,
@@ -1307,6 +1317,7 @@ export default function App() {
             )}
           </div>
         </aside>
+        </div>
 
         {/* Content Main Panel */}
         <main style={{ flex: 1, overflowY: 'auto', padding: '24px 30px', position: 'relative', background: 'var(--bg-deep)' }}>
