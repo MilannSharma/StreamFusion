@@ -135,7 +135,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const send = useCallback(async (override?: string, alreadyShown?: boolean) => {
     const text = (override ?? input).trim();
     if (!text || busy) return;
-    if (!apiKey) { setShowSettings(true); return; }
+    if (!apiKey) {
+      setShowSettings(true);
+      setMsgs(m => [...m, { kind: 'user', text }, { kind: 'error', text: 'Agent is not connected. Add your Anthropic API key (key icon above) and send again.' }]);
+      setInput('');
+      return;
+    }
     setInput('');
     if (!alreadyShown) setMsgs(m => [...m, { kind: 'user', text }]);
     if (!isWeb && (emu.phase === 'not_installed' || emu.phase === 'installing')) {
@@ -318,6 +323,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
         </div>
 
+        {!apiKey && (
+          <div style={{ padding: '8px 12px', borderTop: border, background: '#fef2f2', color: '#b91c1c', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ShieldAlert size={14} /> <b>Agent not connected.</b> <span>An Anthropic API key is needed.</span>
+            <button onClick={() => setShowSettings(true)} style={{ ...iconBtn, padding: '2px 10px', fontSize: 11, marginLeft: 'auto' }}><KeyRound size={12} /> Add API key</button>
+          </div>
+        )}
         {testMode && (
           <div style={{ padding: '8px 12px', borderTop: border, background: 'rgba(79,70,229,0.06)', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <FlaskConical size={13} color="#4f46e5" /><b style={{ color: '#4f46e5' }}>Test mode</b>
