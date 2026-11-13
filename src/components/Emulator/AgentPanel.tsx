@@ -5,6 +5,7 @@ import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
 import { loadKey, loadSecret, saveSecret, loginSecretName } from './secrets';
 import { readBriefFiles } from './readFiles';
+import { SaveAsTest } from '../Projects/AutomatedTests';
 import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref, installClaude, startClaudeSignIn } from './ConnectOptions';
 import { Coach, type CoachGuide } from '../Tutorial/Coach';
 import { TestBrief, StartBar, EMPTY_BRIEF, briefMissing, composeBrief, type Brief, type BriefFile } from './TestBrief';
@@ -24,7 +25,7 @@ type Msg =
   | { kind: 'startPrompt'; pending: string; state: 'ask' | 'starting' | 'cancelled' }
   | { kind: 'info'; text: string }
   | { kind: 'check'; id?: string; title: string; status: string; evidence: string }
-  | { kind: 'report'; runId: string; status: string }
+  | { kind: 'report'; runId: string; status: string; projectId?: string }
   | { kind: 'error'; text: string };
 
 const MODELS = [
@@ -61,7 +62,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const briefKey = 'sf_brief_' + world;
   const [brief, setBriefState] = useState<Brief>(() => { try { return { ...EMPTY_BRIEF, ...JSON.parse(localStorage.getItem(briefKey) || '{}'), login: '' }; } catch (e) { return EMPTY_BRIEF; } });
   const setBrief = (b: Brief) => { setBriefState(b); try { localStorage.setItem(briefKey, JSON.stringify({ ...b, login: '' })); } catch (e) {} }; // logins are never stored
-  const testRunRef = useRef<{ title: string; summary: string; projectId: string } | null>(null);
+  const runPidRef = useRef('');
+  const testRunRef = useRef<{ title: string; summary: string; projectId: string; logins?: string } | null>(null);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [projectId, setProjectId] = useState('');
   const [projectData, setProjectData] = useState<any>(null);
@@ -196,6 +198,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const send = useCallback(async (override?: string, alreadyShown?: boolean) => {
     const text = (override ?? input).trim();
     if (!text || busy) return;
+    // A bare "start" / "hi" tells the AI nothing: open the test brief instead of guessing (also saves tokens)
+    if (!testMode && !msgs.some(m => m.kind === 'user') && (/^(start|begin|go|run|test|testing|start test(ing)?|let'?s (go|start|test)|hi+|hello|hey|ok(ay)?|yes|ready)[.! ]*$/i.test(text) || (text.split(/\s+/).length <= 2 && !/[./:]/.test(text)))) {
+      setInput(''); setTestMode(true);
+      setMsgs(m => [...m, { kind: 'info', text: 'To start testing I need a few details first: product, feature/module, ' + (isWeb ? 'URL' : 'app') + ', test cases and any login. Fill the test brief and press Start test.' }]);
+      return;
+    }
     if (engine === 'none') {
       setMsgs(m => [...m, { kind: 'user', text }, mcpLive.connected
         ? { kind: 'info', text: 'Your connected AI (' + (mcpLive.clients[0] || 'MCP') + ') controls the ' + (isWeb ? 'browser' : 'phone') + ' directly, so give it the instruction in its own window. To chat here too, press Connect and sign in.' }
@@ -215,16 +223,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       if (emu.phase === 'booting') setPending(text);
       return;
     }
-    const tm = testMode ? testRunRef.current : null; testRunRef.current = null; // only the first message of a test starts a report run
+    const tm = testMode ? testRunRef.current : null; testRunRef.current = null; if (tm) runPidRef.current = tm.projectId || ''; // only the first message of a test starts a report run
     setBusy(true);
     const ac = new AbortController(); abortRef.current = ac;
     try {
       const res = await fetch('/api/agent/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
         body: JSON.stringify({
-          sessionId: sessionId.current, engine, ...(engine === 'api' ? { apiKey } : {}), model, serial, mode,
+          sessionId: sessionId.current, world, engine, ...(engine === 'api' ? { apiKey } : {}), model, serial, mode,
           message: text,
-          ...(tm ? { testMode: { title: tm.title, summary: tm.summary, projectId: tm.projectId, attachments: files.map(f => ({ name: f.name })) } } : {})
+          ...(tm ? { testMode: { title: tm.title, summary: tm.summary, projectId: tm.projectId, logins: tm.logins, attachments: files.map(f => ({ name: f.name })) } } : {})
         })
       });
       if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).message || `HTTP ${res.status}`);
@@ -270,7 +278,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     else if (ev.type === 'tool_result') setMsgs(m => m.map(x => x.kind === 'tool' && x.id === ev.id ? { ...x, state: ev.ok ? 'ok' : 'error', summary: ev.summary } : x));
     else if (ev.type === 'approval') setMsgs(m => [...m, { kind: 'approval', id: ev.id, name: ev.name, input: ev.input }]);
     else if (ev.type === 'check') setMsgs(m => [...m, { kind: 'check', ...ev.check }]);
-    else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status }]); if (showReportsRef.current) loadRuns(); }
+    else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status, projectId: runPidRef.current }]); if (showReportsRef.current) loadRuns(); }
     else if (ev.type === 'no_report') setMsgs(m => [...m, { kind: 'info', text: 'No test case was executed, so no report was created.' }]);
     else if (ev.type === 'usage') setTokens(t => ({ input: t.input + (ev.input || 0), output: t.output + (ev.output || 0), cached: t.cached + (ev.cacheRead || 0) }));
     else if (ev.type === 'error') setMsgs(m => [...m, { kind: 'error', text: ev.message }]);
@@ -321,7 +329,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       if (j.success) { pid = j.projectId; history = j.history || ''; setProjectId(pid); setProjectData(j.project); if (brief.login.trim()) saveSecret(loginSecretName(pid), brief.login); else if (projectId) { /* keep the saved login */ } }
     } catch (e) {}
     const c = composeBrief(brief, files, isWeb, history);
-    testRunRef.current = { title: c.title, summary: c.summary, projectId: pid };
+    testRunRef.current = { title: c.title, summary: c.summary, projectId: pid, logins: brief.login };
     setMsgs(m => [...m, { kind: 'user', text: 'Test: ' + c.title + '\n' + brief.target.trim() }]);
     send(c.full, true);
   };
@@ -527,6 +535,7 @@ const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void;
         <a href={'/api/agent/reports/' + m.runId + '/pdf'} download style={{ ...primaryBtn, padding: '6px 14px', textDecoration: 'none' }}><Download size={14} /> PDF</a>
         <a href={'/api/agent/reports/' + m.runId + '/docx'} download style={{ ...primaryBtn, padding: '6px 14px', textDecoration: 'none' }}><Download size={14} /> DOCX</a>
       </div>
+      <SaveAsTest runId={m.runId} projectId={m.projectId} />
     </div>
   );
   if (m.kind === 'info') return <div style={{ alignSelf: 'center', fontSize: 11.5, color: 'var(--text-muted, #64748b)' }}>{m.text}</div>;

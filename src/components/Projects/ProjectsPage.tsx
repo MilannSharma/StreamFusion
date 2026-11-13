@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Briefcase, ArrowLeft, Globe, Smartphone, Trash2, Plus, Paperclip, X, Download, Save, Eye, EyeOff, Play } from 'lucide-react';
 import { loadSecret, saveSecret, loginSecretName } from '../Emulator/secrets';
 import { readBriefFiles } from '../Emulator/readFiles';
+import { AutomatedTests } from './AutomatedTests';
 
 type PFile = { name: string; text: string };
 interface Module { name: string; cases: string; files: PFile[]; updatedAt?: string }
@@ -152,6 +153,12 @@ const Detail: React.FC<{ id: string; onBack: () => void; onRun: (world: 'web' | 
           </div>
         ))}
         <input ref={modFileRef} type="file" multiple accept=".txt,.md,.markdown,.csv,.json,.yaml,.yml,.xml,.feature,.docx" style={{ display: 'none' }} onChange={e => { addModFiles(e.target.files); e.target.value = ''; }} />
+      </Card>
+
+      <Card title="AUTOMATED TESTS (REPLAY WITHOUT AI)">
+        <AutomatedTests projectId={id} login={login}
+          onChanged={() => fetch('/api/projects/' + id).then(r => r.json()).then(j => j.success && setRuns(j.runs || []))}
+          onLearn={(t) => onRun(t.target, { projectId: id, testMode: true, brief: { product: p.name, module: t.name, target: (t.target === 'web' ? p.targets.web : p.targets.app) || '', login, notes: p.notes, cases: 'Run this test once and save it as an automated test.\n' + t.yaml }, files: [] })} />
       </Card>
 
       <Card title={`REPORTS (${runs.length})`}>

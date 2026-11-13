@@ -4,6 +4,8 @@ import os from 'os';
 import path from 'path';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, ImageRun, ShadingType, PageBreak } from 'docx';
 import PDFDocument from 'pdfkit';
+import * as recorder from '../automation/recorder.js';
+import { getContext } from '../automation/assertions.js';
 
 const BASE = process.env.SF_EMULATOR_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'StreamFusion');
 export const REPORTS_DIR = path.join(BASE, 'reports');
@@ -19,6 +21,7 @@ export function createRun({ title, model, serial, attachments = [], instructions
   fs.mkdirSync(path.join(runDir(id), 'shots'), { recursive: true });
   const run = { id, projectId, title: title || 'Test run', model, serial, startedAt: new Date().toISOString(), finishedAt: null, instructions, attachments: attachments.map(a => a.name), deviceInfo, checks: [], steps: [], summary: '', status: 'running' };
   save(run);
+  recorder.start(id, { projectId, target: getContext().world === 'web' ? 'web' : 'phone', serial });
   return run;
 }
 
@@ -29,16 +32,17 @@ export function saveShot(run, base64, tag) {
 }
 
 export function addStep(run, step) { run.steps.push({ t: new Date().toISOString(), ...step }); if (run.steps.length % 5 === 0) save(run); }
-export function addCheck(run, check) { run.checks.push({ t: new Date().toISOString(), ...check }); save(run); }
+export function addCheck(run, check) { recorder.onCheck(check); run.checks.push({ t: new Date().toISOString(), ...check }); save(run); }
 export function finishRun(run, summary, reason) {
   run.finishedAt = new Date().toISOString(); run.summary = summary || run.summary;
   const f = run.checks.filter(c => c.status === 'fail').length;
   run.status = reason && reason !== 'complete' ? 'aborted' : f ? 'failed' : run.checks.length ? 'passed' : 'no-checks';
   save(run);
+  recorder.finish(run.id);
 }
 
 // A run in which no test case was executed is not a report: remove it.
-export function discardRun(run) { try { fs.rmSync(runDir(run.id), { recursive: true, force: true }); } catch (e) {} }
+export function discardRun(run) { recorder.discard(run.id); try { fs.rmSync(runDir(run.id), { recursive: true, force: true }); } catch (e) {} }
 
 export function listRuns() {
   if (!fs.existsSync(REPORTS_DIR)) return [];

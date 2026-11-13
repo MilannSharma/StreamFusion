@@ -1,4 +1,6 @@
 import express from 'express';
+import * as recorder from './automation/recorder.js';
+import { createAutomationRouter } from './automation/router.js';
 import { spawn, execFile, exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -112,7 +114,9 @@ app.get('/api/mcp/config', (req, res) => {
 });
 const webRouter = createWebRouter({ runAdb });
 app.use('/api/web', webRouter);
+recorder.wrapTools({ ...deviceRouter.TOOLS, ...webRouter.TOOLS });
 app.use('/api/projects', createProjectsRouter());
+app.use('/api/automation', createAutomationRouter({ tools: { ...deviceRouter.TOOLS, ...webRouter.TOOLS }, runAdb }));
 app.use('/api/agent', createAgentRouter({ tools: { ...deviceRouter.TOOLS, ...webRouter.TOOLS } }));
 
 // The Android emulator lives in its own tab; it must never be saved/auto-reconnected as a Wi-Fi phone.

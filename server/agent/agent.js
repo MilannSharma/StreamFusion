@@ -17,12 +17,14 @@ How to work:
 - If something fails, try one alternative, then report what you tried instead of looping.
 - You can also drive the user's own Chrome browser with the web_* tools (web_navigate, web_snapshot, web_click, web_fill ...) to test websites. Use web_snapshot (accessibility tree) before clicking and check web_console / web_network for errors.
 - Never use shell, uninstall_app, clear_data or install_apk unless the user asked for it.
+- If the user has not said what to test (a bare "start", "hi", "test"), do not touch anything: ask for the product, feature/module, URL or app, the test cases and any login.
 - When testing, end with a short result: PASS or FAIL per check, with the evidence (what you saw). Keep messages brief.`;
 
 const TEST_PROMPT = `
 
 TEST MODE is on. You are producing a formal test report.
 - The user's message lists the test cases and may include attached files (test cases, specs). Work through every test case in order.
+- Save tokens: read the page with web_snapshot / ui_tree (text) and use screenshots only when the layout itself matters. Before each report_check call the assert tool that proves the result (web_assert_text, web_assert_url, assert_text, assert_no_crash, assert_screenshot): the assertion is recorded and the test can be replayed later with zero AI tokens.
 - After finishing each test case, call report_check once with: id, title, status (pass | fail | blocked), and evidence (what you actually observed, e.g. the text on screen). A screenshot of the current screen is attached to the report automatically, so make sure the screen shows the result when you call it.
 - Use blocked only when the check could not be executed (app crashed, element missing); explain why. Never mark pass without evidence.
 - When all cases are done, call finish_report with a short overall summary (what was tested, what failed, likely causes). Do not call it earlier.`;
@@ -48,7 +50,7 @@ const toAnthropicTools = (tools) => Object.values(tools).map((t) => {
 });
 
 // Keep only the newest images in history: old screenshots are the biggest token cost.
-function pruneImages(messages, keep = 2) {
+function pruneImages(messages, keep = 1) {
   let seen = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -73,7 +75,7 @@ function toResultContent(name, r) {
     ];
   }
   const { imageBase64, ...rest } = r;
-  return JSON.stringify(rest).slice(0, 12000);
+  return JSON.stringify(rest).slice(0, 7000);
 }
 
 const summarize = (name, r) => {
@@ -87,10 +89,16 @@ const summarize = (name, r) => {
   return 'ok';
 };
 
-export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL, testMode }) {
+export const WORLD_PROMPT = {
+  web: '\n\nThis chat is for WEB testing in the browser. Use only the web_* tools. Do NOT start or use the Android emulator.',
+  phone: '\n\nThis chat is for ANDROID app testing on the emulator/device. Use only the device tools. Do NOT use the web_* browser tools.'
+};
+
+export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL, testMode, world }) {
   if (!apiKey) return emit({ type: 'error', message: 'No API key set. Add your Anthropic API key in the chat settings.' });
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const anthropicTools = toAnthropicTools(tools);
+  const worldPrompt = WORLD_PROMPT[world] || '';
   let run = null;
   if (testMode) {
     let deviceInfo = null;
@@ -116,7 +124,7 @@ export async function runAgent({ sessionId, message, apiKey, model = 'claude-opu
       if (signal.aborted) return emit({ type: 'done', reason: 'stopped' });
       const resp = await client.beta.messages.create({
         model, max_tokens: 8000,
-        system: [{ type: 'text', text: SYSTEM + (run ? TEST_PROMPT : ''), cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: SYSTEM + worldPrompt + (run ? TEST_PROMPT : ''), cache_control: { type: 'ephemeral' } }],
         tools: anthropicTools, messages,
         output_config: { effort },
         betas: useFallback ? ['server-side-fallback-2026-07-01'] : [],

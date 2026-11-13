@@ -4,6 +4,7 @@
 import { execFile } from 'child_process';
 import zlib from 'zlib';
 import path from 'path';
+import { compareBaseline, baselineDir, getContext, crashScan } from '../automation/assertions.js';
 
 // ---------- tiny helpers ----------
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -234,6 +235,34 @@ export function createTools({ runAdb, adbExe, cwd }) {
     const r = await sh(a.serial, String(a.command), 30000);
     return { ok: r.success, output: r.output.slice(0, 20000) };
   }, true);
+
+  // ---- assertions: the AI uses these to pin its pass criteria; the zero-token replay runs the same checks ----
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  def('assert_text', 'Assert that text is (visible=true, default) or is not (visible=false) on the phone screen. Waits up to timeoutMs (default 6000). Call it before report_check so the pass criterion is recorded and can be replayed without AI. Result: passed true/false.', {
+    text: { type: 'string' }, visible: { type: 'boolean' }, exact: { type: 'boolean' }, timeoutMs: { type: 'number' }
+  }, ['text'], async (a) => {
+    const want = a.visible !== false, end = Date.now() + num(a.timeoutMs, 6000), q = String(a.text).toLowerCase();
+    let found = false, seen = false, lastErr = '';
+    for (;;) {
+      const t = await dumpTree(a.serial);
+      if (t.ok) { seen = true; found = t.nodes.some(n => (a.exact ? n.text === a.text || n.desc === a.text : n.text.toLowerCase().includes(q) || n.desc.toLowerCase().includes(q))); if (found === want) break; } else lastErr = t.error;
+      if (Date.now() >= end) break;
+      await sleep(700);
+    }
+    if (!seen) return { ok: false, error: lastErr || 'Could not read the screen' };
+    return { ok: true, passed: found === want, detail: found === want ? `"${a.text}" is ${want ? 'visible' : 'not visible'}` : `"${a.text}" is ${found ? 'visible' : 'not visible'} but should ${want ? '' : 'not '}be` };
+  });
+  def('assert_no_crash', 'Assert that no app crash (FATAL EXCEPTION) or ANR happened since logcat was last cleared. Result: passed true/false.', {}, [], async (a) => {
+    const s = await crashScan(adb, a.serial);
+    const bad = s.crashed || s.anr;
+    return { ok: true, passed: !bad, detail: bad ? (s.crashed ? 'App crashed: ' + s.lines.slice(0, 3).join(' | ') : s.anrLine) : 'No crash or ANR found', lines: bad ? s.lines : undefined };
+  });
+  def('assert_screenshot', 'Compare the screen with a stored baseline image called name (the first call creates the baseline). threshold = allowed fraction of changed area (default 0.03). Result: passed true/false.', { name: { type: 'string' }, threshold: { type: 'number' } }, ['name'], async (a) => {
+    const sc = await TOOLS.screenshot.handler({ serial: a.serial, maxDim: 540 });
+    if (!sc.ok) return sc;
+    try { const r = compareBaseline({ dir: a.baselineDir || baselineDir(getContext().projectId), name: a.name, png: Buffer.from(sc.imageBase64, 'base64'), threshold: a.threshold }); return { ok: true, passed: r.passed, detail: r.detail, state: r.state }; }
+    catch (e) { return { ok: false, error: e.message }; }
+  });
 
   return TOOLS;
 }

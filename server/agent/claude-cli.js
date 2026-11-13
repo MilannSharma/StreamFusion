@@ -125,10 +125,11 @@ const CLI_SYSTEM = `You are StreamFusion's QA agent. You control a real Android 
 - Observe first: ui_tree for the phone, web_snapshot for the browser (both cheap). Use screenshots only when layout matters.
 - After each meaningful action verify the result before moving on. If something fails, try one alternative, then report what you tried.
 - Never use shell, uninstall_app, clear_data, install_apk or web_eval unless the user asked for it.
+- If the user has not said what to test (a bare "start", "hi", "test"), do not touch anything: ask for the product, feature/module, URL or app, the test cases and any login.
 - If the emulator is off, call emulator_start and wait with emulator_status until it is booted. The browser opens by itself on the first web_* call.
 - Keep replies short. When testing, finish with PASS or FAIL per check and the evidence you saw.`;
 const CLI_TEST = `
-TEST MODE is on and a report run is already open. Work through every test case in order. After each one call report_check (id, title, status pass|fail|blocked, evidence); a screenshot is attached automatically, so make sure the screen shows the result first. Never mark pass without evidence. When all are done call report_finish with a short summary.`;
+TEST MODE is on and a report run is already open. Save tokens: read the page with web_snapshot / ui_tree (text) and use screenshots only when the layout itself matters. Before each report_check call the assert tool that proves the result (web_assert_text, web_assert_url, assert_text, assert_no_crash, assert_screenshot): the assertion is recorded and the test can be replayed later with zero AI tokens. Work through every test case in order. After each one call report_check (id, title, status pass|fail|blocked, evidence); a screenshot is attached automatically, so make sure the screen shows the result first. Never mark pass without evidence. When all are done call report_finish with a short summary.`;
 
 const short = (v, n = 110) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s; };
 function resultSummary(name, content, isErr) {
@@ -138,7 +139,7 @@ function resultSummary(name, content, isErr) {
   return text.trim() ? short(text.replace(/\s+/g, ' '), 110) : isErr ? 'error' : 'ok';
 }
 
-export async function runClaudeCli({ sessionId, message, serial, mode, model, testMode, dangerousNames = [], emit, signal }) {
+export async function runClaudeCli({ sessionId, message, serial, mode, model, testMode, dangerousNames = [], blockedNames = [], worldPrompt = '', emit, signal }) {
   const st = await authStatus();
   if (!st.installed) return emit({ type: 'error', message: 'Claude Code is not installed on this PC. Install it from claude.com/claude-code, then sign in here.' });
   if (!st.loggedIn) return emit({ type: 'error', message: 'Not signed in. Press Connect, then Sign in with Claude.' });
@@ -149,8 +150,9 @@ export async function runClaudeCli({ sessionId, message, serial, mode, model, te
 
   const alias = /opus/.test(model || '') ? 'opus' : /haiku/.test(model || '') ? 'haiku' : 'sonnet';
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', cfgFile, '--strict-mcp-config', '--tools', '',
-    '--allowedTools', PREFIX + '*', '--model', alias, '--append-system-prompt', CLI_SYSTEM + (testMode ? CLI_TEST : '')];
-  if (mode !== 'auto' && dangerousNames.length) args.push('--disallowedTools', ...dangerousNames.map(n => PREFIX + n));
+    '--allowedTools', PREFIX + '*', '--model', alias, '--append-system-prompt', CLI_SYSTEM + worldPrompt + (testMode ? CLI_TEST : '')];
+  const denied = [...new Set([...(mode !== 'auto' ? dangerousNames : []), ...blockedNames])];
+  if (denied.length) args.push('--disallowedTools', ...denied.map(n => PREFIX + n));
   const resume = sessions.get(sessionId);
   if (resume) args.push('--resume', resume);
 

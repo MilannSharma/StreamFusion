@@ -90,10 +90,10 @@ Dono tarike chalenge, user jo chahe chune. Dono ek hi tool layer (M2) use karte 
 - [ ] Video (screenrecord), flaky detection, AI bug summary, history dashboard
 
 ### M5: Test Automation Engine
-- [ ] Test cases YAML/JSON mein (plain-English steps support)
-- [ ] AI ke steps record karo aur bina AI ke replay (zero token cost)
-- [ ] Assertions: text visible, screenshot compare, crash/ANR detect (logcat)
-- [ ] Multi-device parallel run, CLI mode for CI
+- [x] Test cases YAML/JSON mein (plain-English steps support) — `server/automation/format.js`, Project page > Automated tests editor
+- [x] AI ke steps record karo aur bina AI ke replay (zero token cost) — recorder wraps tools, "Save as automated test" under the report; passwords never stored ({{login:N}} / {{env:NAME}})
+- [x] Assertions: text visible, screenshot compare (baseline), crash/ANR detect (logcat) — assert_text / assert_no_crash / assert_screenshot + web_assert_*
+- [x] Multi-device parallel run (all-on-each or shard), CLI mode for CI — `npm run sf:run -- --project X | --file t.yaml --junit out.xml`, exit code 0/1/2
 
 ### M6: Reports & Dashboard
 - [ ] Har run ka video (`screenrecord`), step screenshots, logs, HTML report

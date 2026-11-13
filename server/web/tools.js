@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
+import { compareBaseline, baselineDir, getContext } from '../automation/assertions.js';
 
 const BASE = process.env.SF_EMULATOR_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'StreamFusion');
 const require = createRequire(import.meta.url);
@@ -65,7 +66,15 @@ let page = null;
 const logs = { console: [], network: [] };
 const cap = (arr, v, n = 200) => { arr.push(v); if (arr.length > n) arr.shift(); };
 
+// Playwright no longer parses `label=Email` / `placeholder=Search`; accept them anyway (the tool descriptions promise them).
+const fixSel = (s) => {
+  const t = String(s ?? '');
+  let m = /^label=(.+)$/s.exec(t); if (m) return 'internal:label=' + JSON.stringify(m[1].replace(/^["']|["']$/g, '')) + 'i';
+  m = /^placeholder=(.+)$/s.exec(t); if (m) return 'internal:attr=[placeholder=' + JSON.stringify(m[1].replace(/^["']|["']$/g, '')) + 'i]';
+  return t;
+};
 function wirePage(p) {
+  if (!p.__sel) { p.__sel = true; const o = p.locator.bind(p); p.locator = (sel, ...r) => o(fixSel(sel), ...r); }
   p.on('console', (m) => cap(logs.console, { t: Date.now(), page: p.url(), type: m.type(), text: m.text().slice(0, 400) }));
   p.on('pageerror', (e) => cap(logs.console, { t: Date.now(), page: p.url(), type: 'pageerror', text: String(e.message).slice(0, 400) }));
   p.on('response', (r) => cap(logs.network, { t: Date.now(), method: r.request().method(), url: r.url().slice(0, 200), status: r.status(), type: r.request().resourceType() }));
@@ -253,6 +262,30 @@ export function createWebTools({ runAdb } = {}) {
     const p = await ensure();
     if (a.action === 'back') await p.goBack({ timeout: 8000 }); else if (a.action === 'forward') await p.goForward({ timeout: 8000 }); else await p.reload({ timeout: 15000 });
     return { ok: true, ...(await state0(p)) };
+  });
+  def('web_assert_text', 'Assert that text is (visible=true, default) or is not (visible=false) on the page. Waits up to timeoutMs (default 6000). Call it before report_check so the pass criterion is recorded and can be replayed without AI. Result: passed true/false.', { text: { type: 'string' }, visible: { type: 'boolean' }, timeoutMs: { type: 'number' } }, ['text'], async (a) => {
+    const p = await ensure();
+    const want = a.visible !== false, end = Date.now() + (Number(a.timeoutMs) || 6000), q = String(a.text).toLowerCase();
+    let found = false;
+    for (;;) {
+      const body = await p.locator('body').innerText({ timeout: 4000 }).catch(() => '');
+      found = body.toLowerCase().includes(q);
+      if (found === want || Date.now() >= end) break;
+      await p.waitForTimeout(400);
+    }
+    return { ok: true, passed: found === want, detail: found === want ? `"${a.text}" is ${want ? 'visible' : 'not visible'}` : `"${a.text}" is ${found ? 'visible' : 'not visible'} but should ${want ? '' : 'not '}be` };
+  });
+  def('web_assert_url', 'Assert that the current page URL contains a string. Waits up to timeoutMs (default 6000). Result: passed true/false.', { contains: { type: 'string' }, timeoutMs: { type: 'number' } }, ['contains'], async (a) => {
+    const p = await ensure(); const end = Date.now() + (Number(a.timeoutMs) || 6000);
+    while (!p.url().includes(a.contains) && Date.now() < end) await p.waitForTimeout(300);
+    const ok = p.url().includes(a.contains);
+    return { ok: true, passed: ok, detail: ok ? `URL contains "${a.contains}"` : `URL is ${p.url()}, expected it to contain "${a.contains}"` };
+  });
+  def('web_assert_screenshot', 'Compare the page with a stored baseline image called name (the first call creates the baseline). threshold = allowed fraction of changed area (default 0.03). Result: passed true/false.', { name: { type: 'string' }, threshold: { type: 'number' } }, ['name'], async (a) => {
+    const p = await ensure();
+    const buf = await p.screenshot({ type: 'png', scale: 'css' });
+    const r = compareBaseline({ dir: a.baselineDir || baselineDir(getContext().projectId), name: a.name, png: buf, threshold: a.threshold });
+    return { ok: true, passed: r.passed, detail: r.detail, state: r.state };
   });
   def('web_attach_android', 'Connect the web_* tools to Chrome or a debuggable WebView running on the Android device/emulator (via adb + DevTools). After this, web_snapshot/click/etc. act on the phone. Use web_close to disconnect.', { serial: { type: 'string', description: 'adb serial, default emulator-5554' }, target: { type: 'string', enum: ['chrome', 'webview'] }, pid: { type: 'string', description: 'WebView process id (optional)' } }, [], async (a) => {
     if (!runAdb) return { ok: false, error: 'adb not available' };

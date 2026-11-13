@@ -17,6 +17,7 @@ function read(id) { try { return JSON.parse(fs.readFileSync(file(id), 'utf8')); 
 function write(p) { fs.mkdirSync(DIR, { recursive: true }); p.updatedAt = new Date().toISOString(); fs.writeFileSync(file(p.id), JSON.stringify(p, null, 1)); return p; }
 const all = () => (fs.existsSync(DIR) ? fs.readdirSync(DIR).filter(f => f.endsWith('.json')).map(f => read(f.slice(0, -5))).filter(Boolean) : []);
 
+export const writeProject = write;
 export const getProject = (id) => (ID_RE.test(id) ? read(id) : null);
 export const deleteProject = (id) => { if (!ID_RE.test(id)) return false; try { fs.rmSync(file(id), { force: true }); return true; } catch (e) { return false; } };
 
@@ -26,7 +27,7 @@ export function listProjects() {
   const runs = listRuns();
   return all().sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).map(p => {
     const mine = runs.filter(r => r.projectId === p.id);
-    return { id: p.id, name: p.name, updatedAt: p.updatedAt, createdAt: p.createdAt, targets: p.targets, modules: p.modules.length, docs: p.docs.length, runs: mine.length, lastRun: mine[0] ? { status: mine[0].status, at: mine[0].startedAt } : null };
+    return { id: p.id, name: p.name, updatedAt: p.updatedAt, createdAt: p.createdAt, targets: p.targets, modules: p.modules.length, docs: p.docs.length, tests: (p.tests || []).length, runs: mine.length, lastRun: mine[0] ? { status: mine[0].status, at: mine[0].startedAt } : null };
   });
 }
 

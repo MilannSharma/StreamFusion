@@ -1,5 +1,8 @@
 import express from 'express';
+import { setContext } from '../automation/assertions.js';
+import { loginTokens } from '../automation/format.js';
 import { listRuns, getRun, shotPath, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun } from '../testmode/runs.js';
+import { WORLD_PROMPT } from './agent.js';
 import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
 import { extractText } from './extract.js';
@@ -8,6 +11,10 @@ import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
 export function createAgentRouter({ tools }) {
   const router = express.Router();
   let current = null; // the open test-report run (in-app Test mode, or started by an external MCP client with report_begin)
+  // A chat belongs to one world: the browser page only gets web_* tools, the phone page only device tools.
+  const isWebTool = (n) => n.startsWith('web_');
+  const worldTools = (world) => (world === 'web' ? Object.fromEntries(Object.entries(tools).filter(([n]) => isWebTool(n))) : world === 'phone' ? Object.fromEntries(Object.entries(tools).filter(([n]) => !isWebTool(n))) : tools);
+  const otherWorldNames = (world) => (world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'phone' ? Object.keys(tools).filter(isWebTool) : []);
   const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
   const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status }); };
 
@@ -24,6 +31,7 @@ export function createAgentRouter({ tools }) {
     const ac = new AbortController();
     res.on('close', () => ac.abort());
     const emit = (ev) => { if (!res.writableEnded) res.write(JSON.stringify(ev) + '\n'); };
+    if (b.testMode) setContext({ projectId: b.testMode.projectId || null, loginTokens: loginTokens(b.testMode.logins), world: b.world, serial: b.serial });
     if (b.engine === 'claude') {
       let run = null;
       if (b.testMode) {
@@ -36,14 +44,14 @@ export function createAgentRouter({ tools }) {
       }
       let reason = 'complete';
       const wrap = (ev) => { if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error'; emit(ev); };
-      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), emit: wrap, signal: ac.signal });
+      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world), worldPrompt: WORLD_PROMPT[b.world] || '', emit: wrap, signal: ac.signal });
       if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
       return res.end();
     }
     await runAgent({
       sessionId: String(b.sessionId), message: String(b.message), apiKey: b.apiKey, model: b.model, effort: b.effort,
       testMode: b.testMode ? { title: String(b.testMode.title || '').slice(0, 120), summary: String(b.testMode.summary || ''), projectId: b.testMode.projectId ? String(b.testMode.projectId) : null, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })) } : null,
-      serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', tools, emit, signal: ac.signal,
+      serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', tools: worldTools(b.world), world: b.world, emit, signal: ac.signal,
       baseURL: process.env.SF_ANTHROPIC_BASE_URL
     });
     res.end();
