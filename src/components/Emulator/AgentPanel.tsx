@@ -6,6 +6,7 @@ import { WebPane } from './WebPane';
 import { loadKey, loadSecret, saveSecret, loginSecretName } from './secrets';
 import { readBriefFiles } from './readFiles';
 import { SaveAsTest } from '../Projects/AutomatedTests';
+import { LiveScreen, canLiveStream } from './LiveScreen';
 import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref, installClaude, startClaudeSignIn } from './ConnectOptions';
 import { Coach, type CoachGuide } from '../Tutorial/Coach';
 import { TestBrief, StartBar, EMPTY_BRIEF, briefMissing, composeBrief, type Brief, type BriefFile } from './TestBrief';
@@ -120,7 +121,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   // ---------- live phone screen (polls a downscaled screenshot; click = tap) ----------
   const [shot, setShot] = useState('');
   const [dev, setDev] = useState({ w: 1080, h: 2400 });
-  const imgRef = useRef<HTMLImageElement>(null);
+  const imgRef = useRef<any>(null); // the <img> (screenshot fallback) or the <canvas> (live stream)
+  const [live, setLive] = useState<'try' | 'on' | 'off'>(canLiveStream() ? 'try' : 'off');
+  useEffect(() => { setLive(canLiveStream() ? 'try' : 'off'); }, [serial]);
 
   useEffect(() => {
     if (!connected) return;
@@ -129,7 +132,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   }, [connected, serial]);
 
   useEffect(() => {
-    if (!connected || !active || isWeb) { setShot(''); return; }
+    if (!connected || !active || isWeb || live !== 'off') { if (live === 'off' || !connected || !active || isWeb) setShot(''); return; } // the live stream replaces screenshot polling
     let stop = false; let last = '';
     (async () => {
       while (!stop) {
@@ -142,7 +145,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       if (last) URL.revokeObjectURL(last);
     })();
     return () => { stop = true; };
-  }, [connected, serial, busy, active, isWeb]);
+  }, [connected, serial, busy, active, isWeb, live]);
 
   const showReportsRef = useRef(false); showReportsRef.current = showReports;
   const callTool = (name: string, args: any) => fetch(`/api/device/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial, ...args }) });
@@ -154,11 +157,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     return { x: Math.max(0, Math.min(dev.w, Math.round((clientX - r.left - ox) / sc))), y: Math.max(0, Math.min(dev.h, Math.round((clientY - r.top - oy) / sc))) };
   };
   const down = useRef<{ x: number; y: number; t: number } | null>(null);
-  const onPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     down.current = { ...toDevice(e.clientX, e.clientY), t: Date.now() };
   };
-  const onPointerUp = (e: React.PointerEvent<HTMLImageElement>) => {
+  const onPointerUp = (e: React.PointerEvent<HTMLElement>) => {
     const d = down.current; down.current = null;
     if (!d || !imgRef.current) return;
     const p = toDevice(e.clientX, e.clientY);
@@ -192,7 +195,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => { el.removeEventListener('wheel', onWheel); clearTimeout(wheelAcc.current.timer); };
-  }, [connected, isWeb, dev.w, dev.h, shot ? 1 : 0]);
+  }, [connected, isWeb, dev.w, dev.h, shot ? 1 : 0, live]);
   const phoneBtn = (key: string) => callTool('key', { key });
 
   // ---------- chat ----------
@@ -384,7 +387,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     <div style={{ display: active ? 'flex' : 'none', gap: 16, flex: fill ? '0 0 auto' : 1, minHeight: 520, height: fill ? 'calc(100vh - 215px)' : 'calc(100vh - 238px)' }}>
       {/* ---------- left: chat ---------- */}
       <div style={{ ...card, flex: '0 0 clamp(340px, 40%, 560px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: border, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: border, flexWrap: 'wrap', background: 'transparent' }}>
           <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
             {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
@@ -393,13 +396,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <option value="auto">Auto</option>
           </select>
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
-            {engine === 'claude' ? 'Claude · signed in' : engine === 'api' ? `${fmt(tokens.input)} in · ${fmt(tokens.output)} out` : ''}
+            {engine === 'claude' ? '' : engine === 'api' ? `${fmt(tokens.input)} in · ${fmt(tokens.output)} out` : ''}
           </span>
           <button onClick={() => setChatHidden(true)} title="Hide chat" style={iconBtn}><PanelLeftClose size={14} /></button>
           <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
-            style={{ ...iconBtn, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
+            style={{ ...iconBtn, fontWeight: 600, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
           <button onClick={() => setShowReports(v => !v)} title="Saved test reports" style={iconBtn}><FileText size={14} /></button>
-          <button onClick={() => setShowConnect(v => !v)} title="How the AI is connected" style={iconBtn}><Plug size={14} /></button>
+          <button onClick={() => setShowConnect(v => !v)} title={engine === 'claude' ? 'Connected: Claude Code (signed in)' : 'How the AI is connected'} style={iconBtn}><Plug size={14} />{engine === 'claude' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />}</button>
           <button onClick={reset} title="New chat" style={iconBtn}><Trash2 size={14} /></button>
         </div>
 
@@ -479,9 +482,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       <div style={{ display: isWeb ? 'none' : 'flex', flex: 1, minWidth: 220, flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 12 }}>
         <div style={{ minHeight: 0, height: '100%', display: 'flex', justifyContent: 'center', minWidth: 0 }}>
         {/* a real phone shape (about 6.5 inch, 9:19.5) that fills the available height */}
-        <div style={{ background: '#0f172a', borderRadius: 40, padding: 10, boxShadow: '0 14px 40px rgba(15,23,42,0.4), inset 0 0 0 2px #1e293b', height: '100%', aspectRatio: '9 / 19.5', maxWidth: '100%', minWidth: 0, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ background: '#0f172a', borderRadius: 40, padding: 10, boxShadow: '0 14px 40px rgba(15,23,42,0.4), inset 0 0 0 2px #1e293b', height: '100%', maxHeight: 'min(820px, calc(100vh - 250px))', alignSelf: 'center', aspectRatio: '9 / 19.5', maxWidth: '100%', minWidth: 0, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', inset: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 30 }}>
-          {shot
+          {connected && active && !isWeb && live !== 'off' && (
+            <LiveScreen serial={serial} w={dev.w} h={dev.h} canvasRef={imgRef} onPlaying={() => setLive('on')} onFail={() => setLive('off')} onPointerDown={onPointerDown} onPointerUp={onPointerUp} style={{ borderRadius: 30, opacity: live === 'on' ? 1 : 0 }} />
+          )}
+          {live === 'on' ? null : shot
             ? <img ref={imgRef} src={shot} onPointerDown={onPointerDown} onPointerUp={onPointerUp} alt="Device screen" draggable={false}
                 style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 30, cursor: 'pointer', display: 'block', touchAction: 'none', userSelect: 'none' }} />
             : connected

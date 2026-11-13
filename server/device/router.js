@@ -1,4 +1,5 @@
 import express from 'express';
+import { spawn } from 'child_process';
 import { createTools } from './tools.js';
 
 // REST face of the device tool registry: GET /api/device/tools, POST /api/device/tool/:name
@@ -27,6 +28,23 @@ export function createDeviceRouter({ runAdb, adbExe, scrcpyBin }) {
     const r = await TOOLS.screenshot.handler({ serial: String(req.query.serial || ''), maxDim: req.query.maxDim });
     if (!r.ok) return res.status(500).json(r);
     res.type('png').send(Buffer.from(r.imageBase64, 'base64'));
+  });
+
+  // Live screen: raw H.264 from the phone's screenrecord (about 100 ms behind, 30 fps) instead of 3-second screencap grabs.
+  // The browser decodes it with WebCodecs. screenrecord stops after 3 minutes; the client simply reconnects.
+  router.get('/stream.h264', (req, res) => {
+    const serial = String(req.query.serial || '');
+    if (!/^[\w.:-]+$/.test(serial)) return res.status(400).end();
+    const w = Math.max(16, Math.min(1080, parseInt(req.query.w, 10) || 540)), h = Math.max(16, Math.min(2400, parseInt(req.query.h, 10) || 1204));
+    const bit = Math.max(1, Math.min(12, Number(req.query.mbps) || 4)) * 1000000;
+    const p = spawn(adbExe, ['-s', serial, 'exec-out', 'screenrecord', '--output-format=h264', '--size', w + 'x' + h, '--bit-rate', String(bit), '--time-limit', '180', '-'], { cwd: scrcpyBin, windowsHide: true });
+    res.setHeader('Content-Type', 'video/h264'); res.setHeader('Cache-Control', 'no-store');
+    let got = 0, err = '';
+    p.stdout.on('data', (d) => { got += d.length; res.write(d); });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('close', () => { if (!res.writableEnded) { if (!got) res.statusCode = 502; res.end(); } });
+    p.on('error', () => { try { res.status(500).end(); } catch (e) {} });
+    res.on('close', () => { try { p.kill(); } catch (e) {} });
   });
 
   router.TOOLS = TOOLS;

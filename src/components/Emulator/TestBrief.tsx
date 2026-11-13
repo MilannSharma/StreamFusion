@@ -58,7 +58,7 @@ export const TestBrief: React.FC<Props> = ({ projects, projectId, onPickProject,
         <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>{projectId ? 'Everything saved for this project is filled in. Change anything, or just press Start.' : 'Everything you enter here is saved as a project, so you do not type it again next time.'}</div>
       </div>}
       <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>{projectId ? 'Project name *' : 'Project name * (a new project is created with this name)'}</div><input style={inp} value={brief.product} onChange={set('product')} placeholder="e.g. Rysen HQ" /></div>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Project name *</div><input style={inp} value={brief.product} onChange={set('product')} placeholder="e.g. Rysen HQ" />{!projectId && <div style={{ fontSize: 10.5, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>Creates a new project with this name.</div>}</div>
         <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Feature / module *</div><input style={inp} list="sf-modules" value={brief.module} onChange={e => { setBrief({ ...brief, module: e.target.value }); onModule(e.target.value); }} placeholder="e.g. Login, Fee collection" /><datalist id="sf-modules">{modules.map(m => <option key={m} value={m} />)}</datalist></div>
       </div>
       <div><div style={lbl}>{isWeb ? 'URL(s) to test *' : 'App to test *'}</div><input style={inp} value={brief.target} onChange={set('target')} placeholder={isWeb ? 'https://staging.example.com (one or more, comma separated)' : 'App name or package, e.g. com.example.app (installed on the phone)'} /></div>
