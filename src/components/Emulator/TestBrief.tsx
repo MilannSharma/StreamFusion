@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Paperclip, X, FlaskConical, Play } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Play } from 'lucide-react';
 
 export interface Brief { product: string; module: string; target: string; login: string; notes: string; cases: string }
 export interface BriefFile { name: string; text: string; kind: 'cases' | 'docs' }
@@ -29,10 +29,20 @@ export function composeBrief(b: Brief, files: BriefFile[], isWeb: boolean, histo
   return { full, summary, title: (b.product.trim() + ' - ' + b.module.trim()).slice(0, 80) };
 }
 
-const border = '1px solid var(--border-color, #e2e8f0)';
-const lbl: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary, #475569)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 };
-const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: 9, border, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--bg-input, #fff)', color: 'var(--text-main, #0f172a)', resize: 'vertical' };
-const chip: React.CSSProperties = { background: 'var(--bg-card, #fff)', border, borderRadius: 6, padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5 };
+// ---- design: quiet, grouped, system-style. No borders on fields, hairline dividers, one accent colour. ----
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif';
+const INK = 'var(--text-main, #1d1d1f)', SUB = 'var(--text-muted, #86868b)', LINE = 'rgba(60,60,67,0.12)', FILL = 'rgba(120,120,128,0.08)';
+const group: React.CSSProperties = { background: FILL, borderRadius: 12, overflow: 'hidden' };
+const field: React.CSSProperties = { flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', font: 'inherit', fontSize: 13.5, color: INK, padding: '11px 0', resize: 'none' };
+const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: 12.5, color: '#4f46e5', cursor: 'pointer', fontWeight: 500 };
+const chip: React.CSSProperties = { background: 'rgba(79,70,229,0.08)', color: '#4f46e5', borderRadius: 999, padding: '2px 9px', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5 };
+
+const Row: React.FC<{ label: string; first?: boolean; children: React.ReactNode }> = ({ label, first, children }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', borderTop: first ? 'none' : `1px solid ${LINE}` }}>
+    <div style={{ width: 74, flexShrink: 0, fontSize: 13.5, color: INK }}>{label}</div>
+    {children}
+  </div>
+);
 
 interface Props {
   projects: { id: string; name: string }[]; projectId: string; onPickProject: (id: string) => void; modules: string[]; onModule: (name: string) => void;
@@ -42,54 +52,77 @@ interface Props {
 
 export const TestBrief: React.FC<Props> = ({ projects, projectId, onPickProject, modules, onModule, isWeb, brief, setBrief, files, addFiles, removeFile }) => {
   const casesRef = useRef<HTMLInputElement>(null), docsRef = useRef<HTMLInputElement>(null);
+  const hasExtras = !!(brief.login.trim() || brief.notes.trim() || files.some(f => f.kind === 'docs'));
+  const [more, setMore] = useState(hasExtras);
   const set = (k: keyof Brief) => (e: React.ChangeEvent<any>) => setBrief({ ...brief, [k]: e.target.value });
   const accept = '.txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.feature,.docx';
-  const fileChips = (kind: 'cases' | 'docs') => files.map((f, i) => f.kind === kind && <span key={i} style={chip}>{f.name}<X size={11} style={{ cursor: 'pointer' }} onClick={() => removeFile(i)} /></span>);
+  const chips = (kind: 'cases' | 'docs') => files.map((f, i) => f.kind === kind && <span key={i} style={chip}>{f.name}<X size={11} style={{ cursor: 'pointer' }} onClick={() => removeFile(i)} /></span>);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#4f46e5', fontWeight: 800, fontSize: 13.5 }}><FlaskConical size={15} /> Test brief</div>
-      <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)', lineHeight: 1.5, marginTop: -4 }}>The test starts only when the fields marked * are filled. The better the brief, the better the report.</div>
-      {projects.length > 0 && <div>
-        <div style={lbl}>Project</div>
-        <select style={{ ...inp, resize: 'none' }} value={projectId} onChange={e => onPickProject(e.target.value)}>
-          <option value="">New project (saved automatically when you start)</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>{projectId ? 'Everything saved for this project is filled in. Change anything, or just press Start.' : 'Everything you enter here is saved as a project, so you do not type it again next time.'}</div>
-      </div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Project name *</div><input style={inp} value={brief.product} onChange={set('product')} placeholder="e.g. Rysen HQ" />{!projectId && <div style={{ fontSize: 10.5, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>Creates a new project with this name.</div>}</div>
-        <div style={{ flex: 1, minWidth: 0 }}><div style={lbl}>Feature / module *</div><input style={inp} list="sf-modules" value={brief.module} onChange={e => { setBrief({ ...brief, module: e.target.value }); onModule(e.target.value); }} placeholder="e.g. Login, Fee collection" /><datalist id="sf-modules">{modules.map(m => <option key={m} value={m} />)}</datalist></div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: FONT, color: INK }}>
+      <div style={{ fontSize: 20, fontWeight: 650, letterSpacing: '-0.02em', padding: '2px 2px 0' }}>New test</div>
+
+      <div style={group}>
+        {projects.length > 0 && (
+          <Row label="Project" first>
+            <select style={{ ...field, cursor: 'pointer' }} value={projectId} onChange={e => onPickProject(e.target.value)}>
+              <option value="">New project</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Row>
+        )}
+        {(!projects.length || !projectId) && (
+          <Row label={projects.length ? 'Name' : 'Project'} first={!projects.length}>
+            <input style={field} value={brief.product} onChange={set('product')} placeholder="Project name" />
+          </Row>
+        )}
+        <Row label="Module" first={false}>
+          <input style={field} list="sf-modules" value={brief.module} onChange={e => { setBrief({ ...brief, module: e.target.value }); onModule(e.target.value); }} placeholder="Feature or module, e.g. Login" />
+          <datalist id="sf-modules">{modules.map(m => <option key={m} value={m} />)}</datalist>
+        </Row>
+        <Row label={isWeb ? 'URL' : 'App'} first={false}>
+          <input style={field} value={brief.target} onChange={set('target')} placeholder={isWeb ? 'https://staging.example.com' : 'App name or package'} />
+        </Row>
       </div>
-      <div><div style={lbl}>{isWeb ? 'URL(s) to test *' : 'App to test *'}</div><input style={inp} value={brief.target} onChange={set('target')} placeholder={isWeb ? 'https://staging.example.com (one or more, comma separated)' : 'App name or package, e.g. com.example.app (installed on the phone)'} /></div>
+
       <div>
-        <div style={lbl}>Test cases * <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>paste markdown, type normally, or upload</span></div>
-        <textarea style={{ ...inp, minHeight: 110 }} value={brief.cases} onChange={set('cases')} placeholder={'TC-01: Login with a wrong password\nSteps: open the login page, enter a wrong password, press Sign in\nExpected: an error message is shown'} />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
-          <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 11.5 }} onClick={() => casesRef.current?.click()}><Paperclip size={12} /> Upload test cases</button>
-          {fileChips('cases')}
+        <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 4px 6px' }}>
+          <div style={{ fontSize: 12, color: SUB, flex: 1 }}>Test cases</div>
+          <button style={linkBtn} onClick={() => casesRef.current?.click()}>Upload file</button>
           <input ref={casesRef} type="file" multiple accept={accept} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files, 'cases'); e.target.value = ''; }} />
         </div>
-      </div>
-      <div><div style={lbl}>Login / credentials <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>optional. Saved encrypted on this PC with the project, never in reports</span></div>
-        <textarea style={{ ...inp, minHeight: 52 }} value={brief.login} onChange={set('login')} placeholder={'admin: admin@example.com / password123\nteacher: t@example.com / password456'} /></div>
-      <div>
-        <div style={lbl}>PRD / extra notes <span style={{ fontWeight: 500, color: 'var(--text-muted, #64748b)' }}>optional: requirements, environment, known issues</span></div>
-        <textarea style={{ ...inp, minHeight: 52 }} value={brief.notes} onChange={set('notes')} placeholder="Paste PRD text or notes here" />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
-          <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 11.5 }} onClick={() => docsRef.current?.click()}><Paperclip size={12} /> Upload PRD / docs</button>
-          {fileChips('docs')}
-          <input ref={docsRef} type="file" multiple accept={accept} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files, 'docs'); e.target.value = ''; }} />
+        <div style={{ ...group, padding: '4px 14px' }}>
+          <textarea style={{ ...field, width: '100%', minHeight: 120, resize: 'vertical', lineHeight: 1.5 }} value={brief.cases} onChange={set('cases')} placeholder={'TC-01  Wrong password shows an error\nOpen the login page, enter a wrong password, press Sign in.'} />
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginTop: 3 }}>Word (.docx), Markdown and text files work. For PDF, paste the text.</div>
+        {files.some(f => f.kind === 'cases') && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>{chips('cases')}</div>}
       </div>
+
+      {!more ? (
+        <button style={{ ...linkBtn, alignSelf: 'flex-start', padding: '0 4px' }} onClick={() => setMore(true)}>Add login, notes or documents</button>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 4px 6px' }}>
+            <div style={{ fontSize: 12, color: SUB, flex: 1 }}>Optional</div>
+            <button style={linkBtn} onClick={() => docsRef.current?.click()}>Upload document</button>
+            <input ref={docsRef} type="file" multiple accept={accept} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files, 'docs'); e.target.value = ''; }} />
+          </div>
+          <div style={group}>
+            <Row label="Login" first><textarea rows={2} style={{ ...field, lineHeight: 1.45 }} value={brief.login} onChange={set('login')} placeholder="admin@example.com / password" /></Row>
+            <Row label="Notes"><textarea rows={2} style={{ ...field, lineHeight: 1.45 }} value={brief.notes} onChange={set('notes')} placeholder="PRD, environment, known issues" /></Row>
+          </div>
+          {files.some(f => f.kind === 'docs') && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>{chips('docs')}</div>}
+          <div style={{ fontSize: 11.5, color: SUB, padding: '8px 4px 0' }}>Login is stored encrypted on this PC and never appears in reports.</div>
+        </div>
+      )}
     </div>
   );
 };
 
 export const StartBar: React.FC<{ missing: string[]; onStart: () => void }> = ({ missing, onStart }) => (
-  <div style={{ padding: 10, borderTop: border, display: 'flex', gap: 10, alignItems: 'center' }}>
-    <div style={{ flex: 1, fontSize: 12, color: missing.length ? '#b45309' : '#15803d', lineHeight: 1.4 }}>{missing.length ? 'Still needed: ' + missing.join(', ') : 'Ready. The agent will run every test case and write the report.'}</div>
-    <button className="btn-primary" disabled={missing.length > 0} onClick={onStart}><Play size={14} /> Start test</button>
+  <div style={{ padding: '12px 16px', borderTop: `1px solid ${LINE}`, display: 'flex', gap: 12, alignItems: 'center', fontFamily: FONT }}>
+    <div style={{ flex: 1, fontSize: 12.5, color: SUB, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{missing.length ? 'Needs ' + missing.join(', ') : 'Ready'}</div>
+    <button disabled={missing.length > 0} onClick={onStart}
+      style={{ background: missing.length ? 'rgba(120,120,128,0.2)' : '#4f46e5', color: missing.length ? SUB : '#fff', border: 'none', borderRadius: 999, padding: '9px 20px', fontSize: 13.5, fontWeight: 600, cursor: missing.length ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+      <Play size={13} fill="currentColor" /> Start
+    </button>
   </div>
 );
