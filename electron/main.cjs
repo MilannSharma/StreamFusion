@@ -134,6 +134,15 @@ function createWindow() {
     }
   });
 
+  // The UI is built for 100%: Ctrl + / - / 0 / mouse wheel must not zoom it, and any zoom saved earlier is reset.
+  const wc = mainWindow.webContents;
+  const lockZoom = () => { try { wc.setZoomFactor(1); wc.setVisualZoomLevelLimits(1, 1); } catch (e) {} };
+  wc.on('did-finish-load', lockZoom);
+  wc.on('zoom-changed', lockZoom);
+  wc.on('before-input-event', (event, input) => {
+    if ((input.control || input.meta) && input.type === 'keyDown' && ['+', '-', '=', '_', '0', 'Add', 'Subtract'].includes(input.key)) event.preventDefault();
+  });
+
   // Reveal window smoothly once painted to avoid white flashes
   mainWindow.once('ready-to-show', () => {
     if (mainWindow) mainWindow.show();
