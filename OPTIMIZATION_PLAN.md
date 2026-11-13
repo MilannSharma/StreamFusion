@@ -1,82 +1,97 @@
-# StreamFusion — Optimisation plan before the next EXE
+# StreamFusion — FINAL optimisation plan (before the next EXE)
 
-Goal: a smaller, faster, safer installer that works on a clean PC. Do the items in order; each has a way to check it.
-Baseline today (v3.1.2): installer 92 MB, `dist` JS bundle 1.21 MB in one chunk, `server/index.js` 923 lines, `App.tsx` 2 982 lines, `asar: false`, version still 3.1.2.
+Goal: a smaller, faster, safer installer where every tool works on a clean PC. Work in the order of the phases at the bottom.
+Measured baseline (v3.1.2): installer 92.7 MB · one 1.21 MB JS bundle · `App.tsx` 2 982 lines · `server/index.js` 923 lines · `asar: false` · AI tool definitions ~2.4 k tokens (phone) / ~1.8 k tokens (web) per request.
 
-## P0 — Must be done before building (correctness and safety)
+## A. Audit of what exists (tested on a real phone, Android 16, USB)
 
-| # | What | Why | Check |
-|---|---|---|---|
-| 1 | **Version bump** to 3.2.0 in `package.json` (`productName`, `artifactName` follow) and the About page | Many features added since 3.1.2 (AI engine, projects, M5, live screen) | About shows 3.2.0; installer name matches |
-| 2 | **Clean-PC run**: install the EXE on a PC/VM without Node, Chrome extras, Claude Code | The app must work when none of the dev tools exist | Open each page; Web testing shows "install/auto-download Chrome"; AI card shows "Install Claude" |
-| 3 | **Packaged server entry**: confirm `server/**` runs from the packaged path (not `z:\…`) and the MCP script path in "Add to Claude Code" points inside the install folder | Paths were only tested from source | One-click "Add to Claude Code" then `claude mcp list` works from the installed app |
-| 4 | **Exclude test/dev files** from the build: add `!server/**/*.test.mjs`, `!scripts/**`, `!**/*.md` (except what is shown in-app) | Do not ship tests/notes | Unpack and look |
-| 5 | **CLI in the packaged app**: `npm run sf:run` needs Node. Decide: ship `StreamFusion.exe --cli …` (runs `ELECTRON_RUN_AS_NODE`) or document "CI uses the repo" | CI users will not have the repo | `StreamFusion.exe --cli --file t.yaml` returns exit code 0/1 |
-| 6 | **Secrets audit**: grep the whole tree and `release/` for API keys, tokens, `.env`, saved logins | An API key was pasted earlier in chat; rotate it | No hits; user rotates the key |
-| 7 | **Crash safety**: unhandled promise rejections in `server/index.js` and each router must not kill the server (add `process.on('unhandledRejection')` log-only) | One bad adb call should not drop the AI session | Kill adb mid-run: server stays up |
-
-## P1 — Size and startup
-
-| # | What | Expected gain | How |
-|---|---|---|---|
-| 8 | **Enable `asar: true`** with `asarUnpack` for `scrcpy-bin` (already `extraResources`), `playwright-core` driver, native files | Faster install and start (thousands of small files become one), smaller disk use | Build; start app; Web testing and mirror still work |
-| 9 | **Split the 1.2 MB JS bundle**: lazy-load pages (`ProjectsPage`, `WebStudio`, `EmulatorStudio`, Settings sections) with `React.lazy`; manual chunks for `lucide-react`, avatar, lottie | First paint about 40–60% less JS | `vite build` sizes; startup time measured with `performance.now()` log |
-| 10 | **`lucide-react` imports**: confirm named imports only (tree-shaking), no `import *` | Smaller bundle | Bundle analyzer (`rollup-plugin-visualizer`) once |
-| 11 | **Drop unused deps**: `@anthropic-ai/sdk` is only used by the API engine (keep), check `lottie-web` and `electron-updater` really used; move runtime-only libs from `devDependencies` to `dependencies` if the packaged app needs them (`react` etc. are bundled by Vite, fine) | Smaller `node_modules` in package | `depcheck` |
-| 12 | **Image**: `StreamFusion.png` is 350 KB inside `dist`; convert to WebP/resize (the UI shows it tiny) | −300 KB | Visual check |
-| 13 | **Compression**: NSIS `compression: maximum` is already likely default; try `7z` solid (`"compression": "maximum"`) and compare | Maybe −5–8 MB | Compare installer sizes |
-| 14 | **Lazy server modules**: load Playwright (`playwright-core`), `docx`, `pdfkit` only on first use (dynamic `import()`); today they load at boot | Server boot faster, lower idle RAM | Measure `node server/index.js` time-to-listen |
-| 15 | **Idle RAM / CPU**: the app should do nothing when no page needs it — check pollers (`/api/devices` every 4 s on Emulator page, MCP status, web status 2.5 s). Pause when the tab/window is hidden (`document.visibilityState`) and when the page is not active | Lower battery and CPU | Task Manager while idle in tray |
-
-## P2 — Runtime performance
-
-| # | What | Why | Check |
-|---|---|---|---|
-| 16 | **AI screenshots 3 s on some phones** (`screencap` over USB). Options: take a frame from the live H.264 stream for `screenshot` tool, or use `screencap -p` on device when it is faster; cache the last frame for 300 ms | The agent waits 3 s per look; faster tests, fewer tokens | Time `screenshot` tool before/after |
-| 17 | **Live stream polish**: auto-quality (4 → 2 Mbps on Wi-Fi), stop the stream when the app window is minimised, reuse one `screenrecord` for several viewers | Lower USB/Wi-Fi load, battery | Wi-Fi device test |
-| 18 | **`ui_tree` cost**: cache for 500 ms and diff; many AI steps call it back to back | Faster steps | Step timing |
-| 19 | **Replay speed**: reuse one browser page, skip the per-step 1.2 s retry wait when the tool error is deterministic (selector syntax) | Quicker CI runs | Run the sample test: seconds per step |
-| 20 | **Report builder**: stream PDF/DOCX, downscale evidence screenshots to 900 px JPEG at build time (PNG kept on disk) | Smaller reports (today every shot is a full PNG) | Report size before/after |
-
-## P3 — Token and cost optimisation (AI)
-
-| # | What | Status |
+| Area | Result | Status |
 |---|---|---|
-| 21 | Zero-token replay of recorded tests | Done (M5) |
-| 22 | Assert tools + text snapshot first, screenshots only when needed (prompt rule) | Done |
-| 23 | Keep only 1 image in history, shorter tool results | Done |
-| 24 | **Default model**: Sonnet for execution, Opus only for planning/triage; add "Auto" that picks Sonnet and escalates on failure | To do |
-| 25 | **Prompt caching** on tools block as well (`cache_control` on the last tool) | To do |
-| 26 | **JPEG screenshots to the AI** (needs an image encoder; try `sharp` or a tiny JPEG encoder; PNG kept for reports) | To do — about 3–5× fewer image tokens |
-| 27 | **MCP `automation_run` tool** so Claude Code replays saved tests instead of redoing them with AI | To do |
-| 28 | Token meter in the UI for the Claude Code engine (it reports usage; show it like the API engine) | To do |
+| Screen Mirror: normal, HD Webcam, Virtual Display | Start, status and stop all work | OK |
+| Recording (config `recordSession`) | MP4 written to `Videos\StreamFusion`, listed in My Recordings | OK |
+| Screenshot (`/api/control/screenshot`), wake, clipboard, terminal, display info, saved-device list | Work | OK |
+| Status bar action | Works but leaves the shade open; add a collapse action | To do |
+| **Fix Connection** (`/api/adb/restart`) | Answered before the USB phone re-registered, so the phone looked gone for ~10 s and mirrors failed | **Fixed**: waits until a device is back and reports the count |
+| App list | Every label was "Android" / package tail | **Fixed**: readable names (known apps + smart fallback) |
+| **Notifications** | Watched only by the open page (throttled or stopped when hidden), flooded old alerts on start, showed "USB debugging on / Charging" noise, no alerts after quitting | **Fixed** (see B) |
+| `GET /api/wifi/saved` | 404 (only DELETE exists) | To do (add list route or remove the call) |
+| Emulator tools (28 device tools) | Work; 3 s `screencap` per AI screenshot on this phone | See D |
+| Web tools (22) | Own Chrome, tabs, asserts work | See D |
+| Wi-Fi mirror / pairing | Not re-tested in this audit (needs a Wi-Fi phone) | To test |
 
-## P4 — Code health (so the next features are cheaper)
+## B. Notifications when the app is closed (done)
 
-| # | What | Why |
-|---|---|---|
-| 29 | Split `App.tsx` (2 982 lines) into page files: `Devices`, `Mirror`, `Settings`, `About`; keep state in small hooks | Faster HMR, easier changes, smaller risk |
-| 30 | Split `server/index.js` (923 lines): `mirror/`, `recordings/`, `wifi/` routers like the newer modules | Same |
-| 31 | Run `tsc --noEmit` and `npm test` in a `prebuild` script so a broken build never ships | Safety |
-| 32 | Add tests: format parser (done), recorder redaction (done), plus runner failure paths, project store, `extract.js` (.docx) | Regression safety |
-| 33 | Windows line endings: add `.gitattributes` (`* text=auto`) to stop the LF/CRLF warnings | Clean diffs |
+- The **server** now watches the phone (adb, every 4 s) and keeps a queue; ongoing, foreground-service, group-summary and system notifications are dropped; the first scan only records what is already there; the same notification alerts at most every 30 s.
+- The **Electron main process** polls the queue and shows **native Windows notifications** (click opens the app). The main process is not throttled while the window is hidden in the tray.
+- Window closed = app stays in the tray (setting already existed). New setting **Start with Windows (hidden in tray)** so alerts also arrive after a restart. Quit from the tray stops alerts by design.
+- Windows gets an `AppUserModelID`, so toasts show under "StreamFusion".
+- Still to do: per-app mute list, "reply / open on phone" actions, Wi-Fi phones when the server restarts, test the packaged EXE with the window closed and with autostart.
 
-## P5 — UX polish before release
+## C. Before building (must do)
 
-- One design language: neutral surfaces, one accent, system font, no heavy borders. The Test form is done; apply the same to the AI toolbar, Projects detail, Settings.
-- Empty states and errors in plain words (no jargon), one next action each.
-- Check 100%, 125%, 150% Windows scaling and small laptops (1366×768). Zoom is locked at 100%.
-- First-run: guide only once, skip = never again (done); verify after clean install.
+1. Version bump to 3.2.0 (`package.json`, About, tray tooltip now follows the version).
+2. Clean Windows VM run: install, first-run guide, USB phone, mirror, emulator page, web test (Chrome auto-download), projects, test mode report, save as automated test, replay with 0 tokens, notification alert with the window closed.
+3. Packaged paths: server and the MCP script inside the install folder; "Add to Claude Code" works from the installed app.
+4. Build excludes: `!server/**/*.test.mjs`, `!scripts/**`, notes (`*.md`) not needed at runtime.
+5. CLI in the packaged app (`StreamFusion.exe --cli …` using `ELECTRON_RUN_AS_NODE`) or document that CI uses the repo.
+6. Secrets audit of source and `release/`; the API key pasted earlier in chat must be rotated.
+7. Server never dies from one bad adb call: `unhandledRejection` handler that logs only.
+8. `prebuild` script runs `tsc --noEmit` and `npm test`.
 
-## Release checklist (run in this order)
+## D. Tool optimisation (emulator, phone, web, mirror)
 
-1. `git status` clean, version bumped, changelog written.
+**Speed**
+- AI `screenshot` takes ~3 s (raw `screencap` over USB). Take the frame from the live H.264 stream when it is running, otherwise `screencap -p` on the device; cache a frame for 300 ms.
+- `ui_tree`: cache 500 ms; skip a second dump when the screen did not change.
+- Reuse one `screenrecord` stream for several viewers, stop it when the window is minimised or the page is hidden, lower bitrate on Wi-Fi.
+- Replay: no retry wait when the error is deterministic (bad selector); reuse the same browser page.
+- Pollers pause when hidden: `/api/devices` (4 s), web status (2.5 s), MCP status.
+
+**Tokens**
+- Tool definitions are 4.2 k tokens per request (phone + web would be sent together by an external MCP client). Shorten descriptions, drop rarely used tools from the default set (`shell`, `set_battery`, `set_network`, `rotate` behind an "advanced" switch), and put `cache_control` on the tools block.
+- Default to Sonnet for execution; Opus only for planning/triage ("Auto" escalates on failure).
+- JPEG screenshots to the AI (PNG stays for reports); smaller `maxDim` (540–700).
+- MCP tool `automation_run` so Claude Code replays saved tests instead of redoing them.
+- Show token use for the Claude Code engine like the API engine.
+
+**Correctness**
+- Status bar collapse; `wifi/saved` route; Wi-Fi and pairing tests; WebView CDP; multi-device selection in every tool (`serial` is required but some UI paths still default to the emulator).
+- Emulator: confirm graceful stop on Quit, snapshot boot time, one-click "Install APK" for the real phone as well (today only the emulator).
+
+## E. App size and startup
+
+- `asar: true` with unpacked `scrcpy-bin`, Playwright driver and native files (faster install and start).
+- Split the JS bundle: lazy pages (`ProjectsPage`, `WebStudio`, `EmulatorStudio`, Settings sections), manual chunks for icons and avatar; target first paint JS −40–60 %.
+- Check tree-shaking (`lucide-react` named imports), run a bundle analyzer once, `depcheck` for unused packages.
+- Resize `StreamFusion.png` (350 KB) to WebP.
+- Load `playwright-core`, `docx`, `pdfkit` only on first use (dynamic import) so the server boots faster and idles smaller.
+- Report builder: embed 900 px JPEG evidence (PNG stays on disk) to shrink PDF/DOCX.
+
+## F. Code health
+
+- Split `App.tsx` into page files and small hooks; split `server/index.js` into `mirror/`, `recordings/`, `wifi/` routers.
+- Tests to add: runner failure paths, project store, `extract.js`, notification parser (a sample of real `dumpsys` output), friendly app names.
+- `.gitattributes` (`* text=auto`) to stop LF/CRLF warnings.
+
+## G. UI polish
+
+- One design language everywhere: neutral surfaces, one accent, system font, hairline borders. Done: test form. Next: AI toolbar, Projects detail, Settings, Mirror page.
+- Plain-word errors with one next action; empty states.
+- Check Windows scaling 100/125/150 % and 1366×768. Zoom is locked at 100 %.
+
+## Release checklist
+
+1. `git status` clean, version bumped, notes written.
 2. `npx tsc --noEmit -p .` and `npm test` pass.
-3. `npm run build:exe`, note installer size and compare with 92.7 MB.
-4. Install on a clean Windows VM: install → first run guide → connect phone (USB) → Screen Mirror → Emulator page → Web test (Chrome auto-download) → Projects → Test mode with a tiny test → report PDF/DOCX → Save as automated test → run it with 0 tokens.
-5. Update check works (`electron-updater` against the GitHub release), uninstall leaves no processes (adb, scrcpy, screenrecord, Chrome child).
-6. Sign the installer if a certificate exists (SmartScreen warning otherwise) and publish the release.
+3. `npm run build:exe`; compare size with 92.7 MB.
+4. Clean-VM test (list in C.2).
+5. Update check works; uninstall leaves no processes (adb, scrcpy, screenrecord, Chrome child).
+6. Sign the installer if a certificate exists; publish.
 
-## Suggested order of work
+## Order of work
 
-`P0 (1–7)` → `P1 (8, 9, 14, 15)` → `P2 (16, 20)` → `P3 (24–26)` → build + clean-PC test → ship. P4 can follow the release.
+1. **Done now:** notifications in background, app names, Fix Connection wait.
+2. **Phase 1 (correctness):** status bar collapse, `wifi/saved`, Wi-Fi/pairing tests, C.7, C.8.
+3. **Phase 2 (speed and tokens):** D (screenshot speed, tool-definition trimming, prompt cache, Sonnet default, JPEG).
+4. **Phase 3 (size):** E (asar, lazy pages, dynamic imports).
+5. **Phase 4:** C (version, packaged paths, clean-VM test) → build → ship. F and G can follow the release.

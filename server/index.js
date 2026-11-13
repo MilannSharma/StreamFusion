@@ -886,8 +886,15 @@ app.delete('/api/recordings', (req, res) => {
 // 12. ADB restart
 app.post('/api/adb/restart', async (req, res) => {
   await runAdb(['kill-server'], 4000);
-  await runAdb(['start-server'], 5000);
-  res.json({ success: true, message: 'ADB server restarted' });
+  await runAdb(['start-server'], 8000);
+  // USB phones re-register a few seconds after the server is back: wait for them instead of answering too early
+  let count = 0;
+  for (let i = 0; i < 10 && !count; i++) {
+    const d = await runAdb(['devices'], 4000);
+    count = String(d.output || '').split(/\r?\n/).slice(1).filter(l => /\s(device|unauthorized)\s*$/.test(l)).length;
+    if (!count) await new Promise(r => setTimeout(r, 1000));
+  }
+  res.json({ success: true, devices: count, message: count ? 'ADB server restarted, ' + count + ' device(s) found' : 'ADB server restarted, no device found yet. Check the cable and USB debugging.' });
 });
 
 function formatBytes(bytes) {
