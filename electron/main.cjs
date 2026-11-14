@@ -84,6 +84,23 @@ function waitForServer(timeoutMs = 20000) {
   });
 }
 
+// The backend we started must stay up: if it dies (crash, killed by an installer or cleaner) start it again.
+let ownsServer = false, restartTimes = [];
+function scheduleServerRestart(why) {
+  if (isQuitting || !ownsServer) return;
+  const now = Date.now();
+  restartTimes = restartTimes.filter(t => now - t < 60000);
+  if (restartTimes.length >= 5) { console.error('[StreamFusion] Server keeps stopping, giving up:', why); return; }
+  restartTimes.push(now);
+  console.log('[StreamFusion] Restarting server after', why);
+  setTimeout(() => { if (!isQuitting && !serverProcess) startBackendIfNeeded().catch(() => {}); }, 800);
+}
+// Safety net: if nothing answers on our port for ~10 s while we own the server, bring it back.
+setInterval(async () => {
+  if (isQuitting || !ownsServer || serverProcess) return;
+  if (!(await waitForServer(1500))) scheduleServerRestart('no answer on the port');
+}, 5000);
+
 // Start backend server child process if needed
 async function startBackendIfNeeded() {
   // 1. Check if backend is already responding
@@ -97,8 +114,10 @@ async function startBackendIfNeeded() {
     const serverScript = path.join(__dirname, '../server/index.js');
     const fd = getLogFd();
 
+    ownsServer = true;
     serverProcess = fork(serverScript, [], {
-      cwd: path.join(__dirname, '..'),
+      // a working directory inside app.asar does not exist on disk: spawning there fails silently, so use a real folder
+      cwd: app.isPackaged ? (process.resourcesPath || app.getPath('userData')) : path.join(__dirname, '..'),
       env: {
         ...process.env,
         ELECTRON_RUN_AS_NODE: '1',
@@ -111,11 +130,14 @@ async function startBackendIfNeeded() {
 
     serverProcess.on('error', (err) => {
       console.error('[StreamFusion] Server process error:', err);
+      serverProcess = null;
+      scheduleServerRestart('spawn error ' + (err && err.code));
     });
 
     serverProcess.on('exit', (code, signal) => {
       console.log(`[StreamFusion] Server exited with code ${code}, signal ${signal}`);
       serverProcess = null;
+      scheduleServerRestart(`exit ${code}/${signal}`);
     });
 
     // 3. Wait until server reports healthy (up to 20s)
