@@ -179,6 +179,23 @@ function createWindow() {
     if ((input.control || input.meta) && input.type === 'keyDown' && ['+', '-', '=', '_', '0', 'Add', 'Subtract'].includes(input.key)) event.preventDefault();
   });
 
+  // A window with no page behind it is just black. If the page process dies (crash, memory, GPU reset), write why
+  // to logs/main.log and bring the page back; also check again every time the window is shown from the tray.
+  const mainLog = (msg) => { try { fs.mkdirSync(path.join(app.getPath('userData'), 'logs'), { recursive: true }); fs.appendFileSync(path.join(app.getPath('userData'), 'logs', 'main.log'), new Date().toISOString() + ' ' + msg + String.fromCharCode(10)); } catch (e) {} };
+  let reloads = [];
+  const revive = (why) => {
+    mainLog('page needs reload: ' + why);
+    const now = Date.now(); reloads = reloads.filter(t => now - t < 60000);
+    if (reloads.length >= 4 || !mainWindow || mainWindow.isDestroyed()) return;
+    reloads.push(now);
+    setTimeout(() => { try { if (mainWindow && !mainWindow.isDestroyed()) wc.loadURL(`http://127.0.0.1:${PORT}`); } catch (e) {} }, 700);
+  };
+  wc.on('render-process-gone', (event, details) => revive('render-process-gone ' + details.reason + ' code ' + details.exitCode));
+  wc.on('unresponsive', () => mainLog('page unresponsive'));
+  wc.on('did-fail-load', (event, code, desc, url, isMainFrame) => { if (isMainFrame && code !== -3) revive('did-fail-load ' + code + ' ' + desc); });
+  mainWindow.on('show', () => { try { if (wc.isCrashed()) revive('shown with a crashed page'); } catch (e) {} });
+  app.on('child-process-gone', (event, details) => mainLog('child process gone: ' + details.type + ' ' + details.reason + ' code ' + details.exitCode));
+
   // Reveal window smoothly once painted to avoid white flashes
   mainWindow.once('ready-to-show', () => {
     if (mainWindow && !startHidden) mainWindow.show();

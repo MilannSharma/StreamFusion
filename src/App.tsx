@@ -21,9 +21,24 @@ function playLottie(container: HTMLElement, load: () => Promise<any>, loop: bool
 }
 
 // Pages and dialogs load when first used, so the first screen needs far less JavaScript.
+class ViewBoundary extends React.Component<{ children: React.ReactNode }, { err: string }> {
+  state = { err: '' };
+  static getDerivedStateFromError(e: any) { return { err: String(e?.message || e) }; }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-main)', marginBottom: 6 }}>This page could not load</div>
+        <div style={{ marginBottom: 14, maxWidth: 520, marginInline: 'auto', wordBreak: 'break-word' }}>{this.state.err}</div>
+        <button className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => this.setState({ err: '' })}>Try again</button>
+      </div>
+    );
+  }
+}
 function lazyView(load: () => Promise<any>, pick?: string): React.ComponentType<any> {
-  const L = React.lazy(() => load().then(m => ({ default: pick ? m[pick] : m.default })));
-  return (props: any) => <React.Suspense fallback={null}><L {...props} /></React.Suspense>;
+  // one retry if the page file fails to load (slow disk, server just restarted), instead of leaving a blank screen
+  const L = React.lazy(() => load().catch(() => new Promise(r => setTimeout(r, 600)).then(load)).then(m => ({ default: pick ? m[pick] : m.default })));
+  return (props: any) => <ViewBoundary><React.Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>}><L {...props} /></React.Suspense></ViewBoundary>;
 }
 const FileManager = lazyView(() => import('./components/FileManager/FileManager'));
 const FixConnectionModal = lazyView(() => import('./components/Diagnostics/FixConnectionModal'), 'FixConnectionModal');
