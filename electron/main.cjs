@@ -32,10 +32,14 @@ if (!gotTheLock) {
   app.quit();
   process.exit(0);
 } else {
+  // Launching the app again (desktop icon, Start menu) while it sits in the tray must bring the window back
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (!mainWindow.isVisible()) mainWindow.show();
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
+    } else if (app.isReady()) {
+      try { createWindow(); } catch (e) {}
     }
   });
 }
