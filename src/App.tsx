@@ -172,61 +172,7 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
         userSelect: 'none'
       }}
     >
-      {/* Top Bar with Timer and Skip Button */}
-      <div style={{
-        position: 'absolute',
-        top: 24,
-        right: 28,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          color: '#94a3b8',
-          padding: '6px 14px',
-          borderRadius: 20,
-          fontSize: 12,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6
-        }}>
-          <span>Auto-closing in {secondsRemaining}s</span>
-        </div>
-
-        <button
-          onClick={handleComplete}
-          style={{
-            background: 'rgba(255, 255, 255, 0.12)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            color: '#f8fafc',
-            padding: '6px 16px',
-            borderRadius: 20,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.22)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-          }}
-        >
-          <span>Skip</span>
-          <span style={{ fontSize: 10, opacity: 0.6 }}>ESC</span>
-        </button>
-      </div>
-
-      {/* Glowing Cursive Welcome Lottie Animation (Full-size, no cut-off) */}
+      {/* Glowing cursive Welcome Lottie animation */}
       <div
         ref={containerRef}
         style={{
@@ -239,84 +185,30 @@ function WelcomeSplash({ onFinish }: { onFinish: () => void }) {
           filter: 'drop-shadow(0 0 20px rgba(59, 130, 246, 0.8)) drop-shadow(0 0 45px rgba(255, 255, 255, 0.45))'
         }}
       />
-
-      {/* Cinema Subtitle */}
-      <div style={{
-        marginTop: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 6
-      }}>
-        <div style={{
-          fontSize: 14,
-          fontWeight: 800,
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          color: '#f8fafc',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8
-        }}>
-          <span>STREAMFUSION</span>
-          <span style={{
-            fontSize: 10,
-            padding: '2px 8px',
-            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-            borderRadius: 999,
-            color: '#ffffff',
-            fontWeight: 800
-          }}>
-            v{APP_VERSION}
-          </span>
-        </div>
-        <div style={{
-          fontSize: 12.5,
-          color: '#94a3b8',
-          letterSpacing: '0.04em'
-        }}>
-          Zero-Latency Android Screen Mirroring &amp; Wireless Studio
-        </div>
+      <img src="/StreamFusion-128.png" alt="StreamFusion" style={{ width: 64, height: 64, filter: 'drop-shadow(0 12px 32px rgba(0,0,0,0.6))' }} />
+      <div style={{ marginTop: 16, fontFamily: "'Abnes', 'Inter', sans-serif", fontSize: 22, color: '#f5f5f7', lineHeight: 1 }}>
+        StreamFusion
       </div>
-
-      {/* Apple-Mac Centered Continue Button */}
-      <div style={{ marginTop: 28 }}>
-        <button
-          onClick={handleComplete}
-          style={{
-            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: 999,
-            padding: '11px 26px',
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: 'pointer',
-            boxShadow: '0 8px 24px rgba(37, 99, 235, 0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            transition: 'transform 0.15s ease'
-          }}
-          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
-          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-        >
-          <span>Continue to StreamFusion</span>
-          <span>➔</span>
-        </button>
-      </div>
-
-      {/* Bottom hint */}
-      <div style={{
-        position: 'absolute',
-        bottom: 28,
-        fontSize: 11.5,
-        color: '#475569',
-        letterSpacing: '0.05em',
-        fontWeight: 500
-      }}>
-        Press Esc or Space to continue
-      </div>
+      <button
+        onClick={handleComplete}
+        style={{
+          marginTop: 32,
+          background: 'rgba(255,255,255,0.08)',
+          border: '1px solid rgba(255,255,255,0.16)',
+          color: '#f5f5f7',
+          borderRadius: 999,
+          padding: '9px 28px',
+          fontSize: 13,
+          fontWeight: 500,
+          cursor: 'pointer',
+          transition: 'background 0.2s ease',
+          fontFamily: 'inherit'
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+      >
+        Skip
+      </button>
     </div>
   );
 }
@@ -1155,10 +1047,9 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <img src="/StreamFusion-128.png" alt="StreamFusion" style={{ width: 28, height: 28, flexShrink: 0 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+            <span style={{ fontFamily: "'Abnes', 'Inter', sans-serif", fontSize: 14, fontWeight: 400, color: 'var(--text-main)', letterSpacing: 0, lineHeight: 1 }}>
               StreamFusion
             </span>
-            <span style={{ fontSize: 10.5, fontWeight: 500, color: "var(--text-muted)", letterSpacing: 0 }}>v{pkg.version}</span>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, Notification, screen, safeStorage, nativeImage } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -170,6 +170,7 @@ function createWindow() {
     }
   });
 
+  try { mainWindow.setIcon(nativeImage.createFromPath(path.join(__dirname, '../StreamFusion.png'))); } catch (e) {}
   // The UI is built for 100%: Ctrl + / - / 0 / mouse wheel must not zoom it, and any zoom saved earlier is reset.
   const wc = mainWindow.webContents;
   const lockZoom = () => { try { wc.setZoomFactor(1); wc.setVisualZoomLevelLimits(1, 1); } catch (e) {} };
