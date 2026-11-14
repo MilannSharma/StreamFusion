@@ -50,6 +50,8 @@ body {
   overflow: hidden;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss03', 'calt';
+  letter-spacing: -0.006em;
   user-select: none;
 }
 

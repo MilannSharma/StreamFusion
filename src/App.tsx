@@ -1153,23 +1153,12 @@ export default function App() {
       }}>
         {/* StreamFusion Logo & Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img
-            src="/StreamFusion-128.png"
-            alt="StreamFusion Logo"
-            style={{ width: 34, height: 34, objectFit: 'contain' }}
-          />
+          <img src="/StreamFusion-128.png" alt="StreamFusion" style={{ width: 28, height: 28, flexShrink: 0 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{
-              fontSize: 16,
-              fontWeight: 800,
-              background: 'var(--gradient-brand)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              letterSpacing: -0.3
-            }}>
+            <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
               StreamFusion
             </span>
-            <span className="badge badge-cyan" style={{ fontSize: 10, padding: '2px 7px' }}>v{pkg.version}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 500, color: "var(--text-muted)", letterSpacing: 0 }}>v{pkg.version}</span>
           </div>
         </div>
 
