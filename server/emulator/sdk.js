@@ -214,6 +214,8 @@ async function waitForBoot(runAdb) {
       await runAdb(['-s', SERIAL, 'shell', 'settings', 'put', 'secure', 'anr_show_background', '0'], 4000);
       // Standard for automation: no animations => UI is idle sooner, fewer flaky taps/dumps
       for (const k of ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale']) await runAdb(['-s', SERIAL, 'shell', 'settings', 'put', 'global', k, '0'], 4000);
+      // After a quick (snapshot) start the virtual display can stay black until it goes to sleep and wakes once
+      await runAdb(['-s', SERIAL, 'shell', 'input keyevent 223; sleep 1; input keyevent 224'], 8000);
       log('success', `Emulator booted in ${Math.round((Date.now() - t0) / 1000)}s (${SERIAL})`);
       return;
     }

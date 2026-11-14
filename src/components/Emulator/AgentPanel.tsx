@@ -127,7 +127,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
 
   const [wakeNote, setWakeNote] = useState('');
   useEffect(() => { // a sleeping phone sends no picture at all: turn it on first
-    if (!connected || isWeb || /^emulator-/.test(serial)) return;
+    if (!connected || isWeb) return;
     let dead = false;
     fetch('/api/device/tool/wake_screen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial }) })
       .then(r => r.json()).then(j => { if (!dead) setWakeNote(j.ok && j.locked ? 'The phone is locked. Unlock it to see its screen.' : ''); }).catch(() => {});

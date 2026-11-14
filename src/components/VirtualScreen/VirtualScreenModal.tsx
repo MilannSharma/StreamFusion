@@ -244,7 +244,7 @@ export const VirtualScreenModal: React.FC<VirtualScreenModalProps> = ({
               <div style={{ fontSize: 18, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
                 Vertical Screen Workspace
                 <span style={{ fontSize: 10, background: '#2563eb', color: '#fff', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
-                  v3.2.1
+                  v3.2.2
                 </span>
               </div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>

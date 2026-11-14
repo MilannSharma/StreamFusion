@@ -207,7 +207,13 @@ export function createTools({ runAdb, adbExe, cwd }) {
     const r = await sh(a.serial, 'dumpsys power | grep -m1 mWakefulness=', 8000);
     const asleep = /Asleep|Dozing/i.test(r.output || '');
     if (asleep) { await sh(a.serial, 'input keyevent 224', 5000); await new Promise(x => setTimeout(x, 600)); }
-    await sh(a.serial, 'wm dismiss-keyguard', 5000); // no effect on PIN / pattern locks
+    if (/^emulator-/.test(String(a.serial))) {
+      // The emulator display can be awake but black after a snapshot start (a near-empty screenshot): one sleep and wake brings it back.
+      // wm dismiss-keyguard is NOT used here, it turns that screen black again.
+      const shot = await sh(a.serial, 'screencap -p | wc -c', 15000);
+      const size = parseInt(String(shot.output || '').trim(), 10) || 0;
+      if (!size || size < 30000) { await sh(a.serial, 'input keyevent 223; sleep 1; input keyevent 224', 8000); await new Promise(x => setTimeout(x, 1200)); }
+    } else await sh(a.serial, 'wm dismiss-keyguard', 5000); // no effect on PIN / pattern locks
     const k = await sh(a.serial, 'dumpsys window | grep -m1 -E "mDreamingLockscreen|isKeyguardShowing"', 8000);
     return { ok: true, wasAsleep: asleep, locked: /mDreamingLockscreen=true|isKeyguardShowing=true/.test(k.output || '') };
   });
