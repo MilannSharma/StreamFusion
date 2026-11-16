@@ -226,8 +226,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     }
     setInput('');
     if (!alreadyShown) setMsgs(m => [...m, { kind: 'user', text }]);
-    if (!isWeb && !deviceSerial && (emu.phase === 'not_installed' || emu.phase === 'installing')) {
-      setMsgs(m => [...m, { kind: 'info', text: emu.phase === 'installing' ? 'The emulator is still installing. Send again when it finishes.' : 'The emulator is not installed yet. Use the Install button on the phone, then send again.' }]);
+    if (!isWeb && !deviceSerial && emu.phase === 'installing') {
+      setMsgs(m => [...m, { kind: 'info', text: 'The emulator is still installing or repairing itself. Send again when it finishes.' }]);
       return;
     }
     if (!connected && !isWeb) {

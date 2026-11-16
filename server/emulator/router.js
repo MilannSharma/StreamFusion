@@ -73,10 +73,9 @@ export function createEmulatorRouter({ runAdb, rootDir }) {
   });
 
   router.post('/start', async (req, res) => {
-    if (!sdk.isInstalled()) return res.status(400).json({ success: false, message: 'Emulator is not installed yet. Please click Install.' });
     try {
       await sdk.start(runAdb, { headless: !!req.body?.headless, wipe: !!req.body?.wipe, gpu: req.body?.gpu || 'auto' });
-      res.json({ success: true, message: 'Emulator starting...' });
+      res.json({ success: true, message: sdk.isInstalled() ? 'Emulator starting...' : 'Repairing the emulator, it will start by itself...' });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
   });
 

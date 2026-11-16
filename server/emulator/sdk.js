@@ -29,11 +29,15 @@ export const state = {
   booting: false, booted: false, headless: false, bootMode: 'cold'
 };
 let proc = null;
+let stopping = false;   // user asked to stop: never auto-repair
+let repairs = 0;        // automatic repairs used for the current Power on
+let startOpts = null;   // options of the current Power on, reused after a repair
+let pendingRun = null;  // runAdb to launch with once an install/repair finishes
 let log = () => {};
 export function setLogger(fn) { log = fn; }
 
 export function isInstalled() {
-  return fs.existsSync(emulatorExe) && fs.existsSync(imageDir) && fs.existsSync(avdConfig);
+  return fs.existsSync(emulatorExe) && fs.existsSync(path.join(imageDir, 'system.img')) && fs.existsSync(avdConfig);
 }
 // Quick-boot snapshot: when present, the next start resumes the saved Android state (seconds instead of minutes).
 const snapshotFile = path.join(AVD_HOME, `${AVD_NAME}.avd`, 'snapshots', 'default_boot', 'snapshot.pb');
@@ -173,7 +177,9 @@ export async function install() {
     fs.rmSync(tmp, { recursive: true, force: true });
     set(100, 'Installation Complete!');
     log('success', 'Android emulator installed');
+    if (pendingRun) { const r = pendingRun; pendingRun = null; setTimeout(() => { try { launch(r); } catch (e) { log('error', e.message); } }, 900); }
   } catch (e) {
+    pendingRun = null;
     state.error = e.message;
     state.stage = 'Install failed: ' + e.message;
     log('error', state.stage);
@@ -183,27 +189,72 @@ export async function install() {
 }
 
 export async function start(runAdb, { headless = false, wipe = false, gpu = 'auto' } = {}) {
-  if (!isInstalled()) throw new Error('Emulator is not installed');
+  if (isProcessAlive() || state.isInstalling) return;
+  stopping = false; repairs = 0;
+  startOpts = { headless, wipe, gpu };
+  state.error = null;
+  // Missing or damaged install: set it up again in the background, then power on by itself.
+  if (!isInstalled()) {
+    log('warn', 'Emulator files are missing or damaged. Reinstalling in the background, it will start when ready.');
+    pendingRun = runAdb;
+    install();
+    return;
+  }
+  launch(runAdb);
+}
+
+function launch(runAdb) {
   if (isProcessAlive()) return;
+  const { headless, wipe, gpu } = startOpts || {};
   tuneAvd();
   const args = ['-avd', AVD_NAME, '-port', String(EMULATOR_PORT), '-no-audio', '-no-boot-anim',
-    '-netdelay', 'none', '-netspeed', 'full', '-gpu', gpu];
+    '-netdelay', 'none', '-netspeed', 'full', '-gpu', gpu || 'auto'];
   if (headless) args.push('-no-window');
   if (wipe) args.push('-wipe-data', '-no-snapshot-load');
   state.bootMode = !wipe && hasSnapshot() ? 'quick' : 'cold';
-  proc = spawn(emulatorExe, args, { env: env(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  Object.assign(state, { booting: true, booted: false, headless });
-  proc.stdout.on('data', d => { const t = d.toString().trim(); if (t) log('debug', '[emu] ' + t.slice(0, 300)); });
-  proc.stderr.on('data', d => { const t = d.toString().trim(); if (t) log('warn', '[emu] ' + t.slice(0, 300)); });
-  proc.on('error', e => { log('error', 'Emulator failed to launch: ' + e.message); state.booting = false; });
-  proc.on('exit', (code) => { log('warn', `Emulator exited (code ${code})`); Object.assign(state, { booting: false, booted: false }); proc = null; });
+  let lastErr = '';
+  const p = spawn(emulatorExe, args, { env: env(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  proc = p;
+  Object.assign(state, { booting: true, booted: false, headless: !!headless });
+  p.stdout.on('data', d => { const t = d.toString().trim(); if (t) log('debug', '[emu] ' + t.slice(0, 300)); });
+  p.stderr.on('data', d => { const t = d.toString().trim(); if (t) { lastErr = t.slice(-200); log('warn', '[emu] ' + t.slice(0, 300)); } });
+  p.on('error', e => { log('error', 'Emulator failed to launch: ' + e.message); state.booting = false; if (proc === p) proc = null; if (!stopping) onBootFailure(runAdb, e.message); });
+  p.on('exit', (code) => {
+    log('warn', `Emulator exited (code ${code})`);
+    const early = state.booting && !stopping;
+    Object.assign(state, { booting: false, booted: false });
+    if (proc === p) proc = null;
+    if (early) onBootFailure(runAdb, `it closed right after starting (code ${code}) ${lastErr}`);
+  });
   log('info', `Launching AVD "${AVD_NAME}" ${headless ? '(headless)' : ''}${wipe ? ' with data wipe' : ''}`);
-  waitForBoot(runAdb);
+  waitForBoot(runAdb, p);
 }
 
-async function waitForBoot(runAdb) {
+// The emulator crashed or never finished booting: repair by itself and try again (max 2 times).
+function onBootFailure(runAdb, why) {
+  if (repairs >= 2) {
+    state.error = 'The emulator could not start even after repairing it. Try Reset, or check the log.';
+    log('error', state.error);
+    return;
+  }
+  repairs++;
+  const full = repairs === 2;
+  log('warn', `Emulator did not start (${why}). ${full ? 'Reinstalling the emulator' : 'Resetting the virtual phone'} automatically...`);
+  try {
+    fs.rmSync(path.join(AVD_HOME, `${AVD_NAME}.avd`), { recursive: true, force: true });
+    if (full) {
+      fs.rmSync(path.join(SDK_ROOT, 'emulator'), { recursive: true, force: true });
+      fs.rmSync(imageDir, { recursive: true, force: true });
+    }
+  } catch (e) { log('error', 'Repair cleanup failed: ' + e.message); }
+  if (startOpts) startOpts.wipe = false;
+  pendingRun = runAdb;
+  install();
+}
+
+async function waitForBoot(runAdb, p) {
   const t0 = Date.now();
-  while (isProcessAlive() && Date.now() - t0 < 240000) {
+  while (proc === p && isProcessAlive() && Date.now() - t0 < 420000) {
     const r = await runAdb(['-s', SERIAL, 'shell', 'getprop', 'sys.boot_completed'], 4000);
     if (r.success && (r.output || '').trim() === '1') {
       // boot_completed fires before shared storage is mounted; wait so push/pull/install work right away
@@ -221,10 +272,12 @@ async function waitForBoot(runAdb) {
     }
     await new Promise(r => setTimeout(r, 2500));
   }
-  state.booting = false;
+  // Never finished booting: kill it, the exit handler repairs and retries
+  if (proc === p && isProcessAlive() && !state.booted) { log('warn', 'Emulator boot timed out'); try { p.kill(); } catch (e) {} }
 }
 
 export async function stop(runAdb) {
+  stopping = true; pendingRun = null;
   const wasBooted = state.booted;
   if (isProcessAlive() && wasBooted) {
     log('info', 'Saving emulator state so the next start is fast...');

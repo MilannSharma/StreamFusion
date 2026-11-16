@@ -69,7 +69,7 @@ function initAutoUpdater(mainWindow) {
 
   ipcMain.on('restart-and-install-update', () => {
     try {
-      autoUpdater.quitAndInstall();
+      autoUpdater.quitAndInstall(true, true);
     } catch (e) {
       console.warn('[AutoUpdater] quitAndInstall error:', e);
     }
@@ -81,6 +81,11 @@ function initAutoUpdater(mainWindow) {
       autoUpdater.checkForUpdates();
     } catch (e) {}
   }, 5000);
+
+  // Keep checking quietly; downloads happen in the background and install silently when the app is closed.
+  setInterval(() => {
+    try { autoUpdater.checkForUpdates(); } catch (e) {}
+  }, 2 * 60 * 60 * 1000);
 }
 
 module.exports = { initAutoUpdater };

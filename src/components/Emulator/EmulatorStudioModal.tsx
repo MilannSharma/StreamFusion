@@ -145,9 +145,9 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
                 <div style={h3}>Built-in emulator</div>
                 <div style={sub}>Android 14 virtual phone · {label.text}{running ? ' · ' + status.serial : ''}</div>
               </div>
-              {phase === 'not_installed' || phase === 'installing'
-                ? <button style={btn(true)} onClick={() => emu.install()} disabled={phase === 'installing' || emu.busy}>{phase === 'installing' ? 'Installing…' : 'Install emulator'}</button>
-                : <button style={btn(true)} onClick={() => { setDevice(''); if (phase === 'stopped') startEmulator(emu); setTab('agent'); }} disabled={emu.busy}>{running ? <><Bot size={14} /> Test here</> : phase === 'booting' ? <><Bot size={14} /> Open chat</> : <><Power size={14} /> Power on &amp; test</>}</button>}
+              {phase === 'installing'
+                ? <button style={btn(true)} disabled>Installing… {Math.round(status.installProgress || 0)}%</button>
+                : <button style={btn(true)} onClick={() => { setDevice(''); if (phase === 'stopped' || phase === 'not_installed') startEmulator(emu); setTab('agent'); }} disabled={emu.busy}>{running ? <><Bot size={14} /> Test here</> : phase === 'booting' ? <><Bot size={14} /> Open chat</> : <><Power size={14} /> Power on &amp; test</>}</button>}
               {running && <>
                 {onStartMirror && <button style={btn()} onClick={() => onStartMirror(status.serial)}><MonitorPlay size={14} /> Mirror</button>}
                 <button style={btn()} title="Power off" onClick={() => emu.stop()} disabled={emu.busy}><Power size={14} /></button>
