@@ -1,223 +1,110 @@
-# 🚀 StreamFusion v3.2.4 — Next-Gen Android Mirroring & Wireless Control
-
 <div align="center">
 
-![StreamFusion Banner](public/StreamFusion.png)
+<img src="public/logo-mark.png" alt="StreamFusion" width="110" />
 
-[![Release](https://img.shields.io/badge/Release-v3.2.4-blue.svg?style=for-the-badge&logo=electron)](https://github.com/MilannSharma/StreamFusion/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg?style=for-the-badge&logo=windows)](https://github.com/MilannSharma/StreamFusion)
-[![Scrcpy](https://img.shields.io/badge/Powered%20By-Scrcpy%20v5.0.1-orange.svg?style=for-the-badge)](https://github.com/Genymobile/scrcpy)
-[![ADB](https://img.shields.io/badge/Google%20ADB-v37.0.1-green.svg?style=for-the-badge&logo=android)](https://developer.android.com/tools/adb)
-[![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite%206-61DAFB.svg?style=for-the-badge&logo=react)](https://react.dev)
-[![License](https://img.shields.io/badge/Author-Milann%20Sharma-purple.svg?style=for-the-badge&logo=github)](https://github.com/MilannSharma)
+# StreamFusion
 
-**StreamFusion v3.2.4** is an enterprise-grade, ultra-low latency desktop application for projecting, controlling, and managing Android smartphones on your Windows PC with zero perceptible lag. Built on top of **scrcpy v5.0.1**, **Google ADB v37.0.1**, **Electron**, and **React 19**.
+**Android mirroring, wireless control and AI-driven app + web testing, in one Windows app.**
 
-[Download v3.2.4 Installer](https://github.com/MilannSharma/StreamFusion/releases) • [Features](#-key-features) • [Installation & Setup](#-installation--first-run-experience) • [Wi-Fi Auto-Reconnect](#-1-click-persistent-wi-fi-streaming) • [Brand Setup Guide](#-android-device-setup-guide-per-brand) • [Keyboard Shortcuts](#-keyboard--mouse-shortcuts)
+[![Release](https://img.shields.io/github/v/release/MilannSharma/StreamFusion?style=for-the-badge&color=4f46e5)](https://github.com/MilannSharma/StreamFusion/releases/latest)
+[![Platform](https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows)](https://github.com/MilannSharma/StreamFusion/releases/latest)
+[![Electron](https://img.shields.io/badge/Electron-React%2019%20%2B%20Vite-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+
+[Download](https://github.com/MilannSharma/StreamFusion/releases/latest) · [Features](#features) · [AI testing](#ai-testing-and-reports) · [Install](#install) · [Build](#build-from-source)
 
 </div>
 
 ---
 
-## ✨ What's New in v3.0.0
+## What is StreamFusion?
 
-* 🖤 **Cinematic Pitch-Black Welcome Experience**: Pure `#000000` canvas with a glowing white cursive "Welcome" vector line animation playing for the exact duration of the intro, smoothly dissolving into the main dashboard with hardware-accelerated cubic-bezier transitions. Window creation starts in black to completely eliminate startup white flash.
-* 🐱 **In-Memory High-Performance Cat Playing Lottie**: Embedded directly as an in-memory JSON module (zero network requests, 0ms latency). Cleaned corrupted EOF bytes to ensure 100% reliable rendering on the Setup & Installation screen.
-* ⚡ **Ultra-Compact Binary Size**: Shrunk installer down to **87.8 MB** (reduced from 333+ MB) and installed app to **261 MB** (reduced from 1.1+ GB) by stripping unnecessary runtime dependencies.
-* 🛡️ **Hardened Local Security**: Express backend strictly bound to `127.0.0.1` with local-only host verification and media path validation. Private device configuration (`saved_devices.json`) is strictly gitignored.
-* 📶 **1-Click Persistent Wi-Fi Auto-Reconnect**: Pair your phone once via USB. When you unplug the cable, StreamFusion remembers your phone! The next time your PC and phone are on the same Wi-Fi, your phone shows as **Online** with an instant **Mirror** button—no USB cable required!
-* 🔋 **Smart Screen Stay-Awake & Double-Click Wake**: Automatically keeps your phone display awake during mirroring (`svc power stayon true`) and restores normal sleep behavior on disconnect (`svc power stayon false`). Double-clicking wakes up the screen via hardware `KEYCODE_WAKEUP`.
-* 📦 **Pre-Built Windows Standalone Executables**: Available as an NSIS installer (`StreamFusion-v3.0.0-Setup.exe`).
+StreamFusion shows your Android phone on your PC with very low lag and lets you control it with mouse and keyboard. It also includes an **Android emulator studio** and an **AI testing assistant** that can test an Android app or a website for you, then write a detailed report.
 
----
+Everything is bundled in one installer (scrcpy and adb included), so it works on a fresh PC.
 
-## 📸 Key Features
+## Features
 
-### 1. 📱 Zero-Lag Screen Mirroring (USB & Wi-Fi)
-- **High-Framerate 60–120 FPS**: Hardware-accelerated H.264/H.265 video pipeline with sub-30ms latency.
-- **Auto-Minimize on Launch**: When screen mirroring begins, StreamFusion gently minimizes itself so your mobile display takes center stage.
-- **Battery Saver Mode (`--turn-screen-off`)**: Keep phone hardware display turned off while streaming full resolution on your PC monitor to save battery and reduce heat.
+### Mirror and control
+- Screen mirroring over **USB or Wi-Fi** (scrcpy based, 60+ FPS, hardware decoding), with audio forwarding on Android 11+.
+- **Wi-Fi memory**: connect once with USB, and the phone shows up as online next time without a cable. The phone list loads fast and shows what is cached while it re-checks.
+- Virtual navigation bar (Back, Home, Recents, volume, notifications), screenshots, screen recording (MP4/MKV) and a recordings gallery.
+- Drag and drop files to the phone, drag an `.apk` to install it, browse phone storage, clipboard sync, virtual screen presets.
 
-### 2. 📶 1-Click Persistent Wi-Fi Streaming
-- **Connect Once with USB**: Turn on Wi-Fi mode with one click.
-- **Safe Cable Removal**: Unplug your USB cable anytime without interrupting your session.
-- **Persistent Device Memory**: StreamFusion saves your phone's Wi-Fi IP and nickname locally. Even after restarting PC or disconnecting, simply open StreamFusion and click **Mirror** directly!
+### Emulator Studio
+- Install and run an Android emulator from inside the app, with auto-repair if the install is missing or corrupt, and silent background updates.
+- "Power on and test" in one click.
 
-### 3. 🎙️ High-Fidelity Audio Forwarding (Android 11+)
-- Direct internal audio routing from your smartphone into Windows speakers and headphones.
-- Supports **Opus** (ultra-low latency ~15ms), **AAC** (crystal clarity), **FLAC** (lossless), and **RAW PCM**.
-- Option for audio-only background streaming.
+### AI testing and reports
+- **App testing** (Android phone or emulator) and **Web testing** (built-in browser pane), driven by an AI chat.
+- Works with the **Claude Code** you already have installed (no API key) or with an Anthropic API key.
+- **Chat history**: every chat is saved, searchable, renamable, and an interrupted test can be resumed.
+- **Test brief wizard**: project, feature, app or URL, up to three logins (User 1, 2, 3), test cases (paste or drop files), plus PRD and other documents. Pick files you saved earlier in the project.
+- **Projects**: each project keeps a context file (who uses the product, pages covered, known issues, what is still untested) that updates after every run and is sent to the AI with the next test.
+- **Fewer calls, lower cost**: batched test steps, compact screen trees, and rules that aim for about 3 tool calls per test case.
+- The phone screen appears inside the chat with a Refresh button and a loading state.
+- Built-in guide: a **?** button that walks you to the real buttons.
+- Also available as an **MCP server**, so other AI tools can drive StreamFusion.
 
-### 4. 📁 Drag & Drop File Transfer & Instant APK Push
-- **Drop to Phone**: Drag pictures, music, documents, or videos directly onto the StreamFusion window—they are immediately pushed to your phone's `/sdcard/Download/` folder.
-- **Drag & Drop APK Installation**: Drag any `.apk` file into the app to install it directly on your Android phone without opening settings.
-- **Mobile File Browser**: Browse phone internal storage (`Downloads`, `DCIM`, `Pictures`, `Documents`) and download files to PC in one click.
+#### What a report contains
+Branded PDF and DOCX, saved automatically to `Downloads\StreamFusion Reports`:
+1. Result at a glance (verdict, pass rate, defects by severity, time)
+2. Summary and the most important findings
+3. The application under test (project, feature, app or URL, device, roles, documents) and the brief
+4. Results by feature and by type of check
+5. Defects with the exact page and button, expected vs actual
+6. Test case list
+7. Per test case: description, steps performed, issues while performing, expected, result with remark, how to fix, and a screenshot tagged with the case code
+8. Coverage: what was tested and what was not
+9. Suggestions (enhancement, performance, UX, accessibility, security), risks and next steps
 
-### 5. ⚡ Virtual Navigation & Control Bar
-- **Touch & Mouse Mapping**: Click, tap, scroll, pinch, and swipe naturally with your PC mouse or trackpad.
-- **Direct PC Keyboard Typing**: Type in any language using your physical Windows keyboard.
-- **Hardware Controls**: Dedicated buttons for `Back`, `Home`, `Recent Apps`, `Volume +/-`, `Power / Lock`, and `Wake Up`.
-- **1-Click High-Res Screenshot**: Capture instantaneous mobile screenshots saved straight to `Pictures/StreamFusion`.
+## Install
 
-### 6. ⏺️ Screen Recording Studio
-- Record high-bitrate sessions directly to **MP4** or **MKV**.
-- Built-in video gallery to inspect recordings, preview file sizes, and open them in Windows Media Player or File Explorer.
+1. Download `StreamFusion-v<version>-Setup.exe` from [Releases](https://github.com/MilannSharma/StreamFusion/releases/latest).
+2. Run it. Shortcuts are created on the Desktop and Start menu, and the app updates itself later.
+3. Enable **USB debugging** on your phone (Settings > About phone > tap Build number 7 times > Developer options > USB debugging), plug it in and allow the prompt.
+4. Open StreamFusion and click **Mirror**.
 
----
+For AI testing: install [Claude Code](https://claude.com/claude-code) and sign in from the AI Agent panel, or paste an Anthropic API key in its settings.
 
-## 🎨 Installation & First-Run Experience
+## Keyboard and mouse shortcuts
 
-StreamFusion v3.0.0 features an interactive setup modal designed for a clean experience:
+| Action | Shortcut |
+| :--- | :--- |
+| Wake phone | Double click, or `Alt` + `P` |
+| Fullscreen | `Alt` + `F` |
+| Back | `Alt` + `B` or right click |
+| Home | `Alt` + `H` or middle click |
+| Recents | `Alt` + `S` |
+| Phone screen off / on | `Alt` + `O` / `Alt` + `Shift` + `O` |
+| Volume | `Alt` + `Up` / `Down` |
+| Notifications / quick settings | `Alt` + `N` / `Alt` + `Shift` + `N` |
+| Copy phone clipboard | `Alt` + `C` |
+| Paste to phone | `Ctrl` + `V` |
 
-1. **Embedded Lottie Cat Animation**: Engaging, cute cat animation welcoming you while background drivers initialize.
-2. **Readiness Checkpoints**:
-   - `✓ Google ADB Platform-Tools v37.0.1` (Verified & Active)
-   - `✓ Scrcpy v5.0.1 Zero-Latency Codec Engine` (Configured)
-   - `✓ 1-Click Wireless Wi-Fi Auto-Reconnect` (Persistence loaded)
-   - `✓ Auto Screen Stay-Awake & Double-Click Wake` (Active)
-3. **Replay Setup Tour**: You can revisit this setup screen anytime by going to the **Guide / FAQ** tab and clicking **Replay Setup Tour**.
-
----
-
-## 🚀 Getting Started
-
-### Option A: Install from Release Executable (Recommended)
-
-1. Download **`StreamFusion-v3.0.0-Setup.exe`** from [Releases](https://github.com/MilannSharma/StreamFusion/releases).
-2. Run the installer. It will:
-   - Install StreamFusion into `C:\Program Files\StreamFusion v3.0.0`
-   - Create Desktop & Start Menu shortcuts
-   - Bundle all required `scrcpy` and `adb` drivers out-of-the-box (no manual installs needed)
-3. Connect your Android phone via USB cable with **USB Debugging** enabled.
-4. Click **▶ Start Mirror**!
-
-### Option B: Run from Source (Developers)
+## Build from source
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/MilannSharma/StreamFusion.git
 cd StreamFusion
-
-# 2. Install dependencies
 npm install
-
-# 3. Launch development server (Server + Vite + Electron)
-npm run dev
+npm run dev          # server + Vite + Electron
+npm test             # unit tests
+npm run build:exe    # type-check, tests, then the Windows installer in release/
 ```
 
----
-
-## 📱 Android Device Setup Guide (Per Brand)
-
-To allow your PC to mirror your phone, enable **Developer Options** and **USB Debugging**:
-
-### 1. General Android (All Brands)
-1. Open **Settings** > **About Phone**.
-2. Tap **Build Number** 7 times continuously until it says *"You are now a developer!"*.
-3. Go back to **Settings** > **System** (or **Additional Settings**) > **Developer Options**.
-4. Turn ON **USB Debugging**.
-5. When connecting the USB cable to PC, a prompt will appear on your phone screen: Check **"Always allow from this computer"** and tap **Allow**.
-
-### 2. Vivo & iQOO (Funtouch OS / OriginOS)
-1. Go to **Settings** > **About Phone** > **Software Information**.
-2. Tap **Build Number** 7 times.
-3. Go to **Settings** > **System** > **Developer Options**.
-4. Enable **USB Debugging**.
-5. Enable **USB Debugging (Security Settings)** if you want full mouse and keyboard control.
-
-### 3. Xiaomi, Redmi & POCO (MIUI / HyperOS)
-1. Open **Settings** > **About Phone** > Tap **OS Version / MIUI Version** 7 times.
-2. Open **Additional Settings** > **Developer Options**.
-3. Enable **USB Debugging**.
-4. Enable **Install via USB**.
-5. Enable **USB Debugging (Security settings)** *(Requires Xiaomi account sign-in)*.
-
-### 4. Samsung Galaxy (One UI)
-1. Open **Settings** > **About Phone** > **Software information**.
-2. Tap **Build number** 7 times.
-3. Return to **Settings** > **Developer options**.
-4. Turn on **USB debugging**.
-
-### 5. OnePlus, Realme & Oppo (OxygenOS / ColorOS / Realme UI)
-1. Open **Settings** > **About device** > **Version**.
-2. Tap **Version No.** 7 times.
-3. Open **Settings** > **Additional Settings** > **Developer Options**.
-4. Turn on **USB Debugging**.
-
----
-
-## ⌨️ Keyboard & Mouse Shortcuts
-
-When the mirroring window is active, you can control your phone with these shortcuts:
-
-| Action | Shortcut / Mouse Gesture |
-| :--- | :--- |
-| **Wake Phone Display** | Double Click on Screen or `Alt` + `P` |
-| **Toggle Fullscreen** | `Alt` + `F` |
-| **Back Button** | `Alt` + `B` or Right-Click Mouse |
-| **Home Screen** | `Alt` + `H` or Middle-Click Mouse |
-| **Recent Apps (Switcher)** | `Alt` + `S` |
-| **Turn Phone Screen Off (Keep Mirroring)** | `Alt` + `O` |
-| **Turn Phone Screen On** | `Alt` + `Shift` + `O` |
-| **Volume Up / Down** | `Alt` + `↑` / `Alt` + `↓` |
-| **Pull Down Notifications** | `Alt` + `N` |
-| **Expand Quick Settings** | `Alt` + `Shift` + `N` |
-| **Copy Phone Clipboard to PC** | `Alt` + `C` |
-| **Paste PC Clipboard to Phone** | `Ctrl` + `V` |
-| **Install APK** | Drag `.apk` file into mirror window |
-| **Push File to `/sdcard/Download/`** | Drag any file into mirror window |
-
----
-
-## 🏗️ Project Architecture
+## Project layout
 
 ```
-StreamFusion/
-├── electron/
-│   ├── main.cjs               # Electron main process (window & lifecycle)
-│   └── preload.cjs            # Secure IPC bridge
-├── server/
-│   └── index.js               # Express + WebSocket backend (manages scrcpy & adb)
-├── src/
-│   ├── App.tsx                # Main React 19 control hub & White Installer modal
-│   ├── main.tsx               # Client entry point
-│   ├── index.css              # Glassmorphic responsive styling
-│   └── assets/                # In-memory verified Lottie animations
-├── scrcpy-bin/                # Google ADB v37.0.1 & Scrcpy v5.0.1 binaries
-├── public/                    # Static assets & icons
-├── release/                   # Packaged output (NSIS installer & unpacked app)
-├── package.json               # Dependencies, scripts & electron-builder config
-├── tsconfig.json              # TypeScript compiler configuration
-└── vite.config.ts             # Vite frontend bundler
+electron/    main process and preload
+server/      Express backend: device, emulator, web, agent (chat, batch, prompts),
+             automation, test reports, projects, MCP server
+src/         React 19 UI (Emulator Studio, AI chat, test brief, guide)
+public/      icons, fonts, animations
+scrcpy-bin/  bundled scrcpy and adb
+scripts/     dev and version helper scripts
 ```
 
----
+## Credits and license
 
-## 🔨 Building from Source
-
-To create your own standalone Windows executables:
-
-```bash
-# 1. Compile the React/Vite frontend
-npm run build
-
-# 2. Package the Windows NSIS Installer (.exe)
-npm run build:exe
-
-# The compiled output will be generated in:
-# release/StreamFusion-v3.0.0-Setup.exe
-```
-
----
-
-## 👨‍💻 Author & Credits
-
-* **Developed & Designed by**: [Milann Sharma](https://github.com/MilannSharma)
-* **Core Video Streaming Engine**: [scrcpy](https://github.com/Genymobile/scrcpy) by Romain Vimont / Genymobile
-* **Android Debug Bridge**: [Google Android Open Source Project (AOSP)](https://developer.android.com/tools/adb)
-
----
-
-## 📄 License
-
-This project is open-source under the MIT License. See [LICENSE](LICENSE) for details.
+Developed by [Milann Sharma](https://github.com/MilannSharma). Built on [scrcpy](https://github.com/Genymobile/scrcpy) (Genymobile) and Android Debug Bridge (AOSP). MIT License, see [LICENSE](LICENSE).

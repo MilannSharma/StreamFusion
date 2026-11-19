@@ -1,11 +1,12 @@
 import express from 'express';
 import { setContext } from '../automation/assertions.js';
 import { loginTokens } from '../automation/format.js';
-import { listRuns, getRun, shotPath, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun } from '../testmode/runs.js';
+import { listRuns, getRun, shotPath, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras } from '../testmode/runs.js';
 import { WORLD_PROMPT } from './agent.js';
 import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
 import { extractText } from './extract.js';
+import { listChats, getChat, saveChat, deleteChat, renameChat } from './chats.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
 
 export function createAgentRouter({ tools }) {
@@ -20,7 +21,7 @@ export function createAgentRouter({ tools }) {
 The user chose their REAL phone (serial ${serial}). Work only on it: pass serial "${serial}" to every device tool. Never call emulator_start, emulator_status or emulator_stop and never start the Android emulator.`;
   const otherWorldNames = (world, serial) => (world === 'phone' && isRealPhone(serial) ? Object.keys(tools).filter(isWebTool).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'phone' ? Object.keys(tools).filter(isWebTool) : []);
   const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
-  const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status }); };
+  const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status, savedTo: r.savedTo }); };
 
   router.get('/models', (req, res) => res.json({ success: true, models: MODELS }));
 
@@ -49,7 +50,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
       let reason = 'complete';
       const wrap = (ev) => { if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error'; emit(ev); };
       await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world, b.serial), worldPrompt: (WORLD_PROMPT[b.world] || '') + (b.world === 'phone' && isRealPhone(b.serial) ? REAL_PHONE(b.serial) : ''), emit: wrap, signal: ac.signal });
-      if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
+      if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
       return res.end();
     }
     await runAgent({
@@ -65,8 +66,15 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     try { if (!res.headersSent) res.status(500).json({ success: false, message: e.message || 'Agent failed' }); else { res.write(JSON.stringify({ type: 'error', message: e.message || 'Agent failed' }) + String.fromCharCode(10)); res.end(); } } catch (x) {}
   }));
 
+  // Saved chats (history + resume)
+  router.get('/chats', (req, res) => res.json({ success: true, chats: listChats(req.query.world ? String(req.query.world) : '') }));
+  router.get('/chats/:id', (req, res) => { const c = getChat(req.params.id); c ? res.json({ success: true, chat: c }) : res.status(404).json({ success: false, message: 'Not found' }); });
+  router.put('/chats/:id', (req, res) => { try { saveChat(req.params.id, req.body || {}); res.json({ success: true }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+  router.post('/chats/:id/rename', (req, res) => res.json({ success: renameChat(req.params.id, req.body?.title) }));
+  router.delete('/chats/:id', (req, res) => res.json({ success: deleteChat(req.params.id) }));
+
   // Test reports
-  router.get('/reports', (req, res) => res.json({ success: true, runs: listRuns() }));
+  router.get('/reports',(req, res) => res.json({ success: true, runs: listRuns() }));
   router.get('/reports/:id', (req, res) => { const r = getRun(req.params.id); r ? res.json({ success: true, run: r }) : res.status(404).json({ success: false, message: 'Not found' }); });
   router.get('/reports/:id/shot', (req, res) => { const p = shotPath(req.params.id, String(req.query.f || '')); p ? res.sendFile(p) : res.status(404).end(); });
   router.get('/reports/:id/:fmt(docx|pdf|json)', async (req, res) => {
@@ -107,12 +115,12 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     const world = b.world === 'web' || b.world === 'phone' ? b.world : lastWorld();
     let shot = null;
     try { const sc = world === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial: current.serial, maxDim: 700 }); if (sc.ok) shot = saveShot(current, sc.imageBase64, status); } catch (e) {}
-    addCheck(current, { id: b.id, title: String(b.title || ''), status, evidence: String(b.evidence || ''), screenshot: shot });
+    addCheck(current, { ...cleanCheck({ ...b, status }), screenshot: shot });
     res.json({ ok: true, recorded: current.checks.length, screenshot: !!shot });
   });
   router.post('/report/finish', async (req, res) => {
     if (!current) return res.json({ ok: false, error: 'No open report.' });
-    const r = current; r.summary = String(req.body?.summary || ''); closeRun('complete');
+    const r = current; r.summary = String(req.body?.summary || ''); r.report = cleanExtras(req.body || {}); closeRun('complete');
     res.json({ ok: true, runId: r.id, status: r.status, pdf: '/api/agent/reports/' + r.id + '/pdf', docx: '/api/agent/reports/' + r.id + '/docx' });
   });
   return router;

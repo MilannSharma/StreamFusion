@@ -38,13 +38,29 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
   const running = phase === 'running';
   const [tab, setTab] = useState<Tab>('emulator');
   const [device, setDevice] = useState(''); // '' = built-in emulator, otherwise the serial of a real phone
-  const [phones, setPhones] = useState<any[]>([]);
+  // The phone list shows the last known phones at once (cached), then confirms with the live scan. An empty list only means
+  // "no phone" after a scan really answered; before that it says "checking", so a slow adb never looks like a missing phone.
+  const [phones, setPhones] = useState<any[]>(() => { try { return JSON.parse(localStorage.getItem('sf_phones_cache') || '[]'); } catch (e) { return []; } });
+  const [phonesLive, setPhonesLive] = useState(false);
+  const [phoneScan, setPhoneScan] = useState(0);
   useEffect(() => {
-    let stop = false;
-    const tick = async () => { try { const j = await (await fetch('/api/devices')).json(); if (!stop) setPhones((j.devices || []).filter((d: any) => !['emulator-', 'localhost:', '127.0.0.1:'].some(p => String(d.serial).startsWith(p)))); } catch (e) {} if (!stop) setTimeout(tick, 4000); };
+    let stop = false, timer: any = 0, got = false;
+    const tick = async () => {
+      const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 9000); // a hung request must never stop the polling
+      try {
+        const j = await (await fetch('/api/devices', { signal: ac.signal })).json();
+        if (!stop && j.success !== false) {
+          const list = (j.devices || []).filter((d: any) => !['emulator-', 'localhost:', '127.0.0.1:'].some(p => String(d.serial).startsWith(p)));
+          setPhones(list); got = !j.stale || list.length > 0; setPhonesLive(got);
+          try { localStorage.setItem('sf_phones_cache', JSON.stringify(list)); } catch (e) {}
+        }
+      } catch (e) {}
+      clearTimeout(to);
+      if (!stop) timer = setTimeout(tick, got ? 4000 : 1500);
+    };
     tick();
-    return () => { stop = true; };
-  }, []);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [phoneScan]);
   const [visited, setVisited] = useState<{ agent?: boolean }>({});
   useEffect(() => { if (tab === 'agent') setVisited({ agent: true }); }, [tab]);
 
@@ -165,7 +181,30 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
                 {onStartMirror && <button style={btn()} onClick={() => onStartMirror(d.serial)}><MonitorPlay size={14} /> Mirror</button>}
               </div>
             ))}
-            {phones.length === 0 && <div style={{ ...sub, textAlign: 'center' }}>Connect your phone by USB or Wi-Fi in StreamFusion and it appears here as a second option.</div>}
+            {phones.length === 0 && !phonesLive && (
+              <div style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 16, height: 16, border: '2.5px solid rgba(148,163,184,0.35)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'sfspin2 0.9s linear infinite' }} />
+                <style>{'@keyframes sfspin2{to{transform:rotate(360deg)}}'}</style>
+                <div style={{ ...h3, fontSize: 13 }}>Checking for your phone…</div>
+              </div>
+            )}
+            {phones.length === 0 && phonesLive && (
+              <div style={{ ...card, padding: '14px 16px', borderStyle: 'dashed' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', animation: 'sfpulse 1.4s ease-in-out infinite' }} />
+                  <style>{'@keyframes sfpulse{50%{opacity:.25}}'}</style>
+                  <div style={{ ...h3, fontSize: 13 }}>No phone found yet. Looking for one…</div>
+                </div>
+                <ol style={{ ...sub, margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
+                  <li>Plug your phone in with a USB cable.</li>
+                  <li>On the phone: Settings, About phone, tap <b>Build number</b> 7 times.</li>
+                  <li>Settings, Developer options, turn on <b>USB debugging</b>.</li>
+                  <li>Tap <b>Allow</b> on the phone when it asks. It appears here by itself.</li>
+                </ol>
+                <button style={{ ...btn(), marginTop: 10 }} onClick={() => { setPhonesLive(false); setPhoneScan(x => x + 1); }}><RefreshCw size={13} /> Check again</button>
+              </div>
+            )}
+            {phones.length > 0 && <div style={{ ...sub, textAlign: 'center' }}>{phones.filter(d => d.state === 'device').length} phone{phones.length > 1 ? 's' : ''} found. Pick one above.</div>}
 
             {running && !device && (
               <div style={{ ...card, padding: '12px 16px' }}>

@@ -192,10 +192,22 @@ function runAdb(args, timeoutMs = 8000) {
 
 // 1. GET /api/devices
 const devInfoCache = new Map(); // serial -> { at, dev }
+// Several pages poll this list at once and adb can be slow (server start, sleeping Wi-Fi phone): share one in-flight scan,
+// and when adb does not answer, return the last good list (stale) instead of an empty one that looks like "no phone".
+let devicesInflight = null;
+let lastGoodDevices = { devices: [], savedDevices: [] };
 app.get('/api/devices', async (req, res) => {
+  try {
+    devicesInflight ||= listDevices().finally(() => { devicesInflight = null; });
+    res.json(await devicesInflight);
+  } catch (e) {
+    res.json({ success: true, ...lastGoodDevices, stale: true });
+  }
+});
+async function listDevices() {
   const result = await runAdb(['devices', '-l'], 4000);
   if (!result.success && !result.output) {
-    return res.json({ success: true, devices: [] });
+    return { success: true, ...lastGoodDevices, stale: true };
   }
 
   const rawLines = result.output.split(/\r?\n/).map(l => l.trim());
@@ -343,8 +355,9 @@ app.get('/api/devices', async (req, res) => {
     online: devices.some(d => d.serial === s.serial || d.ipAddress === s.ip)
   }));
 
-  res.json({ success: true, devices, savedDevices: savedList });
-});
+  lastGoodDevices = { devices, savedDevices: savedList };
+  return { success: true, devices, savedDevices: savedList };
+}
 
 // List saved Wi-Fi devices (same data as `savedDevices` in /api/devices)
 app.get('/api/wifi/saved', (req, res) => res.json({ success: true, devices: getSavedDevices() }));

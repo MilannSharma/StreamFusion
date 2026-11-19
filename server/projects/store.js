@@ -14,7 +14,11 @@ const cleanFiles = (arr) => (Array.isArray(arr) ? arr : []).slice(0, 30).map(f =
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'project';
 
 function read(id) { try { return JSON.parse(fs.readFileSync(file(id), 'utf8')); } catch (e) { return null; } }
-function write(p) { fs.mkdirSync(DIR, { recursive: true }); p.updatedAt = new Date().toISOString(); fs.writeFileSync(file(p.id), JSON.stringify(p, null, 1)); return p; }
+function write(p) {
+  fs.mkdirSync(DIR, { recursive: true }); p.updatedAt = new Date().toISOString(); fs.writeFileSync(file(p.id), JSON.stringify(p, null, 1));
+  try { if (p.context) fs.writeFileSync(path.join(DIR, p.id + '.context.md'), p.context); } catch (e) {} // the context is also a plain file you can open
+  return p;
+}
 const all = () => (fs.existsSync(DIR) ? fs.readdirSync(DIR).filter(f => f.endsWith('.json')).map(f => read(f.slice(0, -5))).filter(Boolean) : []);
 
 export const writeProject = write;
@@ -63,6 +67,7 @@ export function saveFromBrief({ projectId, world, brief = {}, files = [] }) {
     for (const f of cf) { const i = m.files.findIndex(x => x.name === f.name); if (i >= 0) m.files[i] = f; else m.files.push(f); }
     m.updatedAt = new Date().toISOString();
   }
+  if (!p.context) p.context = renderContext(p); // first save: the context file starts with the basics, test runs fill it in
   return write(p);
 }
 
@@ -82,6 +87,59 @@ export function updateProject(id, b = {}) {
   if (b.targets) p.targets = { web: clip(b.targets.web, 400), app: clip(b.targets.app, 400) };
   if (b.notes !== undefined) p.notes = clip(b.notes, 50000);
   if (Array.isArray(b.docs)) p.docs = cleanFiles(b.docs);
+  if (b.context !== undefined) p.context = clip(b.context, 50000);
   if (Array.isArray(b.modules)) p.modules = b.modules.slice(0, 100).map(m => ({ name: clip(m.name, 80).trim(), cases: clip(m.cases, 100000), files: cleanFiles(m.files), updatedAt: new Date().toISOString() })).filter(m => m.name);
+  return write(p);
+}
+
+// ---------- Project context: what this product is, who uses it, what was covered, known issues, what is still untested ----------
+// Kept as markdown in the project (and as a real file: projects/<id>.context.md). The block between the markers is rewritten after
+// every test run; anything the user writes outside the markers is never touched. The AI gets it in every new test brief.
+const CTX_START = '<!-- sf:auto:start -->', CTX_END = '<!-- sf:auto:end -->';
+const userPart = (text) => String(text || '').replace(/<!-- sf:auto:start -->[\s\S]*?<!-- sf:auto:end -->/, '').trim();
+const same = (a, b) => { const x = String(a).toLowerCase().trim(), y = String(b).toLowerCase().trim(); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
+
+export function renderContext(p) {
+  const d = p.contextData || { features: {}, personas: {}, notTested: [], issues: [], lastRun: null };
+  const L = [`## Project context: ${p.name}`];
+  const t = [p.targets?.web && 'Web: ' + p.targets.web, p.targets?.app && 'App: ' + p.targets.app].filter(Boolean).join(' · ');
+  if (t) L.push(t);
+  const per = Object.entries(d.personas || {});
+  if (per.length) { L.push('', '### Who uses it (roles tested)'); per.forEach(([n, g]) => L.push(`- ${n}${g ? ': ' + g : ''}`)); }
+  const feats = Object.entries(d.features || {});
+  if (feats.length) { L.push('', '### Pages and features covered'); feats.forEach(([n, f]) => L.push(`- ${n}${f.cases ? ` (${f.pass} pass, ${f.fail} fail, ${f.blocked} blocked in the last run)` : ''}`)); }
+  if (d.issues?.length) { L.push('', '### Known issues from the last run (re-check these)'); d.issues.slice(0, 15).forEach(i => L.push(`- [${i.severity}] ${i.location ? i.location + ': ' : ''}${i.title}`)); }
+  if (d.notTested?.length) { L.push('', '### Not tested yet'); d.notTested.slice(0, 20).forEach(n => L.push(`- ${n.area}${n.reason ? ' (' + n.reason + ')' : ''}`)); }
+  if (d.lastRun) L.push('', `Last run: ${d.lastRun.date} · ${d.lastRun.pass} pass / ${d.lastRun.fail} fail / ${d.lastRun.blocked} blocked`);
+  const auto = CTX_START + '\n' + L.join('\n') + '\n' + CTX_END;
+  const mine = userPart(p.context);
+  return auto + (mine ? '\n\n' + mine : '');
+}
+
+export function updateContextFromRun(run) {
+  if (!run?.projectId || !run.checks?.length) return null;
+  const p = getProject(run.projectId); if (!p) return null;
+  const d = p.contextData || { features: {}, personas: {}, notTested: [], issues: [], lastRun: null };
+  const rep = run.report || {};
+  const touched = new Map();
+  for (const c of run.checks) {
+    const k = clip(c.module || 'General', 80);
+    const f = touched.get(k) || { cases: 0, pass: 0, fail: 0, blocked: 0 };
+    f.cases++; f[c.status] = (f[c.status] || 0) + 1; touched.set(k, f);
+    if (c.persona && !(c.persona in d.personas)) d.personas[clip(c.persona, 60)] = '';
+  }
+  for (const [k, f] of touched) d.features[k] = f;
+  for (const t of rep.coverage?.tested || []) if (!Object.keys(d.features).some(k => same(k, t))) d.features[clip(t, 80)] = { cases: 0, pass: 0, fail: 0, blocked: 0 };
+  for (const x of rep.personas || []) if (x.name) d.personas[clip(x.name, 60)] = clip(x.goal || d.personas[x.name] || '', 200);
+  d.issues = [
+    ...run.checks.filter(c => c.status !== 'pass').map(c => ({ title: clip(c.title, 140), severity: c.severity || (c.status === 'fail' ? 'major' : 'minor'), location: clip(c.location || c.module || '', 100) })),
+    ...(rep.defects || []).map(x => ({ title: clip(x.title, 140), severity: x.severity || 'minor', location: clip(x.location, 100) }))
+  ];
+  const gaps = [...(d.notTested || []), ...(rep.coverage?.notTested || [])];
+  d.notTested = gaps.filter((n, i) => gaps.findIndex(m => same(m.area, n.area)) === i && !Object.keys(d.features).some(k => same(k, n.area) && d.features[k].cases > 0)).slice(0, 40);
+  const pass = run.checks.filter(c => c.status === 'pass').length, fail = run.checks.filter(c => c.status === 'fail').length;
+  d.lastRun = { id: run.id, date: String(run.startedAt).slice(0, 10), pass, fail, blocked: run.checks.length - pass - fail };
+  p.contextData = d;
+  p.context = renderContext(p);
   return write(p);
 }

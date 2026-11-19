@@ -1,7 +1,7 @@
 {
   "name": "streamfusion",
-  "version": "3.2.8",
-  "description": "StreamFusion v3.2.0 - Premium Android Mobile Mirroring, Wireless Streaming, File Transfer & Control powered by scrcpy",
+  "version": "3.2.9",
+  "description": "StreamFusion - Android mirroring, wireless control and AI-driven app and web testing with detailed reports",
   "author": "Milann Sharma <https://github.com/Milannsharma>",
   "main": "electron/main.cjs",
   "type": "module",
@@ -17,8 +17,8 @@
     "build:exe": "vite build && electron-builder --win",
     "preview": "vite preview",
     "sf:run": "node server/cli/sf-run.mjs",
-    "test": "node --test server/automation/automation.test.mjs",
-    "prebuild:exe": "npx tsc --noEmit -p . && npm test"
+    "test": "node --test server/automation/automation.test.mjs server/agent/batch.test.mjs",
+    "prebuild:exe": "node scripts/sync-version.cjs && npx tsc --noEmit -p . && npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
@@ -47,8 +47,8 @@
   },
   "build": {
     "appId": "com.milannsharma.streamfusion",
-    "productName": "StreamFusion v3.2.8",
-    "artifactName": "StreamFusion-v3.2.8-Setup.${ext}",
+    "productName": "StreamFusion",
+    "artifactName": "StreamFusion-v3.2.9-Setup.${ext}",
     "asar": true,
     "publish": [
       {
@@ -105,7 +105,7 @@
       "include": "build/installer.nsh",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "StreamFusion v3.2.0",
+      "shortcutName": "StreamFusion",
       "runAfterFinish": true
     },
     "asarUnpack": [

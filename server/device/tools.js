@@ -2,6 +2,7 @@
 // registry powers the REST API now and the chat agent + MCP server in M3.
 // All tools work on any adb device (emulator or real phone) via `serial`.
 import { execFile } from 'child_process';
+import { batchTool } from '../agent/batch.js';
 import zlib from 'zlib';
 import path from 'path';
 import { compareBaseline, baselineDir, getContext, crashScan, decodePng } from '../automation/assertions.js';
@@ -298,5 +299,6 @@ export function createTools({ runAdb, adbExe, cwd }) {
     catch (e) { return { ok: false, error: e.message }; }
   });
 
+  TOOLS.device_batch = batchTool(TOOLS, 'phone');
   return TOOLS;
 }

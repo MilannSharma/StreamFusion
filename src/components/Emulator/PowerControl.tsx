@@ -35,7 +35,7 @@ export const PowerPanel: React.FC<Props> = ({ emu, dark, onStarted }) => {
       <div style={{ fontWeight: 800, fontSize: 15 }}>Emulator not installed</div>
       <div style={{ fontSize: 12, color: muted, maxWidth: 240, lineHeight: 1.5 }}>One-time download (about 5.4 GB on disk). It is not bundled with the app.</div>
       {status.installError && <div style={{ fontSize: 12, color: '#ef4444', maxWidth: 260 }}>{status.installError}</div>}
-      <button onClick={() => emu.start()} disabled={busy} style={{ background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Install emulator</button>
+      <button data-guide="emu-install" onClick={() => emu.start()} disabled={busy} style={{ background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Install emulator</button>
     </div>
   );
 
@@ -73,7 +73,7 @@ export const PowerPanel: React.FC<Props> = ({ emu, dark, onStarted }) => {
   // stopped
   return (
     <div style={wrap}>
-      <button onClick={async () => { const ok = await startEmulator(emu); if (ok) onStarted?.(); }} disabled={busy || !emu.reachable} style={bigBtn('linear-gradient(135deg,#6366f1,#4f46e5)')} title="Power on the emulator">
+      <button data-guide="emu-power" onClick={async () => { const ok = await startEmulator(emu); if (ok) onStarted?.(); }} disabled={busy || !emu.reachable} style={bigBtn('linear-gradient(135deg,#6366f1,#4f46e5)')} title="Power on the emulator">
         <Power size={32} />
       </button>
       <div style={{ fontWeight: 800, fontSize: 15 }}>Power on</div>

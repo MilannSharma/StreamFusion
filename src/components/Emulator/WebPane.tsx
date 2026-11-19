@@ -101,7 +101,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
       <div style={{ fontWeight: 800, fontSize: 15 }}>Web testing needs Google Chrome</div>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>Chrome (or Edge) was not found on this PC. One-time download of the official Chrome installer; it installs just for you, no admin needed.</div>
       {status.error && <div style={{ fontSize: 12, color: '#ef4444' }}>{status.error}</div>}
-      <button onClick={() => post('install')} style={{ ...btn, background: '#4f46e5', color: '#fff', border: 'none', padding: '9px 18px', fontWeight: 700, fontSize: 13 }}><Download size={14} /> Install Chrome</button>
+      <button data-guide="web-install" onClick={() => post('install')} style={{ ...btn, background: '#4f46e5', color: '#fff', border: 'none', padding: '9px 18px', fontWeight: 700, fontSize: 13 }}><Download size={14} /> Install Chrome</button>
     </div>
   );
 
@@ -111,7 +111,7 @@ export const WebPane: React.FC<{ active: boolean; serial: string; busy: boolean 
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'back' })} title="Back"><ArrowLeft size={14} /></button>
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'forward' })} title="Forward"><ArrowRight size={14} /></button>
         <button style={btn} disabled={!open} onClick={() => tool('web_history', { action: 'reload' })} title="Reload"><RotateCw size={14} /></button>
-        <input ref={inputRef} value={url} placeholder="Search or enter a URL" onFocus={e => { setEditing(true); e.currentTarget.select(); }} onBlur={() => setEditing(false)}
+        <input data-guide="web-url" ref={inputRef} value={url} placeholder="Search or enter a URL" onFocus={e => { setEditing(true); e.currentTarget.select(); }} onBlur={() => setEditing(false)}
           onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }}
           style={{ flex: 1, minWidth: 160, padding: '6px 12px', borderRadius: 999, border, fontSize: 12.5, background: 'var(--glass-soft, #f1f5f9)', color: 'var(--text-main)', outline: 'none' }} />
         {open && <button style={btn} onClick={() => post('close')} title="Disconnect (your Chrome window stays open)"><X size={14} /></button>}

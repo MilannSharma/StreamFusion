@@ -1,6 +1,8 @@
 // M3-A: Chat agent. A manual tool loop over the M2 device tools using the official Anthropic SDK.
 import Anthropic from '@anthropic-ai/sdk';
-import { createRun, saveShot, addStep, addCheck, finishRun, discardRun } from '../testmode/runs.js';
+import { createRun, saveShot, addStep, addCheck, finishRun, discardRun, cleanCheck, cleanExtras } from '../testmode/runs.js';
+import { TEST_RULES, CHECK_PROPS, FINISH_PROPS } from './prompts.js';
+import { compactUiTree } from '../mcp/compact.mjs';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (most capable)' },
@@ -11,6 +13,7 @@ export const MODELS = [
 const SYSTEM = `You are StreamFusion's mobile QA agent. You operate a real Android device (usually an emulator) through tools and carry out the user's testing instructions.
 
 How to work:
+- Fewer calls is better (each one re-sends the whole conversation): when you know several steps in a row, send them together in one device_batch / web_batch call.
 - Observe with ui_tree first (cheap, gives element text and coordinates). Use screenshot only when the layout matters visually or ui_tree is empty.
 - Act with tap_element (by text/desc/id) when possible; use raw tap/swipe coordinates from ui_tree otherwise. Coordinates are device pixels.
 - After each meaningful action, verify the result (ui_tree or logcat) before moving on. Screens may need a moment to load: if ui_tree shows the old screen, observe again.
@@ -20,18 +23,11 @@ How to work:
 - If the user has not said what to test (a bare "start", "hi", "test"), do not touch anything: ask for the product, feature/module, URL or app, the test cases and any login.
 - When testing, end with a short result: PASS or FAIL per check, with the evidence (what you saw). Keep messages brief.`;
 
-const TEST_PROMPT = `
-
-TEST MODE is on. You are producing a formal test report.
-- The user's message lists the test cases and may include attached files (test cases, specs). Work through every test case in order.
-- Save tokens: read the page with web_snapshot / ui_tree (text) and use screenshots only when the layout itself matters. Before each report_check call the assert tool that proves the result (web_assert_text, web_assert_url, assert_text, assert_no_crash, assert_screenshot): the assertion is recorded and the test can be replayed later with zero AI tokens.
-- After finishing each test case, call report_check once with: id, title, status (pass | fail | blocked), and evidence (what you actually observed, e.g. the text on screen). A screenshot of the current screen is attached to the report automatically, so make sure the screen shows the result when you call it.
-- Use blocked only when the check could not be executed (app crashed, element missing); explain why. Never mark pass without evidence.
-- When all cases are done, call finish_report with a short overall summary (what was tested, what failed, likely causes). Do not call it earlier.`;
+const TEST_PROMPT = TEST_RULES;
 
 const REPORT_TOOLS = [
-  { name: 'report_check', description: 'Record the result of one test case in the report. Auto-attaches a screenshot of the current screen.', input_schema: { type: 'object', properties: { id: { type: 'string', description: 'Test case id, e.g. TC-01' }, title: { type: 'string' }, status: { type: 'string', enum: ['pass', 'fail', 'blocked'] }, evidence: { type: 'string', description: 'What you observed' } }, required: ['title', 'status', 'evidence'] } },
-  { name: 'finish_report', description: 'Finish the test run with an overall summary. Call once, after all test cases are reported.', input_schema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] } }
+  { name: 'report_check', description: 'Record the result of one test case in the report. Auto-attaches a screenshot of the current screen.', input_schema: { type: 'object', properties: CHECK_PROPS, required: ['title', 'status', 'evidence'] } },
+  { name: 'finish_report', description: 'Finish the test run with the summary, personas, coverage (tested / not tested), defects, suggestions and risks. Call once, after all test cases are reported.', input_schema: { type: 'object', properties: FINISH_PROPS, required: ['summary'] } }
 ];
 
 const sessions = new Map(); // sessionId -> { messages }
@@ -74,6 +70,7 @@ function toResultContent(name, r) {
       { type: 'text', text: `Image ${r.imageWidth}x${r.imageHeight}; device is ${r.deviceWidth}x${r.deviceHeight} (multiply image coords by ${(r.deviceWidth / r.imageWidth).toFixed(2)} to get device pixels).` }
     ];
   }
+  if (name === 'ui_tree') { const t = compactUiTree(r); if (t) return t.slice(0, 7000); }
   const { imageBase64, ...rest } = r;
   return JSON.stringify(rest).slice(0, 7000);
 }
@@ -95,6 +92,7 @@ export const WORLD_PROMPT = {
 };
 
 export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL, testMode, world }) {
+  if (testMode) maxSteps = Math.max(maxSteps, 200); // a long test run is many cases; with batching a case needs only a few steps
   if (!apiKey) return emit({ type: 'error', message: 'No API key set. Add your Anthropic API key in the chat settings.' });
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   const anthropicTools = toAnthropicTools(tools);
@@ -113,7 +111,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
   if (anthropicTools.length) anthropicTools[anthropicTools.length - 1] = { ...anthropicTools[anthropicTools.length - 1], cache_control: { type: 'ephemeral' } };
   let runEnded = false;
   let lastWorld = 'device';
-  const endRun = (reason) => { if (run && !runEnded) { runEnded = true; if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status }); } };
+  const endRun = (reason) => { if (run && !runEnded) { runEnded = true; if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); } };
   const emitDone = emit;
   emit = (ev) => { emitDone(ev); if (ev.type === 'done') endRun(ev.reason); if (ev.type === 'error') endRun('error'); };
   const s = sessions.get(sessionId) || { messages: [] };
@@ -151,12 +149,12 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
         if (run && (c.name === 'report_check' || c.name === 'finish_report')) {
           let r = { ok: true };
           if (c.name === 'report_check') {
-            const status = ['pass', 'fail', 'blocked'].includes(c.input.status) ? c.input.status : 'blocked';
+            const ck = cleanCheck(c.input); const status = ck.status;
             let shot = null;
             try { const sc = lastWorld === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
-            addCheck(run, { id: c.input.id, title: String(c.input.title || ''), status, evidence: String(c.input.evidence || ''), screenshot: shot });
-            emit({ type: 'check', check: { id: c.input.id, title: c.input.title, status, evidence: c.input.evidence } });
-          } else { run.summary = String(c.input.summary || ''); }
+            addCheck(run, { ...ck, screenshot: shot });
+            emit({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence } });
+          } else { run.summary = String(c.input.summary || ''); run.report = cleanExtras(c.input); }
           results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(r) });
           continue;
         }

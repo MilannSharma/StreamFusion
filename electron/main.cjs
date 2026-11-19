@@ -335,7 +335,7 @@ function createTray() {
   try {
     const iconPath = path.join(__dirname, '../StreamFusion.png');
     tray = new Tray(iconPath);
-    tray.setToolTip('StreamFusion v' + app.getVersion());
+    tray.setToolTip('StreamFusion');
 
     const contextMenu = Menu.buildFromTemplate([
       {

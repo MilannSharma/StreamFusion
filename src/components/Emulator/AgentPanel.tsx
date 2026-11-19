@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Square, Trash2, KeyRound, Plug, Copy, Check, ShieldAlert, Power, FlaskConical, Paperclip, FileText, X, Download, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Send, Square, Plus, Plug, ShieldAlert, Power, FlaskConical, FileText, X, Download, PanelLeftClose, PanelLeftOpen, History, Settings, RotateCcw } from 'lucide-react';
+import { Markdown, CopyBtn, ToolGroup, HistoryPanel, ResumeBanner, type ChatSummary } from './ChatBits';
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
@@ -9,7 +10,7 @@ import { SaveAsTest } from '../Projects/AutomatedTests';
 import { LiveScreen, canLiveStream } from './LiveScreen';
 import { ConnectOptions, useClaudeStatus, resolveEngine, getEnginePref, installClaude, startClaudeSignIn } from './ConnectOptions';
 import { Coach, type CoachGuide } from '../Tutorial/Coach';
-import { TestBrief, StartBar, EMPTY_BRIEF, briefMissing, composeBrief, type Brief, type BriefFile } from './TestBrief';
+import { TestBrief, StartBar, EMPTY_BRIEF, briefMissing, composeBrief, cleanLogin, stepOfMissing, STEPS, type Brief, type BriefFile } from './TestBrief';
 
 interface AgentPanelProps {
   emu: EmulatorApi;
@@ -27,7 +28,7 @@ type Msg =
   | { kind: 'startPrompt'; pending: string; state: 'ask' | 'starting' | 'cancelled' }
   | { kind: 'info'; text: string }
   | { kind: 'check'; id?: string; title: string; status: string; evidence: string }
-  | { kind: 'report'; runId: string; status: string; projectId?: string }
+  | { kind: 'report'; runId: string; status: string; projectId?: string; savedTo?: string }
   | { kind: 'error'; text: string };
 
 const MODELS = [
@@ -74,9 +75,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [showReports, setShowReports] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  // ---------- chat history: every chat is saved to disk; an interrupted test can be resumed ----------
+  const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [interrupted, setInterrupted] = useState(false);
+  const testInfoRef = useRef<{ title: string; summary: string; projectId: string; full: string; target: string } | null>(null);
+  const msgsRef = useRef<Msg[]>([]);
+  const tokensRef = useRef({ input: 0, output: 0, cached: 0 });
+  const lastSentRef = useRef('');
+  const prefilledRef = useRef(false);
+  const loadChats = () => fetch('/api/agent/chats?world=' + world).then(r => r.json()).then(j => setChats(j.chats || [])).catch(() => {});
+  useEffect(() => { if (showHistory) loadChats(); }, [showHistory]);
   useEffect(() => {
     const h = (e: any) => {
       if (e.detail?.world !== world) return;
+      prefilledRef.current = true;
       (window as any).__sfPrefill = null;
       if (e.detail.brief) setBrief({ ...EMPTY_BRIEF, ...e.detail.brief }); else setInput(e.detail.text || '');
       if (e.detail.files) setFiles(e.detail.files);
@@ -121,6 +135,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   // ---------- live phone screen (polls a downscaled screenshot; click = tap) ----------
   const [shot, setShot] = useState('');
   const [dev, setDev] = useState({ w: 1080, h: 2400 });
+  const [devName, setDevName] = useState('');
   const imgRef = useRef<any>(null); // the <img> (screenshot fallback) or the <canvas> (live stream)
   const [live, setLive] = useState<'try' | 'on' | 'off'>(canLiveStream() ? 'try' : 'off');
   useEffect(() => { setLive(canLiveStream() ? 'try' : 'off'); }, [serial]);
@@ -134,27 +149,43 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     return () => { dead = true; };
   }, [connected, serial, isWeb]);
 
+  // The live stream waits for the real screen size (otherwise it starts, then restarts when the size arrives = the phone appears late)
+  const [devKnown, setDevKnown] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
-    if (!connected) return;
+    if (!connected) { setDevKnown(false); return; }
+    let dead = false;
+    const giveUp = setTimeout(() => { if (!dead) setDevKnown(true); }, 2500); // never block the picture on a slow answer
     fetch('/api/device/tool/device_info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial }) })
-      .then(r => r.json()).then(j => { if (j.ok && j.screen) setDev({ w: j.screen.w, h: j.screen.h }); }).catch(() => {});
-  }, [connected, serial]);
+      .then(r => r.json()).then(j => { if (!dead && j.ok && j.screen) setDev({ w: j.screen.w, h: j.screen.h }); if (!dead && j.ok) setDevName([j.model, j.androidVersion || j.release ? 'Android ' + (j.androidVersion || j.release) : ''].filter(Boolean).join(' · ')); }).catch(() => {})
+      .finally(() => { if (!dead) setDevKnown(true); });
+    return () => { dead = true; clearTimeout(giveUp); };
+  }, [connected, serial, refreshKey]);
+  const refreshScreen = () => { setShot(''); setSlow(false); setDevKnown(false); setLive(canLiveStream() ? 'try' : 'off'); setRefreshKey(k => k + 1); };
+  useEffect(() => { // "taking longer than usual" hint while there is still no picture
+    setSlow(false);
+    if (!connected || isWeb || shot || live === 'on') return;
+    const t = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(t);
+  }, [connected, isWeb, shot ? 1 : 0, live, refreshKey]);
 
   useEffect(() => {
     if (!connected || !active || isWeb || live === 'on') { if (!connected || !active || isWeb) setShot(''); return; } // a playing live stream replaces screenshot polling; while it is still starting, a screenshot is shown so the phone never looks empty
-    let stop = false; let last = '';
+    let stop = false; let last = ''; let first = true;
     (async () => {
       while (!stop) {
         try {
-          const r = await fetch(`/api/device/screenshot.png?serial=${encodeURIComponent(serial)}&maxDim=900&t=${Date.now()}`);
-          if (r.ok) { const u = URL.createObjectURL(await r.blob()); setShot(u); if (last) URL.revokeObjectURL(last); last = u; }
+          // the very first picture is small so it arrives fast; sharp ones follow
+          const r = await fetch(`/api/device/screenshot.png?serial=${encodeURIComponent(serial)}&maxDim=${first ? 480 : 900}&t=${Date.now()}`);
+          if (r.ok) { const u = URL.createObjectURL(await r.blob()); setShot(u); if (last) URL.revokeObjectURL(last); last = u; first = false; }
         } catch (e) {}
-        await new Promise(r => setTimeout(r, busy ? 700 : 1500));
+        await new Promise(r => setTimeout(r, first ? 300 : busy ? 700 : 1500));
       }
       if (last) URL.revokeObjectURL(last);
     })();
     return () => { stop = true; };
-  }, [connected, serial, busy, active, isWeb, live]);
+  }, [connected, serial, busy, active, isWeb, live, refreshKey]);
 
   const showReportsRef = useRef(false); showReportsRef.current = showReports;
   const callTool = (name: string, args: any) => fetch(`/api/device/tool/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial, ...args }) });
@@ -236,7 +267,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       if (emu.phase === 'booting') setPending(text);
       return;
     }
-    const tm = testMode ? testRunRef.current : null; testRunRef.current = null; if (tm) runPidRef.current = tm.projectId || ''; // only the first message of a test starts a report run
+    const tm = testRunRef.current; testRunRef.current = null; if (tm) runPidRef.current = tm.projectId || ''; // only the first message of a test (or a resume) starts a report run
+    lastSentRef.current = text;
+    setInterrupted(false);
     setBusy(true);
     const ac = new AbortController(); abortRef.current = ac;
     try {
@@ -291,7 +324,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     else if (ev.type === 'tool_result') setMsgs(m => m.map(x => x.kind === 'tool' && x.id === ev.id ? { ...x, state: ev.ok ? 'ok' : 'error', summary: ev.summary } : x));
     else if (ev.type === 'approval') setMsgs(m => [...m, { kind: 'approval', id: ev.id, name: ev.name, input: ev.input }]);
     else if (ev.type === 'check') setMsgs(m => [...m, { kind: 'check', ...ev.check }]);
-    else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status, projectId: runPidRef.current }]); if (showReportsRef.current) loadRuns(); }
+    else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status, projectId: runPidRef.current, savedTo: ev.savedTo }]); if (showReportsRef.current) loadRuns(); }
     else if (ev.type === 'no_report') setMsgs(m => [...m, { kind: 'info', text: 'No test case was executed, so no report was created.' }]);
     else if (ev.type === 'usage') setTokens(t => ({ input: t.input + (ev.input || 0), output: t.output + (ev.output || 0), cached: t.cached + (ev.cacheRead || 0) }));
     else if (ev.type === 'error') setMsgs(m => [...m, { kind: 'error', text: ev.message }]);
@@ -306,11 +339,61 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     setMsgs(m => m.map(x => x.kind === 'approval' && x.id === id ? { ...x, answered: allow ? 'allowed' : 'denied' } : x));
   };
   const stop = () => abortRef.current?.abort();
+  const persist = (status: 'running' | 'idle', id = sessionId.current) => {
+    const ms = msgsRef.current; const first: any = ms.find(m => m.kind === 'user'); if (!first) return;
+    const title = testInfoRef.current?.title ? 'Test: ' + testInfoRef.current.title : String(first.text).split('\n')[0].slice(0, 80);
+    return fetch('/api/agent/chats/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ world, status, title, model, tokens: tokensRef.current, test: testInfoRef.current, msgs: ms }) }).catch(() => {});
+  };
+  msgsRef.current = msgs; tokensRef.current = tokens;
+  useEffect(() => { // autosave (a chat marked "running" that is not live any more is what we call interrupted)
+    const t = setTimeout(() => { persist(busy || interrupted ? 'running' : 'idle'); }, busy ? 700 : 150);
+    return () => clearTimeout(t);
+  }, [msgs, busy, interrupted]);
   const reset = () => {
+    persist('idle'); // the old chat stays in History
     stop();
     fetch('/api/agent/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId.current }) });
     sessionId.current = 'sf-' + Math.random().toString(36).slice(2, 10);
-    testRunRef.current = null; setMsgs([]); setTokens({ input: 0, output: 0, cached: 0 });
+    testRunRef.current = null; testInfoRef.current = null; setStep(0); setShowErrors(false); setInterrupted(false); setShowHistory(false); setMsgs([]); setTokens({ input: 0, output: 0, cached: 0 });
+  };
+  const loadChat = async (id: string) => {
+    if (id === sessionId.current) { setShowHistory(false); return; }
+    try {
+      const j = await (await fetch('/api/agent/chats/' + id)).json(); if (!j.success) return;
+      const c = j.chat;
+      if (busy) { persist('running'); stop(); } else persist(interrupted ? 'running' : 'idle'); // switching away from a live test leaves it resumable
+      sessionId.current = c.id; testRunRef.current = null; testInfoRef.current = c.test || null;
+      const fixed: Msg[] = (c.msgs || []).map((m: Msg) => m.kind === 'tool' && m.state === 'running' ? { ...m, state: 'error', summary: 'interrupted' } : m.kind === 'startPrompt' ? { ...m, state: 'cancelled' } : m.kind === 'approval' && !m.answered ? { ...m, answered: 'denied' } : m);
+      setMsgs(fixed); setTokens(c.tokens || { input: 0, output: 0, cached: 0 });
+      setInterrupted(c.status === 'running'); setShowHistory(false);
+    } catch (e) {}
+  };
+  const renameChat = async (id: string, title: string) => { await fetch('/api/agent/chats/' + id + '/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }).catch(() => {}); loadChats(); };
+  const continueChat = async (id: string, wasInterrupted: boolean) => { await loadChat(id); if (wasInterrupted) setTimeout(() => resumeTest(), 150); };
+  const deleteChat = async (id: string) => { await fetch('/api/agent/chats/' + id, { method: 'DELETE' }).catch(() => {}); if (id === sessionId.current) reset(); loadChats(); };
+  useEffect(() => { // on start, bring back the last chat exactly as it was
+    fetch('/api/agent/chats?world=' + world).then(r => r.json()).then(j => {
+      const last = (j.chats || [])[0];
+      if (last && !prefilledRef.current && !msgsRef.current.length && Date.now() - last.updatedAt < 14 * 86400000) loadChat(last.id);
+    }).catch(() => {});
+  }, []);
+  const resumeTest = async () => {
+    if (busy) return;
+    const ms = msgsRef.current; const t = testInfoRef.current;
+    const done = ms.filter(m => m.kind === 'check') as any[];
+    const doneTxt = done.map(c => '- ' + (c.id ? c.id + ' ' : '') + c.title + ': ' + String(c.status).toUpperCase()).join('\n');
+    let full: string;
+    if (t) {
+      full = t.full + '\n\n---\nRESUME: this test run was interrupted (the app closed or the connection dropped). These cases were ALREADY executed and recorded, do not repeat them:\n' + (doneTxt || '(none yet)') + '\n\nContinue with the remaining test cases only and record every result as usual.';
+      const logins = t.projectId ? await loadSecret(loginSecretName(t.projectId)).catch(() => '') : '';
+      testRunRef.current = { title: t.title + ' (resumed)', summary: t.summary, projectId: t.projectId, logins };
+    } else {
+      const lastUser: any = [...ms].reverse().find(m => m.kind === 'user');
+      full = 'The previous run was interrupted. Continue the task from where it stopped; do not redo finished steps. The task was: ' + (lastUser?.text || '');
+    }
+    setMsgs(m => [...m, { kind: 'info', text: 'Resuming' + (done.length ? ' after ' + done.length + ' finished case' + (done.length > 1 ? 's' : '') : '') + '…' }, { kind: 'user', text: 'Resume' + (t ? ': ' + t.title : '') }]);
+    setInterrupted(false);
+    send(full, true);
   };
   const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 
@@ -318,6 +401,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const hasSentAny = msgs.some(m => m.kind === 'user');
   const formMode = testMode && !hasSentAny;
   const missing = briefMissing(brief, files, isWeb);
+  const [step, setStep] = useState(0);
+  const [showErrors, setShowErrors] = useState(false);
+  const stepMissing = missing.filter(l => stepOfMissing(l) === step);
+  const goNext = () => { if (stepMissing.length) { setShowErrors(true); return; } setShowErrors(false); setStep(x => Math.min(STEPS.length - 1, x + 1)); };
+  const tryStart = () => { if (missing.length) { setShowErrors(true); setStep(Math.min(...missing.map(stepOfMissing))); return; } startTest(); };
   useEffect(() => { if (formMode && active) loadProjects(); }, [formMode, active]);
   const pickProject = async (id: string) => {
     setProjectId(id);
@@ -333,16 +421,26 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     setBrief({ ...brief, module: m.name, cases: m.cases || '' });
     setFiles(x => [...x.filter(f => f.kind === 'docs'), ...(m.files || []).map((d: any) => ({ ...d, kind: 'cases' as const }))]);
   };
+  // saved files of the chosen project / module: tick the ones this test should use
+  const savedDocs: { name: string; text: string }[] = projectData?.docs || [];
+  const savedCaseFiles: { name: string; text: string }[] = (projectData?.modules || []).find((m: any) => m.name.toLowerCase() === brief.module.trim().toLowerCase())?.files || [];
+  const toggleFile = (name: string, kind: 'cases' | 'docs', on: boolean) => {
+    if (!on) { setFiles(x => x.filter(f => !(f.name === name && f.kind === kind))); return; }
+    const src = (kind === 'docs' ? savedDocs : savedCaseFiles).find(d => d.name === name);
+    if (src) setFiles(x => [...x.filter(f => !(f.name === name && f.kind === kind)), { ...src, kind }]);
+  };
+  const saveContext = async (text: string) => { if (!projectId) return; await fetch('/api/projects/' + projectId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: text }) }).catch(() => {}); await loadProject(projectId); };
   const startTest = async () => {
     if (missing.length) return;
     // save (or create) the project first: brief, cases and documents are kept for next time; the login goes to the encrypted store
-    let pid = projectId, history = '';
+    let pid = projectId, history = '', context = '';
     try {
       const j = await (await fetch('/api/projects/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, world: isWeb ? 'web' : 'phone', brief: { ...brief, login: undefined }, files }) })).json();
-      if (j.success) { pid = j.projectId; history = j.history || ''; setProjectId(pid); setProjectData(j.project); if (brief.login.trim()) saveSecret(loginSecretName(pid), brief.login); else if (projectId) { /* keep the saved login */ } }
+      if (j.success) { pid = j.projectId; history = j.history || ''; context = j.context || ''; setProjectId(pid); setProjectData(j.project); if (cleanLogin(brief.login)) saveSecret(loginSecretName(pid), cleanLogin(brief.login)); else if (projectId) { /* keep the saved login */ } }
     } catch (e) {}
-    const c = composeBrief(brief, files, isWeb, history);
-    testRunRef.current = { title: c.title, summary: c.summary, projectId: pid, logins: brief.login };
+    const c = composeBrief(brief, files, isWeb, history, context);
+    testRunRef.current = { title: c.title, summary: c.summary, projectId: pid, logins: cleanLogin(brief.login) };
+    testInfoRef.current = { title: c.title, summary: c.summary, projectId: pid, full: c.full, target: brief.target.trim() }; // saved with the chat so an interrupted test can resume (login is never saved)
     setMsgs(m => [...m, { kind: 'user', text: 'Test: ' + c.title + '\n' + brief.target.trim() }]);
     send(c.full, true);
   };
@@ -358,62 +456,95 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   }, [isWeb, active]);
   const hasSent = msgs.some(m => m.kind === 'user');
   const ready = engine !== 'none' || mcpLive.connected;
-  const askStep = { title: 'Tell the agent what to test', mood: 'listening' as const, done: hasSent,
+  const reveal = () => { setChatHidden(false); setShowHistory(false); setShowSettings(false); };
+  const askStep = { title: 'Tell the agent what to test', mood: 'listening' as const, target: 'chat-input', onEnter: reveal, done: hasSent,
     body: <>Type it in the chat on the left, for example <i>{isWeb ? '"Open example.com and check the heading"' : '"Open Settings and tell me the Android version"'}</i>. For a proper test with a PDF/DOCX report, turn on <b>Test mode</b> and fill the test brief.</> };
   const guides: CoachGuide[] = [
-    { id: 'ai', enabled: !cli.loading, doneTitle: 'AI connected', doneBody: 'Now type what you want to test in the chat and press Enter.',
+    { id: 'ai', label: '1. Connect the AI', hint: 'One-time setup so the AI can work for you', enabled: !cli.loading, doneTitle: 'AI connected', doneBody: 'Now type what you want to test in the chat and press Enter.',
       steps: [
-        { title: 'Get Claude on this PC', mood: 'working', done: cli.installed || ready,
+        { title: 'Get Claude on this PC', mood: 'working', target: 'connect', onEnter: reveal, done: cli.installed || ready,
           body: 'The AI agent runs through Claude Code in the background. Press Install and wait about a minute. It downloads and sets itself up, no admin needed.',
           action: { label: cli.installing ? (cli.stage || 'Installing…') : 'Install Claude', onClick: () => installClaude(), busy: !!cli.installing }, error: cli.error,
           note: <>Prefer an API key or your own terminal? <a href="#" onClick={e => { e.preventDefault(); setShowConnect(true); }}>See the other options</a>.</> },
-        { title: 'Sign in with your Claude account', mood: 'listening', done: cli.loggedIn || ready,
+        { title: 'Sign in with your Claude account', mood: 'listening', target: 'connect', onEnter: reveal, done: cli.loggedIn || ready,
           body: 'A browser tab opens. Sign in there and come back. This card moves on by itself.',
           action: { label: 'Sign in with Claude', onClick: () => { startClaudeSignIn(); } },
           note: <>Or <a href="#" onClick={e => { e.preventDefault(); setShowConnect(true); }}>use an API key / MCP</a> instead.</> }
       ] },
     isWeb
-      ? { id: 'web', enabled: webSt !== null, doneTitle: 'First web test is running', doneBody: 'Results show in the chat. Open the report icon for PDF/DOCX reports with screenshots.',
+      ? { id: 'web', label: '2. Set up the browser', hint: 'Install and open Chrome, log in if needed', enabled: webSt !== null, doneTitle: 'First web test is running', doneBody: 'Results show in the chat. Open the report icon for PDF/DOCX reports with screenshots.',
           steps: [
-            { title: 'Get a browser', mood: 'working', done: !!webSt?.installed, body: 'Web testing drives your own Google Chrome. I could not find Chrome or Edge, so I can download Chrome for you.',
+            { title: 'Get a browser', mood: 'working', target: 'web-install', onEnter: reveal, done: !!webSt?.installed, body: 'Web testing drives your own Google Chrome. I could not find Chrome or Edge, so I can download Chrome for you.',
               action: { label: webSt?.isInstalling ? (webSt.stage || 'Installing…') : 'Install Chrome', onClick: () => fetch('/api/web/install', { method: 'POST' }), busy: !!webSt?.isInstalling }, error: webSt?.error },
-            { title: 'Open the browser', mood: 'happy', done: !!webSt?.open, body: 'Press Open Chrome. Your own Chrome opens in its own window and shows up here too.',
+            { title: 'Open the browser', mood: 'happy', target: 'web-url', onEnter: reveal, done: !!webSt?.open, body: 'Press Open Chrome. Your own Chrome opens in its own window and shows up here too.',
               action: { label: 'Open Chrome', onClick: async () => { await fetch('/api/web/tool/web_navigate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://www.google.com' }) }); } } },
-            { title: 'Log in if your site needs it', mood: 'thinking', body: 'If your site has a login or a bot check, do it yourself once in the Chrome window. It is remembered, so the agent can continue without you.' },
+            { title: 'Log in if your site needs it', mood: 'thinking', target: 'web-url', onEnter: reveal, body: 'If your site has a login or a bot check, do it yourself once in the Chrome window. It is remembered, so the agent can continue without you.' },
             askStep
           ] }
-      : { id: 'emu', enabled: emu.reachable !== false, doneTitle: 'Emulator ready', doneBody: 'Results show in the chat. Open the report icon for PDF/DOCX reports with screenshots.',
+      : { id: 'emu', label: '2. Set up the phone', hint: 'Install and power on the Android emulator', enabled: emu.reachable !== false, doneTitle: 'Emulator ready', doneBody: 'Results show in the chat. Open the report icon for PDF/DOCX reports with screenshots.',
           steps: [
-            { title: 'Install the emulator', mood: 'working', done: emu.phase !== 'not_installed' && emu.phase !== 'installing', body: 'One-time download of the Android emulator (about 5 GB). It is only installed because you opened this page.' + (emu.phase === 'installing' ? ' ' + Math.round(emu.status.installProgress || 0) + '% ' + (emu.status.installStage || '') : ''),
+            { title: 'Install the emulator', mood: 'working', target: 'emu-install', onEnter: reveal, done: emu.phase !== 'not_installed' && emu.phase !== 'installing', body: 'One-time download of the Android emulator (about 5 GB). It is only installed because you opened this page.' + (emu.phase === 'installing' ? ' ' + Math.round(emu.status.installProgress || 0) + '% ' + (emu.status.installStage || '') : ''),
               action: { label: emu.phase === 'installing' ? 'Installing…' : 'Install emulator', onClick: () => emu.install(), busy: emu.phase === 'installing' || emu.busy }, error: emu.status.installError },
-            { title: 'Power on the phone', mood: 'happy', done: connected, body: 'The first start takes 1 to 2 minutes, later starts are much faster.',
+            { title: 'Power on the phone', mood: 'happy', target: 'emu-power', onEnter: reveal, done: connected, body: 'The first start takes 1 to 2 minutes, later starts are much faster.',
               action: { label: emu.phase === 'booting' ? 'Starting…' : 'Power on', onClick: () => { startEmulator(emu); }, busy: emu.phase === 'booting' || emu.busy } },
             askStep
           ] }
   ];
 
+
+  const howTo: CoachGuide = { id: 'howto', tourOnly: true, label: '3. How to run a test', hint: 'From your test cases to a PDF report, in 5 steps', doneTitle: 'Done', doneBody: '',
+    steps: [
+      { title: 'Turn on Test mode', mood: 'happy', target: 'test-mode', onEnter: () => { reveal(); setTestMode(false); }, body: <>Press the <b>Test mode</b> button at the top of the chat. A form called <i>New test</i> opens.</>, action: { label: 'Turn on Test mode', onClick: () => { setTestMode(true); } } },
+      { title: 'Say what you are testing', mood: 'listening', target: 'form-steps', onEnter: () => { reveal(); setTestMode(true); setStep(0); }, body: <>Pick or type the <b>project name</b>, the <b>feature</b> (for example Login) and the {isWeb ? <b>website address</b> : <b>app</b>}. Then press <b>Next</b> at the bottom of the form.</> },
+      { title: 'Write or upload test cases', mood: 'thinking', target: 'cases-box', onEnter: () => { reveal(); setTestMode(true); setStep(1); }, body: <>Write each test case like <i>"Wrong password shows an error"</i> with the steps, or press <b>Upload file</b> to add a Word or text file. No technical words needed.</> },
+      { title: 'Press Start and watch', mood: 'working', target: 'start-test', onEnter: () => { reveal(); setTestMode(true); setStep(2); }, body: <>The AI does the steps for you. You see it live {isWeb ? 'in the browser' : 'on the phone'}. A green or red line appears for each test case.</> },
+      { title: 'Get your report, or continue later', mood: 'celebrate', target: 'history', onEnter: reveal, body: <>When it ends you get a <b>PDF/DOCX report</b> with screenshots. If the app closes in the middle, open <b>History</b> and press <b>Resume test</b>. Nothing is lost.</> }
+    ] };
+
   return (
     <div style={{ display: active ? 'flex' : 'none', gap: 16, ...(fill ? { flex: '0 0 auto', minHeight: 520, height: 'calc(100vh - 215px)' } : { flex: 1, minHeight: 0 }) }}>
       {/* ---------- left: chat ---------- */}
-      <div style={{ ...card, flex: '0 0 clamp(340px, 40%, 560px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: border, flexWrap: 'wrap', background: 'transparent' }}>
-          <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }}>
-            {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
-          <select value={mode} onChange={e => setMode(e.target.value as any)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border, width: 'auto', flex: '0 0 auto' }} title="Dangerous actions: shell, uninstall, clear data, install APK">
-            <option value="ask">Ask first</option>
-            <option value="auto">Auto</option>
-          </select>
+      <div style={{ ...card, flex: '0 0 clamp(420px, 47%, 780px)', minWidth: 0, display: chatHidden ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: border, flexWrap: 'wrap', background: 'transparent', position: 'relative' }}>
+          <button data-guide="history" onClick={() => setShowHistory(v => !v)} title="Chat history" style={{ ...iconBtn, ...(showHistory ? { background: 'rgba(79,70,229,0.12)' } : {}) }}><History size={14} /> History</button>
+          <button data-guide="new-chat" onClick={reset} title="Start a new chat (the old one stays in History)" style={iconBtn}><Plus size={14} /> New</button>
           <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)', marginLeft: 'auto' }}>
             {engine !== 'none' && (tokens.input || tokens.output) ? `${fmt(tokens.input)} in · ${fmt(tokens.output)} out` : ''}
           </span>
-          <button onClick={() => setChatHidden(true)} title="Hide chat" style={iconBtn}><PanelLeftClose size={14} /></button>
-          <button onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
+          <button data-guide="test-mode" onClick={() => setTestMode(t => !t)} title="Test mode: AI works through your test cases and writes a report with screenshots"
             style={{ ...iconBtn, fontWeight: 600, ...(testMode ? { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } : {}) }}><FlaskConical size={14} /> Test mode</button>
           <button onClick={() => setShowReports(v => !v)} title="Saved test reports" style={iconBtn}><FileText size={14} /></button>
-          <button onClick={() => setShowConnect(v => !v)} title={engine === 'claude' ? 'Connected: Claude Code (signed in)' : 'How the AI is connected'} style={iconBtn}><Plug size={14} />{engine === 'claude' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />}</button>
-          <button onClick={reset} title="New chat" style={iconBtn}><Trash2 size={14} /></button>
+          <button data-guide="connect" onClick={() => setShowConnect(v => !v)} title={engine === 'claude' ? 'Connected: Claude Code (signed in)' : 'How the AI is connected'} style={iconBtn}><Plug size={14} />{engine === 'claude' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />}</button>
+          <button onClick={() => setShowSettings(v => !v)} title="Model and safety" style={iconBtn}><Settings size={14} /></button>
+          <button onClick={() => setChatHidden(true)} title="Hide chat" style={iconBtn}><PanelLeftClose size={14} /></button>
+          {showSettings && (
+            <div style={{ position: 'absolute', right: 12, top: 'calc(100% + 4px)', zIndex: 20, ...card, padding: 12, width: 250, boxShadow: '0 10px 30px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><b>AI model</b>
+                <select value={model} onChange={e => setModel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border }}>
+                  {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                </select></label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><b>Risky actions</b>
+                <select value={mode} onChange={e => setMode(e.target.value as any)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 8, border }} title="Shell, uninstall, clear data, install APK">
+                  <option value="ask">Ask me first (safer)</option>
+                  <option value="auto">Do it automatically</option>
+                </select></label>
+              <button onClick={() => setShowSettings(false)} style={{ ...iconBtn, justifyContent: 'center' }}>Done</button>
+            </div>
+          )}
         </div>
+
+        {showHistory && <HistoryPanel chats={chats} currentId={sessionId.current} liveId={busy ? sessionId.current : null} onOpen={loadChat} onContinue={continueChat} onRename={renameChat} onDelete={deleteChat} onNew={reset} onClose={() => setShowHistory(false)} />}
+        {(() => {
+          const cks = msgs.filter(m => m.kind === 'check') as any[]; if (!cks.length && !(busy && testInfoRef.current)) return null;
+          const p = cks.filter(c => c.status === 'pass').length, f = cks.filter(c => c.status === 'fail').length, o = cks.length - p - f;
+          const tl = [...msgs].reverse().find(m => m.kind === 'tool') as any;
+          return <div style={{ padding: '6px 12px', borderBottom: border, fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', background: 'rgba(79,70,229,0.04)' }}>
+            {busy && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d97706' }} />}
+            <b>{busy ? 'Testing' : 'Results'}</b>
+            <span style={{ color: '#16a34a', fontWeight: 700 }}>{p} pass</span><span style={{ color: f ? '#dc2626' : 'var(--text-muted, #64748b)', fontWeight: 700 }}>{f} fail</span>{o > 0 && <span style={{ color: '#d97706' }}>{o} blocked</span>}
+            {busy && tl && <span style={{ color: 'var(--text-muted, #64748b)', marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '50%' }}>{tl.name}</span>}
+          </div>;
+        })()}
 
         {showReports && (
           <div style={{ padding: 12, borderBottom: border, background: 'rgba(79,70,229,0.04)', fontSize: 12, maxHeight: 190, overflowY: 'auto' }}>
@@ -430,8 +561,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           </div>
         )}
 
-        {formMode ? (
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief serial={isWeb ? undefined : (connected ? serial : undefined)} projects={projects} projectId={projectId} onPickProject={pickProject} modules={(projectData?.modules || []).map((m: any) => m.name)} onModule={onModule} isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} /></div>
+        {showHistory ? null : formMode ? (
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}><TestBrief serial={isWeb ? undefined : (connected ? serial : undefined)} projects={projects} projectId={projectId} onPickProject={pickProject} modules={(projectData?.modules || []).map((m: any) => m.name)} onModule={onModule} isWeb={isWeb} brief={brief} setBrief={setBrief} files={files} addFiles={addFiles} removeFile={i => setFiles(x => x.filter((_, j) => j !== i))} step={step} setStep={n => { setStep(n); setShowErrors(false); }} showErrors={showErrors} projectContext={projectData?.context || ''} onSaveContext={saveContext} savedDocs={savedDocs} savedCaseFiles={savedCaseFiles} toggleFile={toggleFile} /></div>
         ) : (
         <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {msgs.length === 0 && (
@@ -440,12 +571,24 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
               {(connected || isWeb) && <div style={{ marginTop: 8, fontStyle: 'italic' }}>{isWeb ? '"Open example.com, click Learn more and tell me the page title"' : '"Open Settings, search for Wi-Fi and tell me what you see"'}</div>}
             </div>
           )}
-          {msgs.map((m, i) => <Bubble key={i} m={m} onAnswer={answer} onStart={() => m.kind === 'startPrompt' && startFromChat(i, m.pending)} onCancelStart={() => cancelStart(i)} />)}
+          {(() => {
+            const out: React.ReactNode[] = []; let i = 0;
+            const lastErr = msgs.map(m => m.kind).lastIndexOf('error');
+            while (i < msgs.length) {
+              const m = msgs[i];
+              if (m.kind === 'tool') { const g: any[] = []; const s = i; while (i < msgs.length && msgs[i].kind === 'tool') g.push(msgs[i++]); out.push(<ToolGroup key={'g' + s} tools={g} />); continue; }
+              const idx = i;
+              out.push(<Bubble key={i} m={m} onAnswer={answer} onStart={() => m.kind === 'startPrompt' && startFromChat(idx, m.pending)} onCancelStart={() => cancelStart(idx)}
+                onQuick={t => send(t)} onRetry={idx === lastErr && lastSentRef.current && !busy ? () => send(lastSentRef.current, true) : undefined} />);
+              i++;
+            }
+            return out;
+          })()}
           {busy && <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Agent is working…</div>}
         </div>
         )}
 
-        {showConnect && (
+        {!showHistory && showConnect && (
           <div style={{ padding: 12, borderTop: border, background: 'rgba(79,70,229,0.04)', maxHeight: '55%', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}><b style={{ fontSize: 13 }}>Connect the AI</b><button onClick={() => setShowConnect(false)} style={{ ...iconBtn, marginLeft: 'auto', padding: '2px 6px' }}><X size={12} /></button></div>
             <ConnectOptions hasKey={!!apiKey} onChanged={() => setShowConnect(false)} />
@@ -467,9 +610,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <button onClick={() => setShowConnect(true)} style={{ ...iconBtn, padding: '3px 12px', fontSize: 11.5, marginLeft: 'auto', background: '#4f46e5', color: '#fff', border: 'none', fontWeight: 700 }}><Plug size={12} /> Connect</button>
           </div>
         )}
-        {formMode ? <StartBar missing={missing} onStart={startTest} /> : (
+        {!showHistory && interrupted && !busy && !formMode && <ResumeBanner done={msgs.filter(m => m.kind === 'check').length} onResume={resumeTest} onDismiss={() => setInterrupted(false)} />}
+        {showHistory ? null : formMode ? <StartBar step={step} onBack={() => { setShowErrors(false); setStep(x => Math.max(0, x - 1)); }} onNext={goNext} onStart={tryStart} hint={showErrors && (step === STEPS.length - 1 ? missing : stepMissing).length ? 'Needs ' + (step === STEPS.length - 1 ? missing : stepMissing).join(', ') : step === STEPS.length - 1 ? (missing.length ? 'Not complete yet' : 'Ready') : 'Step ' + (step + 1) + ' of ' + STEPS.length} hintBad={showErrors && (step === STEPS.length - 1 ? missing : stepMissing).length > 0} /> : (
         <div style={{ padding: 10, borderTop: border, display: 'flex', gap: 8 }}>
-          <textarea value={input} onChange={e => setInput(e.target.value)} rows={2}
+          <textarea data-guide="chat-input" value={input} onChange={e => setInput(e.target.value)} rows={2}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder="Instruction for the agent… (Enter to send, Shift+Enter for new line)"
             style={{ flex: 1, resize: 'none', padding: '8px 10px', borderRadius: 10, border, fontSize: 13, fontFamily: 'inherit' }} />
@@ -498,14 +642,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '16cqw', background: '#050506', padding: '1.7cqw', boxSizing: 'border-box', boxShadow: 'inset 0 0 0 0.35cqw #1a1a1c' } as any}>
               <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '14.3cqw', overflow: 'hidden', background: '#0b1020', display: 'flex', alignItems: 'center', justifyContent: 'center' } as any}>
           {connected && active && !isWeb && live !== 'off' && (
-            <LiveScreen serial={serial} w={dev.w} h={dev.h} canvasRef={imgRef} onPlaying={() => setLive('on')} onFail={() => setLive('off')} onPointerDown={onPointerDown} onPointerUp={onPointerUp} style={{ position: 'absolute', inset: 0, opacity: live === 'on' ? 1 : 0 }} />
+            <LiveScreen key={serial + ':' + refreshKey} paused={!devKnown} serial={serial} w={dev.w} h={dev.h} canvasRef={imgRef} onPlaying={() => setLive('on')} onFail={() => setLive('off')} onPointerDown={onPointerDown} onPointerUp={onPointerUp} style={{ position: 'absolute', inset: 0, opacity: live === 'on' ? 1 : 0 }} />
           )}
           {live === 'on' ? null : shot
             ? <img ref={imgRef} src={shot} onPointerDown={onPointerDown} onPointerUp={onPointerUp} alt="Device screen" draggable={false}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer', display: 'block', touchAction: 'none', userSelect: 'none' }} />
             : connected
-              ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, padding: 20, textAlign: 'center', pointerEvents: 'none' }}>{wakeNote || 'Loading screen…'}</div>
+              ? <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12, padding: 20, textAlign: 'center' }}>
+                  <style>{'@keyframes sfspin{to{transform:rotate(360deg)}}'}</style>
+                  <span style={{ width: 26, height: 26, border: '3px solid rgba(148,163,184,0.3)', borderTopColor: '#818cf8', borderRadius: '50%', animation: 'sfspin 0.9s linear infinite' }} />
+                  <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{wakeNote ? 'Phone is locked' : devKnown ? 'Waiting for the first picture…' : 'Connecting to the phone…'}</div>
+                  <div>{wakeNote || (slow ? 'This is taking longer than usual. Press Refresh, or check the phone is awake and USB debugging is allowed.' : 'This usually takes a few seconds.')}</div>
+                  <button onClick={refreshScreen} style={{ ...iconBtn, padding: '6px 14px', fontSize: 12, marginTop: 2 }}><RotateCcw size={12} /> Refresh</button>
+                </div>
               : <PowerPanel emu={emu} dark />}
+                {connected && (live === 'on' || shot) && <span style={{ position: 'absolute', bottom: '3.5cqw', left: '50%', transform: 'translateX(-50%)', maxWidth: '86%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', fontSize: '3.2cqw', color: '#e2e8f0', background: 'rgba(15,23,42,0.62)', padding: '0.8cqw 2.6cqw', borderRadius: '4cqw' } as any}>● {live === 'on' ? 'Live' : 'Snapshots'}{devName ? ' · ' + devName : ''}</span>}
                 <span style={{ position: 'absolute', top: '2.2cqw', left: '50%', transform: 'translateX(-50%)', width: '25cqw', height: '7.2cqw', borderRadius: '4cqw', background: '#000', pointerEvents: 'none', boxShadow: '0 0 0 0.2cqw #0c0c0e' } as any}><i style={{ position: 'absolute', right: '2.2cqw', top: '50%', transform: 'translateY(-50%)', width: '3.4cqw', height: '3.4cqw', borderRadius: '50%', background: 'radial-gradient(circle at 35% 35%,#2b3a67,#0a0d18 70%)' }} /></span>
               </div>
             </div>
@@ -516,9 +667,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           {[['Back', 'back'], ['Home', 'home'], ['Recents', 'recent']].map(([l, k]) => (
             <button key={k} onClick={() => phoneBtn(k)} disabled={!connected} style={{ ...iconBtn, padding: '7px 10px', fontSize: 11, justifyContent: 'center' }}>{l}</button>
           ))}
+          <button data-guide="refresh" onClick={refreshScreen} disabled={!connected} title="Reload the phone screen if it is stuck or blank" style={{ ...iconBtn, padding: '7px 10px', fontSize: 11, justifyContent: 'center' }}><RotateCcw size={11} /> Refresh</button>
         </div>
       </div>
-      <Coach guides={guides} active={active} />
+      <Coach guides={[...guides, howTo]} active={active} />
     </div>
   );
 };
@@ -527,7 +679,7 @@ const iconBtn: React.CSSProperties = { background: 'var(--bg-card, #fff)', borde
 const linkBtn: React.CSSProperties = { ...iconBtn, padding: '2px 8px', fontSize: 11, textDecoration: 'none' };
 const primaryBtn: React.CSSProperties = { background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };
 
-const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void; onStart: () => void; onCancelStart: () => void }> = ({ m, onAnswer, onStart, onCancelStart }) => {
+const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void; onStart: () => void; onCancelStart: () => void; onQuick: (t: string) => void; onRetry?: () => void }> = ({ m, onAnswer, onStart, onCancelStart, onQuick, onRetry }) => {
   if (m.kind === 'startPrompt') return (
     <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: 12, fontSize: 13, alignSelf: 'flex-start', maxWidth: '92%' }}>
       <div style={{ fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>The emulator is off.</div>
@@ -543,12 +695,12 @@ const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void;
     </div>
   );
   if (m.kind === 'user') return <div style={{ alignSelf: 'flex-end', maxWidth: '85%', background: '#4f46e5', color: '#fff', padding: '8px 12px', borderRadius: '14px 14px 4px 14px', fontSize: 13, whiteSpace: 'pre-wrap' }}>{m.text}</div>;
-  if (m.kind === 'agent') return <div style={{ alignSelf: 'flex-start', maxWidth: '92%', background: 'var(--bg-muted, #f1f5f9)', padding: '8px 12px', borderRadius: '14px 14px 14px 4px', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{m.text}</div>;
+  if (m.kind === 'agent') return <div style={{ alignSelf: 'flex-start', maxWidth: '92%', background: 'var(--bg-muted, #f1f5f9)', padding: '8px 12px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.5, position: 'relative', wordBreak: 'break-word' }}><Markdown text={m.text} /><div style={{ textAlign: 'right', marginTop: 2 }}><CopyBtn text={m.text} /></div></div>;
   if (m.kind === 'check') {
     const c = m.status === 'pass' ? '#16a34a' : m.status === 'fail' ? '#dc2626' : '#d97706';
     return <div style={{ border, borderLeft: '4px solid ' + c, borderRadius: 8, padding: '6px 10px', fontSize: 12.5, background: 'var(--bg-card, #fff)' }}>
       <b style={{ color: c }}>{m.status.toUpperCase()}</b> {m.id ? m.id + ' · ' : ''}{m.title}
-      <div style={{ color: 'var(--text-muted, #64748b)', marginTop: 2 }}>{m.evidence}</div></div>;
+      <div style={{ color: 'var(--text-muted, #64748b)', marginTop: 2 }}><Markdown text={m.evidence} /></div></div>;
   }
   if (m.kind === 'report' && m.status === 'no-checks') return null;
   if (m.kind === 'report') return (
@@ -558,11 +710,16 @@ const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void;
         <a href={'/api/agent/reports/' + m.runId + '/pdf'} download style={{ ...primaryBtn, padding: '6px 14px', textDecoration: 'none' }}><Download size={14} /> PDF</a>
         <a href={'/api/agent/reports/' + m.runId + '/docx'} download style={{ ...primaryBtn, padding: '6px 14px', textDecoration: 'none' }}><Download size={14} /> DOCX</a>
       </div>
+      {m.savedTo && <div style={{ fontSize: 11.5, color: 'var(--text-muted, #64748b)', marginTop: 6 }}>Also saved on this PC: {m.savedTo}</div>}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+        <button onClick={() => onQuick('Re-run only the test cases that failed or were blocked in the last run, and record the results.')} style={{ ...iconBtn, fontSize: 11.5 }}><RotateCcw size={12} /> Re-run failed</button>
+        <button onClick={() => onQuick('Run all the test cases again from the start and record the results.')} style={{ ...iconBtn, fontSize: 11.5 }}>Run all again</button>
+      </div>
       <SaveAsTest runId={m.runId} projectId={m.projectId} />
     </div>
   );
   if (m.kind === 'info') return <div style={{ alignSelf: 'center', fontSize: 11.5, color: 'var(--text-muted, #64748b)' }}>{m.text}</div>;
-  if (m.kind === 'error') return <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '8px 12px', borderRadius: 10, fontSize: 12.5 }}>{m.text}</div>;
+  if (m.kind === 'error') return <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '8px 12px', borderRadius: 10, fontSize: 12.5, display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ flex: 1 }}>{m.text}</span>{onRetry && <button onClick={onRetry} style={{ ...iconBtn, fontSize: 11.5, color: '#b91c1c' }}><RotateCcw size={12} /> Retry</button>}</div>;
   if (m.kind === 'approval') return (
     <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: 10, fontSize: 12.5 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 700, color: '#92400e' }}><ShieldAlert size={14} /> Approve risky action: {m.name}</div>

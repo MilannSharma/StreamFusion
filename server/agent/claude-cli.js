@@ -6,6 +6,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { TEST_RULES } from './prompts.js';
 
 const BASE = process.env.SF_EMULATOR_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'StreamFusion');
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -122,14 +123,14 @@ const sessions = new Map(); // our sessionId -> claude session uuid
 export const resetCliSession = (id) => sessions.delete(id);
 
 const CLI_SYSTEM = `You are StreamFusion's QA agent. You control a real Android device (usually the emulator) with the device tools and the user's own Chrome browser with the web_* tools, and carry out the user's testing instructions.
+- Fewer calls is better (each one re-sends the whole conversation): put several known steps in ONE device_batch / web_batch call.
 - Observe first: ui_tree for the phone, web_snapshot for the browser (both cheap). Use screenshots only when layout matters.
 - After each meaningful action verify the result before moving on. If something fails, try one alternative, then report what you tried.
 - Never use shell, uninstall_app, clear_data, install_apk or web_eval unless the user asked for it.
 - If the user has not said what to test (a bare "start", "hi", "test"), do not touch anything: ask for the product, feature/module, URL or app, the test cases and any login.
 - If the emulator is off, call emulator_start and wait with emulator_status until it is booted. The browser opens by itself on the first web_* call.
 - Keep replies short. When testing, finish with PASS or FAIL per check and the evidence you saw.`;
-const CLI_TEST = `
-TEST MODE is on and a report run is already open. Save tokens: read the page with web_snapshot / ui_tree (text) and use screenshots only when the layout itself matters. Before each report_check call the assert tool that proves the result (web_assert_text, web_assert_url, assert_text, assert_no_crash, assert_screenshot): the assertion is recorded and the test can be replayed later with zero AI tokens. Work through every test case in order. After each one call report_check (id, title, status pass|fail|blocked, evidence); a screenshot is attached automatically, so make sure the screen shows the result first. Never mark pass without evidence. When all are done call report_finish with a short summary.`;
+const CLI_TEST = TEST_RULES.replace(/finish_report/g, 'report_finish') + ' A report run is already open, do not call report_begin.';
 
 const short = (v, n = 110) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s; };
 function resultSummary(name, content, isErr) {

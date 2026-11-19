@@ -1,16 +1,14 @@
-// Test Mode: stores each AI test run (checks + evidence screenshots) on disk and builds DOCX / PDF reports.
+// Test Mode: stores each AI test run (checks + evidence screenshots) on disk. The DOCX / PDF reports are built in report.js.
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, ImageRun, ShadingType, PageBreak } from 'docx';
-import PDFDocument from 'pdfkit';
 import * as recorder from '../automation/recorder.js';
 import { getContext } from '../automation/assertions.js';
+import { buildDocx as makeDocx, buildPdf as makePdf } from './report.js';
 
 const BASE = process.env.SF_EMULATOR_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'StreamFusion');
 export const REPORTS_DIR = path.join(BASE, 'reports');
 const ID_RE = /^run-[\w-]+$/;
-const COLORS = { pass: '16A34A', fail: 'DC2626', blocked: 'D97706', info: '64748B' };
 
 const runDir = (id) => path.join(REPORTS_DIR, id);
 const readRun = (id) => JSON.parse(fs.readFileSync(path.join(runDir(id), 'run.json'), 'utf8'));
@@ -33,11 +31,30 @@ export function saveShot(run, base64, tag) {
 
 export function addStep(run, step) { run.steps.push({ t: new Date().toISOString(), ...step }); if (run.steps.length % 5 === 0) save(run); }
 export function addCheck(run, check) { recorder.onCheck(check); run.checks.push({ t: new Date().toISOString(), ...check }); save(run); }
+// Every finished report is also written to <Downloads>\StreamFusion Reports as PDF + DOCX (SF_NO_AUTOSAVE=1 turns it off).
+export const downloadsDir = () => (process.env.SF_NO_AUTOSAVE ? '' : path.join(process.env.SF_DOWNLOADS_DIR || path.join(os.homedir(), 'Downloads'), 'StreamFusion Reports'));
+const fileBase = (run) => {
+  const d = new Date(run.startedAt), p2 = (n) => String(n).padStart(2, '0');
+  const safe = String(run.title || 'Test report').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return `${safe} - ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}`;
+};
+export async function exportToDownloads(run) {
+  const dir = run.savedTo || downloadsDir(); if (!dir) return null;
+  fs.mkdirSync(dir, { recursive: true });
+  const r = getRun(run.id) || run, base = path.join(dir, fileBase(run));
+  fs.writeFileSync(base + '.pdf', await makePdf(r));
+  fs.writeFileSync(base + '.docx', await makeDocx(r));
+  return base;
+}
+
 export function finishRun(run, summary, reason) {
   run.finishedAt = new Date().toISOString(); run.summary = summary || run.summary;
   const f = run.checks.filter(c => c.status === 'fail').length;
   run.status = reason && reason !== 'complete' ? 'aborted' : f ? 'failed' : run.checks.length ? 'passed' : 'no-checks';
+  if (run.checks.length) run.savedTo = downloadsDir();
   save(run);
+  if (run.savedTo) exportToDownloads(run).catch(() => {}); // a copy of the PDF + DOCX lands in Downloads by itself
+  if (run.projectId && run.checks.length) import('../projects/store.js').then(m => m.updateContextFromRun(run)).catch(() => {}); // the project's context file learns from every run
   recorder.finish(run.id);
 }
 
@@ -55,75 +72,30 @@ export function listRuns() {
 export const getRun = (id) => (ID_RE.test(id) && fs.existsSync(path.join(runDir(id), 'run.json')) ? readRun(id) : null);
 export const shotPath = (id, rel) => { const p = path.join(runDir(id), rel); return ID_RE.test(id) && p.startsWith(runDir(id) + path.sep) && fs.existsSync(p) ? p : null; };
 
-const counts = (r) => ({ pass: r.checks.filter(c => c.status === 'pass').length, fail: r.checks.filter(c => c.status === 'fail').length, blocked: r.checks.filter(c => c.status === 'blocked').length });
-const dur = (r) => { const s = Math.round((new Date(r.finishedAt || Date.now()) - new Date(r.startedAt)) / 1000); return `${Math.floor(s / 60)}m ${s % 60}s`; };
-const png = (run, rel) => { const p = rel && shotPath(run.id, rel); return p ? fs.readFileSync(p) : null; };
-const pngSize = (b) => ({ w: b.readUInt32BE(16), h: b.readUInt32BE(20) });
+export { buildDocx, buildPdf, analyze } from './report.js';
 
-export async function buildDocx(run) {
-  const c = counts(run);
-  const P = (text, o = {}) => new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: String(text), ...o })] });
-  const H = (text, level) => new Paragraph({ heading: level, children: [new TextRun(text)] });
-  const kids = [
-    H(run.title, HeadingLevel.TITLE),
-    P(`Run ${run.id} · ${new Date(run.startedAt).toLocaleString()} · duration ${dur(run)}`, { color: '64748B' }),
-    P(`Device: ${run.serial}${run.deviceInfo?.model ? ' (' + run.deviceInfo.model + ')' : ''} · AI model: ${run.model}`, { color: '64748B' }),
-    H('Summary', HeadingLevel.HEADING_1),
-    P(`Result: ${run.status.toUpperCase()} — ${c.pass} passed, ${c.fail} failed, ${c.blocked} blocked, ${run.checks.length} total`, { bold: true, color: COLORS[c.fail ? 'fail' : 'pass'] }),
-    P(run.summary || 'No summary was written.'),
-    H('Results', HeadingLevel.HEADING_1),
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({ tableHeader: true, children: ['#', 'Check', 'Status'].map(h => new TableCell({ shading: { type: ShadingType.CLEAR, fill: 'E2E8F0' }, children: [P(h, { bold: true })] })) }),
-        ...run.checks.map((k, i) => new TableRow({ children: [
-          new TableCell({ width: { size: 8, type: WidthType.PERCENTAGE }, children: [P(k.id || i + 1)] }),
-          new TableCell({ width: { size: 72, type: WidthType.PERCENTAGE }, children: [P(k.title)] }),
-          new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, children: [P(k.status.toUpperCase(), { bold: true, color: COLORS[k.status] || COLORS.info })] })
-        ] }))
-      ]
-    }),
-    H('Details and evidence', HeadingLevel.HEADING_1)
-  ];
-  run.checks.forEach((k, i) => {
-    kids.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(`${k.id || i + 1}. ${k.title} — `), new TextRun({ text: k.status.toUpperCase(), color: COLORS[k.status] || COLORS.info })] }));
-    kids.push(P(k.evidence || '(no evidence note)'));
-    const b = png(run, k.screenshot);
-    if (b) { const { w, h } = pngSize(b); const W = Math.min(260, w); kids.push(new Paragraph({ children: [new ImageRun({ type: 'png', data: b, transformation: { width: W, height: Math.round(W * h / w) } })] })); }
-  });
-  if (run.steps.length) {
-    kids.push(new Paragraph({ children: [new PageBreak()] }), H('Action log', HeadingLevel.HEADING_1));
-    run.steps.forEach((s, i) => kids.push(P(`${i + 1}. ${s.name} ${s.input ? JSON.stringify(s.input).slice(0, 140) : ''} → ${s.ok ? 'ok' : 'FAILED'}${s.summary ? ' (' + s.summary + ')' : ''}`, { size: 18 })));
-  }
-  return Packer.toBuffer(new Document({ sections: [{ children: kids }] }));
+// ---- what the AI may record about a check / the whole run (everything optional except title, status, evidence) ----
+const str = (v, n) => String(v ?? '').slice(0, n);
+const opt = (v, n) => (v === undefined || v === null || v === '' ? undefined : str(v, n));
+const SEV = ['critical', 'major', 'minor', 'cosmetic'];
+const CATS = ['functional', 'ui', 'ux', 'accessibility', 'performance', 'security', 'compatibility', 'content'];
+const list = (v, n = 15, len = 220) => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[\n;]/) : []).map(x => str(x, len).trim()).filter(Boolean).slice(0, n);
+
+export function cleanCheck(i = {}) {
+  return {
+    id: opt(i.id, 30), title: str(i.title, 200), status: ['pass', 'fail', 'blocked'].includes(i.status) ? i.status : 'blocked', evidence: str(i.evidence, 3000),
+    module: opt(i.module, 80), persona: opt(i.persona, 60), location: opt(i.location, 160), category: CATS.includes(i.category) ? i.category : undefined,
+    severity: SEV.includes(i.severity) ? i.severity : undefined, steps: list(i.steps), expected: opt(i.expected, 600), actual: opt(i.actual, 1200), suggestion: opt(i.suggestion, 600),
+    description: opt(i.description, 400), issues: list(i.issues, 10, 300), remark: opt(i.remark, 90)
+  };
 }
-
-export function buildPdf(run) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 48, size: 'A4' });
-    const bufs = []; doc.on('data', d => bufs.push(d)); doc.on('end', () => resolve(Buffer.concat(bufs))); doc.on('error', reject);
-    const c = counts(run); const hex = (s) => '#' + (COLORS[s] || COLORS.info);
-    doc.fontSize(22).fillColor('#0f172a').text(run.title);
-    doc.fontSize(9.5).fillColor('#64748b').text(`Run ${run.id} · ${new Date(run.startedAt).toLocaleString()} · duration ${dur(run)}`)
-      .text(`Device: ${run.serial}${run.deviceInfo?.model ? ' (' + run.deviceInfo.model + ')' : ''} · AI model: ${run.model}`).moveDown();
-    doc.fontSize(14).fillColor('#0f172a').text('Summary').moveDown(0.3);
-    doc.fontSize(11).fillColor(c.fail ? hex('fail') : hex('pass')).text(`${run.status.toUpperCase()} — ${c.pass} passed, ${c.fail} failed, ${c.blocked} blocked, ${run.checks.length} total`);
-    doc.fillColor('#334155').text(run.summary || 'No summary was written.').moveDown();
-    doc.fontSize(14).fillColor('#0f172a').text('Results').moveDown(0.3);
-    run.checks.forEach((k, i) => { doc.fontSize(10.5).fillColor('#334155').text(`${k.id || i + 1}. ${k.title}  `, { continued: true }).fillColor(hex(k.status)).text(k.status.toUpperCase()); });
-    doc.moveDown().fontSize(14).fillColor('#0f172a').text('Details and evidence');
-    run.checks.forEach((k, i) => {
-      doc.moveDown(0.6);
-      if (doc.y > 600) doc.addPage();
-      doc.fontSize(12).fillColor('#0f172a').text(`${k.id || i + 1}. ${k.title}  `, { continued: true }).fillColor(hex(k.status)).text(k.status.toUpperCase());
-      doc.fontSize(10).fillColor('#334155').text(k.evidence || '(no evidence note)');
-      const b = png(run, k.screenshot);
-      if (b) { const { w, h } = pngSize(b); const W = Math.min(200, w), Hh = W * h / w; if (doc.y + Hh > 780) doc.addPage(); doc.moveDown(0.3); doc.image(b, { width: W }); }
-    });
-    if (run.steps.length) {
-      doc.addPage().fontSize(14).fillColor('#0f172a').text('Action log').moveDown(0.3);
-      run.steps.forEach((s, j) => doc.fontSize(8.5).fillColor('#475569').text(`${j + 1}. ${s.name} ${s.input ? JSON.stringify(s.input).slice(0, 120) : ''} → ${s.ok ? 'ok' : 'FAILED'}`));
-    }
-    doc.end();
-  });
+export function cleanExtras(b = {}) {
+  const arr = (v, n) => (Array.isArray(v) ? v.slice(0, n) : []);
+  return {
+    personas: arr(b.personas, 8).map(x => ({ name: str(x?.name, 60), goal: str(x?.goal || x?.notes, 300) })).filter(x => x.name),
+    coverage: { tested: list(b.coverage?.tested, 60, 160), notTested: arr(b.coverage?.notTested, 60).map(x => ({ area: str(typeof x === 'string' ? x : x?.area, 160), reason: str(typeof x === 'string' ? '' : x?.reason, 300) })).filter(x => x.area) },
+    defects: arr(b.defects, 60).map(d => ({ title: str(d?.title, 200), severity: SEV.includes(d?.severity) ? d.severity : 'minor', category: CATS.includes(d?.category) ? d.category : 'ui', location: str(d?.location, 160), steps: list(d?.steps), expected: str(d?.expected, 600), actual: str(d?.actual, 1200), persona: str(d?.persona, 60) })).filter(d => d.title),
+    suggestions: arr(b.suggestions, 60).map(x => ({ type: str(typeof x === 'string' ? 'improvement' : x?.type, 30).toLowerCase() || 'improvement', text: str(typeof x === 'string' ? x : x?.text, 500), priority: ['high', 'medium', 'low'].includes(x?.priority) ? x.priority : undefined })).filter(x => x.text),
+    risks: list(b.risks, 20, 300)
+  };
 }

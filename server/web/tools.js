@@ -2,6 +2,7 @@
 // If neither browser is installed, the official Google Chrome installer is downloaded and run silently (per-user, no admin needed).
 // Tools use the same shape as the device tools so the chat agent, REST and MCP share them.
 import fs from 'fs';
+import { batchTool } from '../agent/batch.js';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -297,5 +298,6 @@ export function createWebTools({ runAdb } = {}) {
     return { ok: true, ...r, ...(await state0(page)) };
   });
   def('web_close', 'Close the browser.', {}, [], async () => { await closeBrowser(); return { ok: true }; });
+  TOOLS.web_batch = batchTool(TOOLS, 'web');
   return TOOLS;
 }
