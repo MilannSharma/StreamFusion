@@ -29,7 +29,8 @@ const PHASE_LABEL: Record<EmulatorPhase, { text: string; color: string }> = {
   installing: { text: 'Installing…', color: '#f59e0b' },
   stopped: { text: 'Powered off', color: '#94a3b8' },
   booting: { text: 'Starting…', color: '#f59e0b' },
-  running: { text: 'Running', color: '#22c55e' }
+  running: { text: 'Running', color: '#22c55e' },
+  saving: { text: 'Saving your apps and data…', color: '#6366f1' }
 };
 
 export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast, onStartMirror, isFullPageView = true }) => {
@@ -115,7 +116,7 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
 
   const label = PHASE_LABEL[phase];
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'emulator', label: 'Emulator', icon: <Smartphone size={15} /> },
+    { id: 'emulator', label: 'Devices', icon: <Smartphone size={15} /> },
     { id: 'agent', label: 'AI Agent', icon: <Bot size={15} /> },
     { id: 'apps', label: `Apps${running ? ` (${apps.length})` : ''}`, icon: <Package size={15} /> },
     { id: 'logs', label: 'Logs', icon: <Terminal size={15} /> },
@@ -124,52 +125,34 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, color: 'var(--text-main, #0f172a)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: isFullPageView ? '18px 24px' : '18px 64px 18px 24px', borderBottom: border }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}><Smartphone size={22} /></div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>Android Testing</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted, #64748b)' }}>Test on the built-in emulator or your own phone, with AI</div>
+      {/* Header + tabs in one row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isFullPageView ? '0 16px' : '0 56px 0 16px', borderBottom: border, minHeight: 48, flexWrap: 'wrap' }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}><Smartphone size={15} /></div>
+        <div style={{ fontSize: 14.5, fontWeight: 800, marginRight: 10, whiteSpace: 'nowrap' }}>Test Apps</div>
+        <div style={{ display: 'flex', gap: 2, alignSelf: 'stretch' }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '0 11px', fontSize: 13, fontWeight: 650, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              color: tab === t.id ? '#4f46e5' : 'var(--text-muted, #64748b)', borderBottom: tab === t.id ? '2.5px solid #4f46e5' : '2.5px solid transparent', marginBottom: -1
+            }}>{t.icon}{t.label}</button>
+          ))}
         </div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, border, background: 'var(--bg-card, #fff)' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: label.color }} />{device ? 'Testing on your phone' : label.text}{(device || running) && <span style={{ fontWeight: 400, color: 'var(--text-muted, #64748b)' }}>· {device || status.serial}</span>}
-        </span>
-        {phase === 'stopped' && !device && <button style={btn(true)} onClick={() => startEmulator(emu)} disabled={emu.busy}><Power size={14} /> Power on</button>}
-        {running && <button style={btn(false, true)} onClick={() => emu.stop()} disabled={emu.busy}><Power size={14} /> Power off</button>}
-        {phase === 'booting' && <button style={btn()} onClick={() => emu.stop()}>Cancel</button>}
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, padding: '0 20px', borderBottom: border }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '11px 14px', fontSize: 13, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer',
-            color: tab === t.id ? '#4f46e5' : 'var(--text-muted, #64748b)', borderBottom: tab === t.id ? '3px solid #4f46e5' : '3px solid transparent'
-          }}>{t.icon}{t.label}</button>
-        ))}
+        <div style={{ flex: 1 }} />
+        {/* Only says what is being tested. Power controls live on the emulator card, not up here. */}
+        {(device || running || phase === 'booting') && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 600, padding: '4px 11px', borderRadius: 999, background: 'rgba(120,120,128,0.1)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: device ? '#22c55e' : label.color }} />{device ? 'Testing on your phone' : phase === 'booting' ? 'Emulator starting…' : 'Testing on emulator'}
+          </span>
+        )}
       </div>
 
       {/* Body */}
-      <div style={{ padding: tab === 'agent' ? 8 : 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: tab === 'agent' ? 0 : 24, overflowY: tab === 'agent' ? 'hidden' : 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {tab === 'emulator' && (
           <div style={{ width: '100%', maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div><div style={{ fontSize: 16, fontWeight: 800 }}>Where do you want to test?</div><div style={sub}>Pick one. The AI chat opens right after, working on that phone.</div></div>
+            <div><div style={{ fontSize: 18, fontWeight: 800 }}>Choose a device to test on</div><div style={sub}>Your own phone gives the most real results. The AI chat opens right after you pick.</div></div>
 
-            <div style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Smartphone size={20} /></div>
-              <div style={{ flex: 1, minWidth: 170 }}>
-                <div style={h3}>Built-in emulator</div>
-                <div style={sub}>Android 14 virtual phone · {label.text}{running ? ' · ' + status.serial : ''}</div>
-              </div>
-              {phase === 'installing'
-                ? <button style={btn(true)} disabled>Installing… {Math.round(status.installProgress || 0)}%</button>
-                : <button style={btn(true)} onClick={() => { setDevice(''); if (phase === 'stopped' || phase === 'not_installed') startEmulator(emu); setTab('agent'); }} disabled={emu.busy}>{running ? <><Bot size={14} /> Test here</> : phase === 'booting' ? <><Bot size={14} /> Open chat</> : <><Power size={14} /> Power on &amp; test</>}</button>}
-              {running && <>
-                {onStartMirror && <button style={btn()} onClick={() => onStartMirror(status.serial)}><MonitorPlay size={14} /> Mirror</button>}
-                <button style={btn()} title="Power off" onClick={() => emu.stop()} disabled={emu.busy}><Power size={14} /></button>
-              </>}
-            </div>
-
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--text-muted, #64748b)', marginTop: 4 }}>Your phones</div>
             {phones.map(d => (
               <div key={d.serial} style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderColor: device === d.serial ? '#4f46e5' : undefined }}>
                 <div style={{ width: 38, height: 38, borderRadius: 10, background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Smartphone size={20} /></div>
@@ -204,7 +187,22 @@ export const EmulatorStudioView: React.FC<EmulatorStudioModalProps> = ({ onToast
                 <button style={{ ...btn(), marginTop: 10 }} onClick={() => { setPhonesLive(false); setPhoneScan(x => x + 1); }}><RefreshCw size={13} /> Check again</button>
               </div>
             )}
-            {phones.length > 0 && <div style={{ ...sub, textAlign: 'center' }}>{phones.filter(d => d.state === 'device').length} phone{phones.length > 1 ? 's' : ''} found. Pick one above.</div>}
+
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--text-muted, #64748b)', marginTop: 8 }}>No phone? Use the built-in one</div>
+            <div style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Smartphone size={20} /></div>
+              <div style={{ flex: 1, minWidth: 170 }}>
+                <div style={h3}>Built-in emulator</div>
+                <div style={{ ...sub, display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: label.color }} />Android 14 virtual phone · {label.text}{running ? ' · ' + status.serial : ''}</div>
+              </div>
+              {phase === 'saving'
+                ? <div style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 12.5, fontWeight: 650, color: '#4f46e5' }}><span style={{ width: 16, height: 16, border: '2.5px solid rgba(99,102,241,0.25)', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'sfspin2 0.8s linear infinite' }} /><style>{'@keyframes sfspin2{to{transform:rotate(360deg)}}'}</style>Saving…</div>
+                : phase === 'installing'
+                ? <button style={btn(true)} disabled>Installing… {Math.round(status.installProgress || 0)}%</button>
+                : <button style={btn(true)} onClick={() => { setDevice(''); if (phase === 'stopped' || phase === 'not_installed') startEmulator(emu); setTab('agent'); }} disabled={emu.busy}>{running ? <><Bot size={14} /> Test here</> : phase === 'booting' ? <><Bot size={14} /> Open chat</> : <><Bot size={14} /> Start &amp; test</>}</button>}
+              {running && onStartMirror && <button style={btn()} onClick={() => onStartMirror(status.serial)}><MonitorPlay size={14} /> Mirror</button>}
+              {(running || phase === 'booting') && <button style={btn()} title={running ? 'Turn the emulator off' : 'Cancel start'} onClick={() => emu.stop()} disabled={emu.busy && running}><Power size={14} /> {running ? 'Turn off' : 'Cancel'}</button>}
+            </div>
 
             {running && !device && (
               <div style={{ ...card, padding: '12px 16px' }}>

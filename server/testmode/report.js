@@ -31,7 +31,7 @@ const SEV_ORDER = ['critical', 'major', 'minor', 'cosmetic'];
 const SEV_HELP = { critical: 'blocks the feature or loses data', major: 'feature works wrongly', minor: 'small problem, workaround exists', cosmetic: 'looks wrong only' };
 const cap = (s) => String(s || '').replace(/^./, c => c.toUpperCase());
 
-const png = (run, rel) => { const p = rel && shotPath(run.id, rel); return p ? fs.readFileSync(p) : null; };
+const png = (run, rel) => { const p = rel && shotPath(run.id, rel); if (!p) return null; try { return fs.readFileSync(p); } catch (e) { return null; } };
 const pngSize = (b) => ({ w: b.readUInt32BE(16), h: b.readUInt32BE(20) });
 const fmtDur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m` : `${Math.floor(s / 60)}m ${s % 60}s`; };
 
@@ -65,13 +65,17 @@ export function analyze(run) {
   };
 }
 
-// What is written for one test case: description, steps performed, issues while performing, expected, result with remark, how to fix
+// One test case is always written in this order: code - title, Description, Steps (as tested), Output, Result, then
+// "How to fix" when it failed or was blocked, or "Suggestions" when it passed. Each entry: [label, text, key]; the screenshot goes after Output.
 export function caseFields(k) {
   const n = (l) => (l || []).map((x, j) => `${j + 1}. ${x}`).join('\n');
-  const result = [k.status === 'pass' ? 'Passed.' : k.status === 'fail' ? 'Failed.' : 'Blocked.', k.actual || k.evidence, k.remark && 'Remark: ' + k.remark].filter(Boolean).join(' ');
+  const failed = k.status !== 'pass';
+  const output = [k.expected && 'Expected: ' + k.expected, 'Actual: ' + (k.actual || k.evidence || 'not recorded'), (k.issues || []).length && 'Issues while testing:\n' + k.issues.map(x => '- ' + x).join('\n')].filter(Boolean).join('\n');
+  const fix = k.suggestion || (failed ? 'No fix was suggested. Check the Actual result above against the Expected result.' : '');
   return [
-    ['Description', k.description || ''], ['Steps performed', n(k.steps)], ['Issues while performing', (k.issues || []).map(x => '• ' + x).join('\n')],
-    ['Expected', k.expected || ''], ['Result', result], ['How to fix', k.suggestion || '']
+    ['Description', k.description || k.title || '', 'desc'], ['Steps', n(k.steps) || 'Steps were not recorded for this case.', 'steps'],
+    ['Output', output, 'output'], ['Result', k.status.toUpperCase() + (k.remark ? ' - ' + k.remark : ''), 'result'],
+    [failed ? 'How to fix' : 'Suggestions', fix, failed ? 'fix' : 'sugg']
   ].filter(f => f[1]);
 }
 const caseMeta = (k) => [k.module && 'Feature: ' + k.module, k.persona && 'User: ' + k.persona, k.category && 'Type: ' + k.category, k.severity && k.status !== 'pass' && 'Severity: ' + k.severity, k.location && 'Where: ' + k.location].filter(Boolean).join('  ·  ');
@@ -150,14 +154,17 @@ export async function buildDocx(run) {
   const NB = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, NOB = { top: NB, bottom: NB, left: NB, right: NB };
   run.checks.forEach((k, i) => {
     const col = COLORS[k.status] || COLORS.info, code = k.id || String(i + 1);
-    kids.push(new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 240 }, keepNext: true, children: [new TextRun(`${code}. ${k.title}  `), new TextRun({ text: k.status.toUpperCase(), color: col })] }));
-    const meta = caseMeta(k); if (meta) kids.push(P(meta, { size: 17, color: '64748B' }));
-    const b = png(run, k.screenshot); let im = null; if (b) { try { im = img(b, 105); } catch (e) {} }
-    const left = im ? [im, P(`${code} · ${k.status.toUpperCase()}`, { bold: true, size: 15, color: col }), ...(k.remark ? [P(k.remark, { size: 14, italics: true, color: '64748B' })] : [])] : [P('')];
-    const right = caseFields(k).flatMap(([label, text]) => [P(label, { bold: true, size: 17, color: '475569' }), ...String(text).split('\n').map(l => P(l, { size: 18 }))]);
-    kids.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: { ...NOB, insideHorizontal: NB, insideVertical: NB }, rows: [new TableRow({ cantSplit: false, children: [
-      new TableCell({ width: { size: im ? 24 : 2, type: WidthType.PERCENTAGE }, borders: NOB, children: left }),
-      new TableCell({ width: { size: im ? 76 : 98, type: WidthType.PERCENTAGE }, borders: NOB, children: right.length ? right : [P('(no details)', { size: 17, color: '94A3B8' })] })] })] }));
+    kids.push(new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 280 }, keepNext: true, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: col, space: 2 } }, children: [new TextRun(`${code} - ${k.title}`)] }));
+    const meta = caseMeta(k); if (meta) kids.push(P(meta, { size: 17, color: '64748B', keepNext: true }));
+    for (const [label, text, key] of caseFields(k)) {
+      kids.push(new Paragraph({ spacing: { before: 100, after: 30 }, keepNext: true, children: [new TextRun({ text: label.toUpperCase(), bold: true, size: 16, color: key === 'fix' ? '1D4ED8' : key === 'sugg' ? '0F766E' : '64748B' })] }));
+      if (key === 'result') kids.push(P(text, { bold: true, size: 22, color: col }));
+      else String(text).split('\n').forEach(l => kids.push(P(l, { size: 19 })));
+      if (key === 'output') {
+        const b = png(run, k.screenshot);
+        if (b) { try { kids.push(img(b, 150)); } catch (e) {} }
+      }
+    }
   });
 
   kids.push(H('8. Coverage: what was tested and what was not', HeadingLevel.HEADING_1));
@@ -251,32 +258,31 @@ export function buildPdf(run) {
 
     h1('7. Details and evidence');
     run.checks.forEach((k, i) => {
-      const col = hex(k.status), code = k.id || String(i + 1), b = png(run, k.screenshot), fields = caseFields(k), meta = caseMeta(k);
-      let im = null; if (b) { try { const { w, h } = pngSize(b); im = { b, w: 108, h: Math.min(230, 108 * h / w) }; } catch (e) {} }
-      const gx = im ? im.w + 14 : 0, tx = L + gx, tw = W - gx;
-      const textH = fields.reduce((t, [l, v]) => t + doc.fontSize(8).heightOfString(l, { width: tw }) + doc.fontSize(9).heightOfString(v, { width: tw }) + 5, 0) + (meta ? doc.fontSize(8).heightOfString(meta, { width: W }) + 4 : 0);
-      const capH = im ? (k.remark ? doc.fontSize(7.5).heightOfString(k.remark, { width: im.w }) + 4 : 0) : 0;
-      const bodyH = Math.max(textH, im ? im.h + capH : 0);
-      room(Math.min(bodyH + 40, 520)); doc.moveDown(0.4);
-      const y0 = doc.y;
-      doc.rect(L, y0, W, 20).fill('#f1f5f9'); doc.rect(L, y0, 3, 20).fill(col);
-      doc.fontSize(10.5).fillColor('#0f172a').text(`${code}. ${k.title}`, L + 10, y0 + 5, { width: W - 90, lineBreak: false, ellipsis: true });
-      doc.fontSize(9).fillColor(col).text(k.status.toUpperCase(), L + W - 76, y0 + 6, { width: 70, align: 'right', lineBreak: false });
-      let y = y0 + 26;
+      const col = hex(k.status), code = k.id || String(i + 1), fields = caseFields(k), meta = caseMeta(k);
+      let im = null; const b = png(run, k.screenshot); if (b) { try { const { w, h } = pngSize(b); const iw = Math.min(150, w); im = { b, w: iw, h: Math.min(260, iw * h / w) }; } catch (e) {} }
+      // keep a case together on one page when it fits; a long one starts at the top of a page
+      const est = 34 + (meta ? 14 : 0) + fields.reduce((t, [l, v]) => t + 12 + doc.fontSize(9.5).heightOfString(v, { width: W }) + 6, 0) + (im ? im.h + 8 : 0);
+      room(Math.min(est, 700)); doc.moveDown(0.5);
+      let y = doc.y;
+      doc.rect(L, y, W, 22).fill('#f1f5f9'); doc.rect(L, y, 4, 22).fill(col);
+      doc.fontSize(11).fillColor('#0f172a').text(`${code} - ${k.title}`, L + 12, y + 6, { width: W - 24, lineBreak: false, ellipsis: true });
+      y += 28;
       if (meta) { doc.fontSize(8).fillColor('#64748b').text(meta, L, y, { width: W }); y = doc.y + 4; }
-      if (im) {
-        try {
-          doc.image(im.b, L, y, { width: im.w, height: im.h });
-          doc.rect(L, y, im.w, 13).fill(col); doc.fontSize(7.5).fillColor('#ffffff').text(`${code} · ${k.status.toUpperCase()}`, L + 4, y + 3, { width: im.w - 8, lineBreak: false });
-          if (k.remark) doc.fontSize(7.5).fillColor('#475569').text(k.remark, L, y + im.h + 3, { width: im.w });
-        } catch (e) { doc.fontSize(8).fillColor('#94a3b8').text('(screenshot could not be drawn)', L, y, { width: im.w }); }
+      for (const [l, v, key] of fields) {
+        const need = 12 + doc.fontSize(9.5).heightOfString(v, { width: W }) + 6;
+        if (y + Math.min(need, 120) > 790) { doc.addPage(); y = doc.y; }
+        doc.fontSize(7.5).fillColor(key === 'fix' ? '#1d4ed8' : key === 'sugg' ? '#0f766e' : '#64748b').text(l.toUpperCase(), L, y, { width: W, characterSpacing: 0.6 });
+        y = doc.y + 1;
+        if (key === 'result') doc.fontSize(11).fillColor(col).text(v, L, y, { width: W });
+        else doc.fontSize(9.5).fillColor('#334155').text(v, L, y, { width: W });
+        y = doc.y + 6;
+        if (key === 'output' && im) {
+          if (y + im.h + 6 > 790) { doc.addPage(); y = doc.y; }
+          try { doc.image(im.b, L, y, { width: im.w, height: im.h }); doc.rect(L, y, im.w, 1.5).fill(col); y += im.h + 8; }
+          catch (e) { doc.fontSize(8).fillColor('#94a3b8').text('(screenshot could not be drawn)', L, y, { width: W }); y = doc.y + 6; }
+        }
       }
-      let ty = y;
-      for (const [l, v] of fields) {
-        doc.fontSize(8).fillColor('#64748b').text(l.toUpperCase(), tx, ty, { width: tw }); ty = doc.y;
-        doc.fontSize(9).fillColor(l === 'How to fix' ? '#1d4ed8' : l === 'Issues while performing' ? '#b45309' : '#334155').text(v, tx, ty, { width: tw }); ty = doc.y + 5;
-      }
-      doc.y = Math.max(ty, im ? y + im.h + capH : 0) + 6;
+      doc.y = y;
     });
 
     h1('8. Coverage: what was tested and what was not');

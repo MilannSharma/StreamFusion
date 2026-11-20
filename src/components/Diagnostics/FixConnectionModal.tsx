@@ -1,346 +1,146 @@
-import React, { useState, useEffect } from 'react';
-import { Wrench, CheckCircle, AlertTriangle, XCircle, RefreshCw, Smartphone, ShieldAlert, Cpu } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Wrench, CheckCircle2, AlertTriangle, XCircle, RefreshCw, MinusCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
-interface DiagnosticReport {
-  timestamp: string;
-  adb: { ok: boolean; version: string; message: string };
-  scrcpy: { ok: boolean; version: string; message: string };
-  server: { ok: boolean; url: string };
-  devices: {
-    total: number;
-    healthy: number;
-    unauthorized: number;
-    offline: number;
-    list: Array<{ serial: string; state: string; isWifi: boolean }>;
+// Step by step troubleshooter: each check really runs on the server one after another (checking, hunting, processing…),
+// every row ends as OK / warning / problem with what is wrong, and a fix button when one exists.
+type Status = 'wait' | 'run' | 'ok' | 'warn' | 'fail' | 'skip';
+interface Fix { id: string; label: string; serial?: string }
+interface Row { id: string; title: string; doing: string; status: Status; detail: string; fixes: Fix[] }
+
+const STEPS: { id: string; title: string; doing: string }[] = [
+  { id: 'adb', title: 'ADB (the phone link)', doing: 'Checking ADB…' },
+  { id: 'usb', title: 'USB drivers', doing: 'Hunting for USB driver problems…' },
+  { id: 'devices', title: 'Your phone', doing: 'Looking for your phone…' },
+  { id: 'network', title: 'Wi-Fi networks', doing: 'Comparing the PC and phone networks…' },
+  { id: 'mdns', title: 'Network discovery', doing: 'Testing network discovery…' },
+  { id: 'engine', title: 'Mirror engine', doing: 'Checking the mirror engine…' },
+  { id: 'phone', title: 'Phone health', doing: 'Checking the phone…' }
+];
+const fresh = (): Row[] => STEPS.map(s => ({ ...s, status: 'wait', detail: '', fixes: [] }));
+const COLOR: Record<string, string> = { ok: '#16a34a', warn: '#d97706', fail: '#dc2626', skip: '#94a3b8', run: '#4f46e5', wait: '#94a3b8' };
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const INK = 'var(--text-main, #0f172a)', SUB = 'var(--text-muted, #64748b)', LINE = 'rgba(120,120,128,0.2)';
+
+interface Props { isOpen: boolean; onClose: () => void; onRefreshDevices: () => void; onToast: (msg: string, icon?: string) => void; onOpenPair?: () => void }
+
+export const FixConnectionModal: React.FC<Props> = ({ isOpen, onClose, onRefreshDevices, onToast, onOpenPair }) => {
+  const [rows, setRows] = useState<Row[]>(fresh);
+  const [phase, setPhase] = useState<'idle' | 'checking' | 'processing' | 'done' | 'fixing'>('idle');
+  const [busyFix, setBusyFix] = useState('');
+  const [tips, setTips] = useState(false);
+  const runId = useRef(0);
+
+  const patch = (id: string, p: Partial<Row>) => setRows(rs => rs.map(r => (r.id === id ? { ...r, ...p } : r)));
+
+  const runChecks = async () => {
+    const my = ++runId.current;
+    setRows(fresh()); setPhase('checking');
+    for (const s of STEPS) {
+      if (runId.current !== my) return;
+      patch(s.id, { status: 'run' });
+      const t0 = Date.now();
+      let res: any = { status: 'warn', detail: 'The check did not answer.' };
+      try { res = await (await fetch('/api/diagnostics/step/' + s.id)).json(); } catch (e: any) { res = { status: 'fail', detail: 'StreamFusion\'s background service did not answer (' + e.message + ').' }; }
+      const left = 550 - (Date.now() - t0); if (left > 0) await sleep(left); // each step stays visible long enough to read
+      if (runId.current !== my) return;
+      patch(s.id, { status: (['ok', 'warn', 'fail', 'skip'].includes(res.status) ? res.status : 'warn') as Status, detail: res.detail || '', fixes: res.fixes || [] });
+    }
+    setPhase('processing'); await sleep(600);
+    if (runId.current === my) setPhase('done');
   };
-  issues: string[];
-  suggestedFixes: Array<{
-    action: string;
-    serial?: string;
-    label: string;
-    instructions?: string;
-  }>;
-}
 
-interface FixConnectionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onRefreshDevices: () => void;
-  onToast: (msg: string, icon?: string) => void;
-}
+  useEffect(() => { if (isOpen) runChecks(); else { runId.current++; setPhase('idle'); } }, [isOpen]);
 
-export const FixConnectionModal: React.FC<FixConnectionModalProps> = ({
-  isOpen,
-  onClose,
-  onRefreshDevices,
-  onToast
-}) => {
-  const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<DiagnosticReport | null>(null);
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-
-  const runDiagnostics = async () => {
-    setLoading(true);
+  const applyFix = async (f: Fix): Promise<boolean> => {
+    if (f.id === 'pair') { onOpenPair?.(); return true; }
+    const key = f.id + (f.serial || ''); setBusyFix(key);
     try {
-      const res = await fetch('http://127.0.0.1:3001/api/diagnostics/check');
-      const data = await res.json();
-      if (data.success) {
-        setReport(data.report);
-      }
-    } catch (e: any) {
-      onToast('Diagnostics failed: ' + e.message, '⚠️');
-    } finally {
-      setLoading(false);
-    }
+      const j = await (await fetch('/api/diagnostics/fix/' + f.id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serial: f.serial }) })).json();
+      if (!j.success && j.message) onToast(j.message, '⚠️');
+      return !!j.success;
+    } catch (e: any) { onToast('Fix failed: ' + e.message, '❌'); return false; }
+    finally { setBusyFix(''); }
+  };
+  const fixOne = async (f: Fix) => { const ok = await applyFix(f); if (f.id !== 'pair' && f.id !== 'open_devmgr') { onRefreshDevices(); runChecks(); } else if (!ok) onToast('Could not do that', '⚠️'); };
+
+  const allFixes = Array.from(new Map(rows.flatMap(r => r.fixes).filter(f => f.id !== 'pair' && f.id !== 'open_devmgr').map(f => [f.id + (f.serial || ''), f])).values());
+  const fixAll = async () => {
+    setPhase('fixing');
+    for (const f of allFixes) await applyFix(f);
+    onRefreshDevices(); await sleep(800); await runChecks();
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      runDiagnostics();
-    }
-  }, [isOpen]);
-
-  const handleRestartAdb = async () => {
-    setActionInProgress('restarting_adb');
-    try {
-      const res = await fetch('http://127.0.0.1:3001/api/adb/restart', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        onToast('ADB Server restarted successfully!', '🔄');
-        await runDiagnostics();
-        onRefreshDevices();
-      } else {
-        onToast('Failed to restart ADB', '❌');
-      }
-    } catch (e: any) {
-      onToast('Error: ' + e.message, '❌');
-    } finally {
-      setActionInProgress(null);
-    }
-  };
+  const problems = rows.filter(r => r.status === 'fail').length, warns = rows.filter(r => r.status === 'warn').length;
+  const running = rows.find(r => r.status === 'run');
+  const headline = phase === 'fixing' ? 'Applying fixes…' : phase === 'processing' ? 'Processing the results…' : phase === 'checking' ? (running?.doing || 'Starting…') : '';
+  const busy = phase === 'checking' || phase === 'processing' || phase === 'fixing';
+  const done = rows.filter(r => r.status !== 'wait' && r.status !== 'run').length;
 
   if (!isOpen) return null;
+  const icon = (s: Status) => s === 'run' ? <span className="fx-spin" style={{ width: 18, height: 18, border: '2.5px solid rgba(79,70,229,0.25)', borderTopColor: '#4f46e5', borderRadius: '50%', display: 'inline-block' }} />
+    : s === 'ok' ? <CheckCircle2 className="fx-pop" size={19} color={COLOR.ok} /> : s === 'warn' ? <AlertTriangle className="fx-pop" size={19} color={COLOR.warn} /> : s === 'fail' ? <XCircle className="fx-pop" size={19} color={COLOR.fail} />
+    : s === 'skip' ? <MinusCircle size={19} color={COLOR.skip} /> : <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'rgba(120,120,128,0.3)', display: 'inline-block', margin: '0 5px' }} />;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        background: 'rgba(15, 23, 42, 0.75)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20
-      }}
-      onClick={onClose}
-    >
-      <div
-        className="glass-panel"
-        style={{
-          width: '100%',
-          maxWidth: 620,
-          background: 'var(--glass-bg)',
-          borderRadius: 16,
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          maxHeight: '90vh'
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: '20px 24px',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'linear-gradient(135deg, #1e293b, #0f172a)',
-            color: '#ffffff'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                background: 'rgba(37, 99, 235, 0.2)',
-                border: '1px solid rgba(59, 130, 246, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <Wrench size={20} color="#60a5fa" />
-            </div>
-            <div>
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: '#f8fafc' }}>
-                Fix My Connection Assistant
-              </h2>
-              <p style={{ fontSize: 12, margin: 0, color: '#94a3b8' }}>
-                Automated self-healing diagnostics & driver troubleshooting
-              </p>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <style>{`@keyframes fxSpin{to{transform:rotate(360deg)}}@keyframes fxPop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}@keyframes fxPulse{0%{transform:scale(.8);opacity:.55}100%{transform:scale(2.1);opacity:0}}@keyframes fxIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}.fx-spin{animation:fxSpin .8s linear infinite}.fx-pop{animation:fxPop .35s ease-out}`}</style>
+      <div className="glass-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '92vh', borderRadius: 18, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)' }}>
+        {/* header with a radar while it works */}
+        <div style={{ padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 14, background: 'linear-gradient(135deg,#1e293b,#0f172a)', color: '#fff' }}>
+          <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
+            {busy && [0, 0.6, 1.2].map(d => <span key={d} style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(96,165,250,0.7)', animation: `fxPulse 1.8s ease-out ${d}s infinite` }} />)}
+            <div style={{ position: 'absolute', inset: 4, borderRadius: 12, background: 'rgba(37,99,235,0.25)', border: '1px solid rgba(59,130,246,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Wrench size={19} color="#60a5fa" /></div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>Fix my connection</div>
+            <div key={headline || phase} style={{ fontSize: 12.5, color: '#94a3b8', animation: 'fxIn .25s ease-out', minHeight: 18 }}>
+              {busy ? headline : problems ? `${problems} problem${problems > 1 ? 's' : ''} found` : warns ? `${warns} thing${warns > 1 ? 's' : ''} to look at` : phase === 'done' ? 'Everything looks good' : ''}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              fontSize: 20,
-              padding: 4
-            }}
-          >
-            ✕
-          </button>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 20 }}>✕</button>
         </div>
+        {/* progress */}
+        <div style={{ height: 3, background: 'rgba(120,120,128,0.15)' }}><div style={{ height: '100%', width: `${Math.round(done / STEPS.length * 100)}%`, background: problems ? COLOR.fail : warns ? COLOR.warn : '#4f46e5', transition: 'width .4s ease' }} /></div>
 
-        {/* Body */}
-        <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <RefreshCw className="spin" size={32} color="#2563eb" style={{ margin: '0 auto 12px' }} />
-              <p style={{ fontSize: 14, color: '#64748b', fontWeight: 600 }}>Analyzing ADB, network ports, & USB drivers...</p>
-            </div>
-          ) : report ? (
-            <>
-              {/* Status Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {/* ADB Status */}
-                <div
-                  style={{
-                    padding: 14,
-                    borderRadius: 10,
-                    border: '1px solid var(--border-subtle)',
-                    background: report.adb.ok ? '#f0fdf4' : '#fef2f2',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10
-                  }}
-                >
-                  {report.adb.ok ? <CheckCircle size={18} color="#16a34a" /> : <XCircle size={18} color="#dc2626" />}
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Google ADB Platform</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>
-                      {report.adb.ok ? `Version ${report.adb.version} Active` : 'ADB Service Offline'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Scrcpy Engine */}
-                <div
-                  style={{
-                    padding: 14,
-                    borderRadius: 10,
-                    border: '1px solid var(--border-subtle)',
-                    background: report.scrcpy.ok ? '#f0fdf4' : '#fef2f2',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10
-                  }}
-                >
-                  <Cpu size={18} color="#2563eb" />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>scrcpy v5.0.1 Engine</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>60 FPS Ultra-low latency</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Devices Detection State */}
-              <div
-                style={{
-                  padding: 16,
-                  borderRadius: 10,
-                  border: '1px solid var(--border-subtle)',
-                  background: 'var(--glass-soft)'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Smartphone size={16} color="#2563eb" />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Connected Devices:</span>
-                    <span className="badge badge-cyan" style={{ fontSize: 11 }}>{report.devices.total} Detected</span>
-                  </div>
-                  <button
-                    onClick={runDiagnostics}
-                    className="btn-secondary"
-                    style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                  >
-                    <RefreshCw size={11} /> Re-scan
-                  </button>
-                </div>
-
-                {report.devices.list.length === 0 ? (
-                  <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>
-                    No USB or Wi-Fi devices currently detected.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {report.devices.list.map((d, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 12px',
-                          background: 'var(--glass-bg)',
-                          borderRadius: 8,
-                          border: '1px solid var(--border-subtle)'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', fontFamily: 'monospace' }}>
-                            {d.serial}
-                          </span>
-                          <span style={{ fontSize: 11, color: '#64748b' }}>({d.isWifi ? 'Wi-Fi' : 'USB'})</span>
-                        </div>
-                        <span
-                          className={`badge ${d.state === 'device' ? 'badge-green' : d.state === 'unauthorized' ? 'badge-amber' : 'badge-red'}`}
-                          style={{ fontSize: 11 }}
-                        >
-                          {d.state.toUpperCase()}
-                        </span>
-                      </div>
-                    ))}
+        <div style={{ padding: '6px 20px 14px', overflowY: 'auto', flex: 1 }}>
+          {rows.map(r => (
+            <div key={r.id} style={{ display: 'flex', gap: 12, padding: '11px 0', borderBottom: `1px solid ${LINE}`, opacity: r.status === 'wait' ? 0.45 : 1, transition: 'opacity .3s' }}>
+              <div style={{ width: 22, display: 'flex', justifyContent: 'center', paddingTop: 1 }}>{icon(r.status)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 650, color: INK }}>{r.title}{r.status === 'run' && <span style={{ fontWeight: 400, color: SUB }}> · {r.doing}</span>}</div>
+                {r.detail && <div key={r.detail} style={{ fontSize: 12.5, lineHeight: 1.5, color: r.status === 'ok' ? SUB : COLOR[r.status], marginTop: 2, animation: 'fxIn .3s ease-out' }}>{r.detail}</div>}
+                {r.fixes.length > 0 && !busy && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                    {r.fixes.map(f => <button key={f.id + (f.serial || '')} className="btn-primary" disabled={!!busyFix} onClick={() => fixOne(f)} style={{ padding: '5px 12px', fontSize: 12 }}>{busyFix === f.id + (f.serial || '') ? 'Working…' : f.label}</button>)}
                   </div>
                 )}
               </div>
+            </div>
+          ))}
 
-              {/* Issues & Suggested Fixes */}
-              {report.issues.length > 0 && (
-                <div
-                  style={{
-                    padding: 16,
-                    borderRadius: 10,
-                    background: '#fffbeb',
-                    border: '1px solid #fef3c7'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: '#b45309', fontWeight: 700, fontSize: 13 }}>
-                    <AlertTriangle size={16} />
-                    <span>Diagnostics Findings & Recommendations</span>
-                  </div>
-                  <ul style={{ margin: '0 0 14px 18px', padding: 0, fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
-                    {report.issues.map((issue, idx) => (
-                      <li key={idx}>{issue}</li>
-                    ))}
-                  </ul>
+          {phase === 'done' && (
+            <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 12, animation: 'fxIn .3s ease-out', background: problems ? 'rgba(220,38,38,0.1)' : warns ? 'rgba(217,119,6,0.1)' : 'rgba(22,163,74,0.1)', color: problems ? COLOR.fail : warns ? COLOR.warn : COLOR.ok, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ flex: 1, minWidth: 180 }}>{problems ? `${problems} problem${problems > 1 ? 's' : ''}${warns ? ` and ${warns} warning${warns > 1 ? 's' : ''}` : ''}: see the red rows.` : warns ? 'Nothing is broken, but check the yellow rows.' : 'No problems found. If something still fails, tell me what you see.'}</span>
+              {allFixes.length > 1 && <button className="btn-primary" onClick={fixAll} style={{ padding: '6px 14px', fontSize: 12.5 }}>Fix all ({allFixes.length})</button>}
+            </div>
+          )}
 
-                  {/* Fix Buttons */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    <button
-                      onClick={handleRestartAdb}
-                      disabled={actionInProgress === 'restarting_adb'}
-                      className="btn-primary"
-                      style={{ padding: '7px 14px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    >
-                      <RefreshCw size={13} className={actionInProgress === 'restarting_adb' ? 'spin' : ''} />
-                      <span>Restart ADB Server (1-Click Fix)</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Step-by-Step Mobile Setup Guide */}
-              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Quick Phone Troubleshooting (All Brands):
-                </div>
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-                  1. <strong>Unlock phone</strong> and tap <strong>Allow</strong> on the "Allow USB debugging?" popup.<br />
-                  2. If popup didn't appear: unplug USB cable, wait 2 seconds, plug into a <strong>different USB port</strong> (prefer USB 3.0 on back of PC).<br />
-                  3. In Phone Settings ➔ <strong>Developer Options</strong>: ensure <strong>USB Debugging</strong> is enabled.<br />
-                  4. For <strong>Xiaomi / Redmi / POCO</strong>: also enable "USB debugging (Security settings)".<br />
-                  5. For <strong>Vivo / iQOO / Realme</strong>: enable "OTG" in Settings if required.
-                </div>
-              </div>
-            </>
-          ) : null}
+          <button onClick={() => setTips(t => !t)} style={{ marginTop: 14, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: SUB, textTransform: 'uppercase', letterSpacing: 0.4, fontFamily: 'inherit', padding: 0 }}>
+            {tips ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Phone checklist (all brands)
+          </button>
+          {tips && <div style={{ fontSize: 12.5, color: SUB, lineHeight: 1.7, marginTop: 6 }}>
+            1. Unlock the phone and tap <b>Allow</b> on the "Allow USB debugging?" box.<br />
+            2. No box? Unplug, wait 2 seconds, plug into a <b>different USB port</b> (a back port is best).<br />
+            3. <b>Developer options → USB debugging</b> must be on, and USB mode should be <b>File transfer</b>.<br />
+            4. <b>Xiaomi / Redmi / POCO:</b> also turn on "USB debugging (Security settings)".<br />
+            5. <b>Vivo / iQOO / Realme:</b> turn on OTG if the phone asks for it.<br />
+            6. Wi-Fi: phone and PC must be on the <b>same network</b>, not a guest Wi-Fi.
+          </div>}
         </div>
 
-        {/* Footer */}
-        <div
-          style={{
-            padding: '14px 24px',
-            borderTop: '1px solid var(--border-subtle)',
-            background: 'var(--glass-soft)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 10
-          }}
-        >
-          <button onClick={onClose} className="btn-secondary" style={{ padding: '8px 18px' }}>
-            Close
-          </button>
+        <div style={{ padding: '12px 20px', borderTop: `1px solid ${LINE}`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={runChecks} disabled={busy} className="btn-secondary" style={{ padding: '7px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}><RefreshCw size={13} className={busy ? 'fx-spin' : ''} /> Check again</button>
+          <button onClick={onClose} className="btn-secondary" style={{ padding: '7px 18px' }}>Close</button>
         </div>
       </div>
     </div>

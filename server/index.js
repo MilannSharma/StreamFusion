@@ -1,3 +1,4 @@
+import { createWifiPairRouter, mdnsServices, connectPortFor } from './device/wifipair.js';
 import express from 'express';
 import * as recorder from './automation/recorder.js';
 import { createAutomationRouter } from './automation/router.js';
@@ -96,7 +97,11 @@ const savedDevicesFile = path.join(dataDir, 'saved_devices.json');
 
 // Mount centralized routers
 app.use('/api/settings', createSettingsRouter(dataDir));
-app.use('/api/diagnostics', createDiagnosticsRouter({ runAdb, adbExe, scrcpyExe, scrcpyBin }));
+app.use('/api/diagnostics', createDiagnosticsRouter({
+  runAdb, adbExe, scrcpyExe, scrcpyBin,
+  getSaved: () => getSavedDevices(),
+  reconnectSaved: async () => { const l = await listDevices(); lastAutoConnectTime = 0; await autoConnectSavedDevices(l.devices || []); }
+}));
 app.use('/api/notifications', createNotificationsRouter({ runAdb, dataDir }).startWatcher());
 app.use('/api/emulator', createEmulatorRouter({ runAdb, rootDir }));
 // One failed adb/scrcpy/child call must never take the whole server (and the AI session with it) down
@@ -131,35 +136,71 @@ function getSavedDevices() {
   try {
     if (fs.existsSync(savedDevicesFile)) {
       const all = JSON.parse(fs.readFileSync(savedDevicesFile, 'utf8'));
-      const clean = all.filter(d => !isEmulatorAddress(d.serial) && !isEmulatorAddress(d.ip));
-      if (clean.length !== all.length) fs.writeFileSync(savedDevicesFile, JSON.stringify(clean, null, 2), 'utf8'); // purge old emulator entries
+      const filtered = all.filter(d => !isEmulatorAddress(d.serial) && !isEmulatorAddress(d.ip));
+      const clean = dedupeSaved(filtered);
+      if (JSON.stringify(clean) !== JSON.stringify(all)) fs.writeFileSync(savedDevicesFile, JSON.stringify(clean, null, 2), 'utf8'); // purge emulator entries and old per-IP duplicates
       return clean;
     }
   } catch (e) {}
   return [];
 }
 
+const nicknamesFile = path.join(dataDir, 'nicknames.json');
+function readNicknames() { try { return JSON.parse(fs.readFileSync(nicknamesFile, 'utf8')) || {}; } catch (e) { return {}; } }
+const writeSaved = (list) => { try { fs.writeFileSync(savedDevicesFile, JSON.stringify(list, null, 2), 'utf8'); } catch (e) {} };
+const entryIps = (e) => (Array.isArray(e.ips) && e.ips.length ? e.ips : (e.ip ? [{ ip: e.ip, port: e.port || 5555, at: e.lastSeen }] : []));
+const newestFirst = (a, b) => String(b.at || '').localeCompare(String(a.at || ''));
+
+// One phone = one saved entry (found by its hardware id), with every address it has been seen on.
+// Old entries made before hardware ids existed (one per IP) are folded into the phone with the same model when it next connects.
 function saveDevice(device) {
   if (!device || !device.ipAddress || device.isEmulator || isEmulatorAddress(device.ipAddress) || isEmulatorAddress(device.serial)) return;
   try {
-    const list = getSavedDevices();
+    let list = getSavedDevices();
     const port = device.isWifi && device.serial.includes(':') ? parseInt(device.serial.split(':')[1], 10) : 5555;
-    const existingIdx = list.findIndex(d => d.ip === device.ipAddress);
+    const now = new Date().toISOString();
+    const hwId = device.hwId || '';
+    const model = device.model || 'Android Phone';
+    let idx = hwId ? list.findIndex(d => d.hwId === hwId) : -1;
+    if (idx < 0) idx = list.findIndex(d => entryIps(d).some(i => i.ip === device.ipAddress));
+    const base = idx >= 0 ? list[idx] : { ips: [] };
+    // fold in old per-IP duplicates of this same phone (no hardware id yet, same model)
+    const dupes = hwId ? list.filter((d, i) => i !== idx && !d.hwId && d.model === model) : [];
+    let ips = [...entryIps(base)];
+    for (const d of dupes) for (const x of entryIps(d)) if (!ips.some(y => y.ip === x.ip)) ips.push(x);
+    const cur = ips.find(i => i.ip === device.ipAddress);
+    if (cur) { cur.port = port; cur.at = now; } else ips.push({ ip: device.ipAddress, port, at: now });
+    ips = ips.sort(newestFirst).slice(0, 6);
     const item = {
+      ...base,
+      hwId: hwId || base.hwId || '',
       serial: `${device.ipAddress}:${port}`,
       ip: device.ipAddress,
       port,
-      model: device.model || 'Android Phone',
-      displayName: device.displayName || device.model || 'Android Phone',
-      lastSeen: new Date().toISOString()
+      ips,
+      model,
+      displayName: device.displayName || model,
+      lastSeen: now
     };
-    if (existingIdx >= 0) {
-      list[existingIdx] = { ...list[existingIdx], ...item };
-    } else {
-      list.push(item);
-    }
-    fs.writeFileSync(savedDevicesFile, JSON.stringify(list, null, 2), 'utf8');
+    list = list.filter((d, i) => i !== idx && !dupes.includes(d));
+    list.push(item);
+    writeSaved(list);
   } catch (e) {}
+}
+
+// Collapse duplicates already on disk (same hardware id, or several same-model entries made by IP changes) when the list is read.
+function dedupeSaved(list) {
+  const out = [];
+  for (const d of list) {
+    const j = out.findIndex(o => (d.hwId && o.hwId === d.hwId) || (!d.hwId && !o.hwId && o.model === d.model));
+    if (j < 0) { out.push({ ...d, ips: entryIps(d) }); continue; }
+    const o = out[j];
+    const ips = [...o.ips];
+    for (const x of entryIps(d)) if (!ips.some(y => y.ip === x.ip)) ips.push(x);
+    const newer = String(d.lastSeen || '') > String(o.lastSeen || '');
+    out[j] = { ...(newer ? { ...o, ...d } : { ...d, ...o }), hwId: o.hwId || d.hwId || '', ips: ips.sort(newestFirst).slice(0, 6) };
+  }
+  return out;
 }
 
 let lastAutoConnectTime = 0;
@@ -168,11 +209,14 @@ async function autoConnectSavedDevices(activeDevices) {
   if (now - lastAutoConnectTime < 15000) return; // At most once every 15s
   lastAutoConnectTime = now;
 
-  const savedList = getSavedDevices();
-  for (const s of savedList) {
-    const isAlreadyConnected = activeDevices.some(d => d.serial === s.serial || d.ipAddress === s.ip);
-    if (!isAlreadyConnected && s.ip) {
-      runAdb(['connect', `${s.ip}:${s.port || 5555}`], 3000).catch(() => {});
+  const live = await mdnsServices(runAdb).catch(() => []);
+  for (const s of getSavedDevices()) {
+    const addrs = entryIps(s).map(a => ({ ...a, port: live.find(x => x.kind === 'connect' && x.ip === a.ip)?.port || a.port }));
+    const isAlreadyConnected = activeDevices.some(d => (s.hwId && d.hwId === s.hwId) || addrs.some(a => d.serial === `${a.ip}:${a.port || 5555}` || d.ipAddress === a.ip));
+    if (isAlreadyConnected) continue;
+    for (const a of addrs.slice(0, 3)) { // most recent addresses first; stop at the first that answers
+      const r = await runAdb(['connect', `${a.ip}:${a.port || 5555}`], 3000);
+      if (r.success && /connected to/i.test(r.output) && !/cannot|fail/i.test(r.output)) break;
     }
   }
 }
@@ -275,14 +319,15 @@ async function listDevices() {
     if (usedCache) Object.assign(dev, cachedInfo.dev);
     else if (state === 'device') {
       try {
-        const [devNameRes, btNameRes, marketRes, modRes, verRes, batRes, wmRes] = await Promise.all([
+        const [devNameRes, btNameRes, marketRes, modRes, verRes, batRes, wmRes, idRes] = await Promise.all([
           runAdb(['-s', serial, 'shell', 'settings', 'get', 'global', 'device_name'], 2000),
           runAdb(['-s', serial, 'shell', 'settings', 'get', 'secure', 'bluetooth_name'], 2000),
           runAdb(['-s', serial, 'shell', 'getprop', 'ro.product.marketname'], 2000),
           runAdb(['-s', serial, 'shell', 'getprop', 'ro.product.model'], 2000),
           runAdb(['-s', serial, 'shell', 'getprop', 'ro.build.version.release'], 2000),
           runAdb(['-s', serial, 'shell', 'dumpsys', 'battery'], 2000),
-          runAdb(['-s', serial, 'shell', 'wm', 'size'], 2000)
+          runAdb(['-s', serial, 'shell', 'wm', 'size'], 2000),
+          runAdb(['-s', serial, 'shell', 'settings', 'get', 'secure', 'android_id'], 2000)
         ]);
 
         const cleanVal = (res) => {
@@ -292,6 +337,7 @@ async function listDevices() {
           return out;
         };
 
+        dev.hwId = cleanVal(idRes);
         const ownerName = cleanVal(devNameRes);
         const btName = cleanVal(btNameRes);
         const market = cleanVal(marketRes);
@@ -339,6 +385,12 @@ async function listDevices() {
     devices.push(dev);
   }
 
+  // adb may list a paired phone twice: as ip:port and as adb-XXXX._adb-tls-connect._tcp. Keep the ip:port one.
+  for (let i = devices.length - 1; i >= 0; i--) {
+    const d = devices[i];
+    if (/_adb-tls-connect/.test(d.serial) && devices.some(o => o !== d && !/_adb-tls-connect/.test(o.serial) && ((d.hwId && o.hwId === d.hwId) || (d.ipAddress && o.ipAddress === d.ipAddress)))) devices.splice(i, 1);
+  }
+
   // Auto-save any active Wi-Fi device
   for (const d of devices) {
     if (d.isWifi || d.ipAddress) {
@@ -350,27 +402,47 @@ async function listDevices() {
   autoConnectSavedDevices(devices);
 
   // Mark saved devices as online/offline
+  const nicks = readNicknames();
+  for (const d of devices) if (d.hwId && nicks[d.hwId]) d.nickname = nicks[d.hwId];
   const savedList = getSavedDevices().map(s => ({
     ...s,
-    online: devices.some(d => d.serial === s.serial || d.ipAddress === s.ip)
+    nickname: (s.hwId && nicks[s.hwId]) || '',
+    online: devices.some(d => (s.hwId && d.hwId === s.hwId) || entryIps(s).some(a => d.serial === `${a.ip}:${a.port}` || d.ipAddress === a.ip))
   }));
 
   lastGoodDevices = { devices, savedDevices: savedList };
   return { success: true, devices, savedDevices: savedList };
 }
 
+// Background keep-alive: the server itself re-connects saved Wi-Fi phones and refreshes the device list every 20 s, so a phone is
+// already connected (and its notifications already flowing) when the window is closed to the tray or has not been opened yet.
+const keepPhonesConnected = () => { devicesInflight ||= listDevices().finally(() => { devicesInflight = null; }); return devicesInflight.catch(() => {}); };
+setTimeout(keepPhonesConnected, 3000);
+setInterval(keepPhonesConnected, 20000);
+
 // List saved Wi-Fi devices (same data as `savedDevices` in /api/devices)
 app.get('/api/wifi/saved', (req, res) => res.json({ success: true, devices: getSavedDevices() }));
 
 // Delete a saved device
 app.delete('/api/wifi/saved', (req, res) => {
-  const { ip } = req.body;
-  if (!ip) return res.json({ success: false, message: 'No IP provided' });
-  const list = getSavedDevices().filter(d => d.ip !== ip);
-  try {
-    fs.writeFileSync(savedDevicesFile, JSON.stringify(list, null, 2), 'utf8');
-  } catch (e) {}
+  const { ip, hwId } = req.body || {};
+  if (!ip && !hwId) return res.json({ success: false, message: 'No IP provided' });
+  const list = getSavedDevices().filter(d => !((hwId && d.hwId === hwId) || (ip && entryIps(d).some(a => a.ip === ip))));
+  writeSaved(list);
   res.json({ success: true, message: 'Saved device removed' });
+});
+
+// Nickname for a phone, kept by hardware id so it survives IP / network changes and shows everywhere
+app.put('/api/wifi/nickname', (req, res) => {
+  const { hwId, serial, nickname } = req.body || {};
+  let id = hwId;
+  if (!id && serial) { const s = getSavedDevices().find(d => d.serial === serial); id = s && s.hwId; }
+  if (!id) return res.json({ success: false, message: 'Phone id not known yet' });
+  const all = readNicknames();
+  const name = String(nickname || '').trim().slice(0, 40);
+  if (name) all[id] = name; else delete all[id];
+  try { fs.writeFileSync(nicknamesFile, JSON.stringify(all, null, 2), 'utf8'); } catch (e) {}
+  res.json({ success: true, nickname: name });
 });
 
 // 2. POST /api/mirror/start
@@ -735,13 +807,20 @@ app.post('/api/wifi/switch', handleWifiSwitch);
 app.post('/api/wifi/enable', handleWifiSwitch);
 
 
+// Cable-free pairing (QR code / pairing code) for Android 11+ phones
+app.use('/api/wifi', createWifiPairRouter({ runAdb, onConnected: () => { keepPhonesConnected(); } }));
+
 // 6. POST /api/wifi/connect
 app.post('/api/wifi/connect', async (req, res) => {
   const { ip, port = 5555 } = req.body;
   if (!ip) return res.json({ success: false, message: 'IP is required' });
 
   const target = ip.includes(':') ? ip : `${ip}:${port}`;
-  const result = await runAdb(['connect', target], 8000);
+  let result = await runAdb(['connect', target], 8000);
+  if (!/connected to/i.test(result.output) || /unable|cannot|fail/i.test(result.output)) { // phones paired with Wireless debugging change port every time: ask the network for the current one
+    const live = await connectPortFor(runAdb, target.split(':')[0]);
+    if (live) result = await runAdb(['connect', `${target.split(':')[0]}:${live}`], 8000);
+  }
 
   if (result.output.toLowerCase().includes('connected to') && !result.output.toLowerCase().includes('unable')) {
     res.json({ success: true, message: `Connected to ${target} via Wi-Fi` });

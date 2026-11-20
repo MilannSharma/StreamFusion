@@ -51,8 +51,8 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
         <p style={muted}>I will show you around in about a minute. StreamFusion does three things:</p>
         <ul style={{ ...muted, paddingLeft: 20, margin: '8px 0 0' }}>
           <li><b>Screen Mirror</b>: show and control your real Android phone on this PC.</li>
-          <li><b>Android Emulator</b>: a virtual phone you can test apps on, with an AI agent.</li>
-          <li><b>Web Testing</b>: a real browser the AI can drive to test websites, with PDF reports.</li>
+          <li><b>Test Apps</b>: a virtual phone you can test apps on, with an AI agent.</li>
+          <li><b>Test Websites</b>: a real browser the AI can drive to test websites, with PDF reports.</li>
         </ul>
       </>)
     },
@@ -85,7 +85,7 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
     {
       mood: 'working', title: 'Check the web browser',
       body: (<>
-        <p style={muted}>Web Testing drives your own Google Chrome (or Edge) in its own window, so you can log in yourself. If neither is installed, StreamFusion downloads Chrome for you.</p>
+        <p style={muted}>Test Websites drives your own Google Chrome (or Edge) in its own window, so you can log in yourself. If neither is installed, StreamFusion downloads Chrome for you.</p>
         <div style={{ margin: '10px 0' }}>
           {!web ? <div style={stateBox(false)}><Loader2 size={14} /> Checking…</div>
             : web.installed ? <div style={stateBox(true)}><Check size={14} /> {web.browser} found, nothing to install</div>
@@ -108,7 +108,7 @@ export const FirstRunTutorial: React.FC<Props> = ({ onClose, onGoto }) => {
       mood: 'proud', title: 'You are all set',
       body: (<>
         <ul style={{ ...muted, paddingLeft: 20, margin: 0 }}>
-          <li><b>Android Emulator</b> page: install it once, then power on and let the AI test your app.</li>
+          <li><b>Test Apps</b> page: install it once, then power on and let the AI test your app.</li>
           <li><b>User Guide</b>: step-by-step help for everything, including writing good test cases.</li>
           <li><b>Settings</b>: AI key, emulator RAM, web options and light or dark theme.</li>
         </ul>

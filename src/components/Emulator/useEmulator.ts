@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type EmulatorPhase = 'not_installed' | 'installing' | 'stopped' | 'booting' | 'running';
+export type EmulatorPhase = 'not_installed' | 'installing' | 'stopped' | 'booting' | 'running' | 'saving';
 
 export interface EmulatorStatus {
   installed: boolean;
@@ -11,6 +11,7 @@ export interface EmulatorStatus {
   isRunning: boolean;
   booting: boolean;
   booted: boolean;
+  saving: boolean;
   headless: boolean;
   bootMode: 'quick' | 'cold';
   fastBoot: boolean;
@@ -20,10 +21,11 @@ export interface EmulatorStatus {
 
 const EMPTY: EmulatorStatus = {
   installed: false, isInstalling: false, installProgress: 0, installStage: '', installError: null,
-  isRunning: false, booting: false, booted: false, headless: false, bootMode: 'cold', fastBoot: false, adbConnected: false, serial: 'emulator-5554'
+  isRunning: false, booting: false, booted: false, saving: false, headless: false, bootMode: 'cold', fastBoot: false, adbConnected: false, serial: 'emulator-5554'
 };
 
 export function phaseOf(s: EmulatorStatus): EmulatorPhase {
+  if (s.saving) return 'saving';
   if (s.isInstalling) return 'installing';
   if (!s.installed) return 'not_installed';
   if (s.adbConnected && s.booted) return 'running';

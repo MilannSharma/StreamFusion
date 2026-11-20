@@ -30,7 +30,11 @@ export function saveShot(run, base64, tag) {
 }
 
 export function addStep(run, step) { run.steps.push({ t: new Date().toISOString(), ...step }); if (run.steps.length % 5 === 0) save(run); }
-export function addCheck(run, check) { recorder.onCheck(check); run.checks.push({ t: new Date().toISOString(), ...check }); save(run); }
+export function addCheck(run, check) {
+  recorder.onCheck(check); run.checks.push({ t: new Date().toISOString(), ...check }); save(run);
+  // the project's context learns as the test goes, not only at the end (an interrupted run keeps what it found)
+  if (run.projectId) import('../projects/store.js').then(m => m.updateContextFromRun(run)).catch(() => {});
+}
 // Every finished report is also written to <Downloads>\StreamFusion Reports as PDF + DOCX (SF_NO_AUTOSAVE=1 turns it off).
 export const downloadsDir = () => (process.env.SF_NO_AUTOSAVE ? '' : path.join(process.env.SF_DOWNLOADS_DIR || path.join(os.homedir(), 'Downloads'), 'StreamFusion Reports'));
 const fileBase = (run) => {
@@ -96,6 +100,7 @@ export function cleanExtras(b = {}) {
     coverage: { tested: list(b.coverage?.tested, 60, 160), notTested: arr(b.coverage?.notTested, 60).map(x => ({ area: str(typeof x === 'string' ? x : x?.area, 160), reason: str(typeof x === 'string' ? '' : x?.reason, 300) })).filter(x => x.area) },
     defects: arr(b.defects, 60).map(d => ({ title: str(d?.title, 200), severity: SEV.includes(d?.severity) ? d.severity : 'minor', category: CATS.includes(d?.category) ? d.category : 'ui', location: str(d?.location, 160), steps: list(d?.steps), expected: str(d?.expected, 600), actual: str(d?.actual, 1200), persona: str(d?.persona, 60) })).filter(d => d.title),
     suggestions: arr(b.suggestions, 60).map(x => ({ type: str(typeof x === 'string' ? 'improvement' : x?.type, 30).toLowerCase() || 'improvement', text: str(typeof x === 'string' ? x : x?.text, 500), priority: ['high', 'medium', 'low'].includes(x?.priority) ? x.priority : undefined })).filter(x => x.text),
-    risks: list(b.risks, 20, 300)
+    risks: list(b.risks, 20, 300),
+    features: arr(b.features, 30).map(x => ({ name: str(x?.name, 80), reach: str(x?.reach || x?.how_to_reach, 200), notes: list(x?.notes, 8, 200), testData: str(x?.testData || x?.test_data, 200) })).filter(x => x.name)
   };
 }

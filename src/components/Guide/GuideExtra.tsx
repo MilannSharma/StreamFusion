@@ -37,16 +37,16 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
       <p style={p}>StreamFusion has three areas. Pick what you need from the sidebar:</p>
       <ul style={{ ...p, paddingLeft: 20 }}>
         <li><b>Screen Mirror</b>: show and control your real Android phone on this PC (USB cable or Wi-Fi), record the screen, move files, use the phone as a webcam.</li>
-        <li><b>Android Emulator</b>: a virtual Android phone for testing apps. An AI agent can tap, type and install apps for you.</li>
-        <li><b>Web Testing</b>: your own Chrome browser, which the AI can drive to test websites.</li>
+        <li><b>Test Apps</b>: a virtual Android phone for testing apps. An AI agent can tap, type and install apps for you.</li>
+        <li><b>Test Websites</b>: your own Chrome browser, which the AI can drive to test websites.</li>
       </ul>
     </Card>
     <Card title="FIRST-TIME SETUP (2 MINUTES)">
       <Steps items={[
         <>For a real phone: follow <b>Mirror: USB</b> or <b>Mirror: Wi-Fi</b> in this guide.</>,
         <>For the AI features: open <Link onClick={() => openSettings('ai')}>Settings → AI &amp; API</Link> and paste your Anthropic API key. It is stored encrypted on this PC and sent only to Anthropic.</>,
-        <>Emulator: open <b>Android Emulator</b> and press <b>Install</b> (one-time download, about 5.4 GB). Not bundled with the app.</>,
-        <>Web: open <b>Web Testing</b> and press <b>Open Chrome</b>. If Chrome or Edge is missing, StreamFusion offers a one-time Chrome install.</>
+        <>Emulator: open <b>Test Apps</b> and press <b>Install</b> (one-time download, about 5.4 GB). Not bundled with the app.</>,
+        <>Web: open <b>Test Websites</b> and press <b>Open Chrome</b>. If Chrome or Edge is missing, StreamFusion offers a one-time Chrome install.</>
       ]} />
       <Note>You do not need an API key for Screen Mirror, File Transfer or the manual emulator. The key is only for the built-in AI agent. Claude Code or other MCP clients can use their own login instead, see Settings → AI &amp; API.</Note>
     </Card>
@@ -62,7 +62,7 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
   if (category === 'emulator') return (<>
     <Card title="INSTALL AND POWER ON">
       <Steps items={[
-        <>Open <b>Android Emulator</b> and press <b>Install emulator</b>. It downloads Java, the Android tools and an Android 14 system image. Wait for 100%.</>,
+        <>Open <b>Test Apps</b> and press <b>Install emulator</b>. It downloads Java, the Android tools and an Android 14 system image. Wait for 100%.</>,
         <>Press <b>Power on</b> (top right, on the phone, or in the AI Agent chat). The phone appears inside StreamFusion.</>,
         <>When done, use <b>Power off</b> from the same place. Do not just close the app or kill the process.</>
       ]} />
@@ -100,7 +100,7 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
   if (category === 'web') return (<>
     <Card title="OPEN THE BROWSER">
       <Steps items={[
-        <>Open <b>Web Testing</b> from the sidebar. Press <b>Open Chrome</b>: your own Chrome opens in its own window (separate profile). Log in or pass any check there yourself. If Chrome and Edge are both missing, press <b>Install Chrome</b> once.</>,
+        <>Open <b>Test Websites</b> from the sidebar. Press <b>Open Chrome</b>: your own Chrome opens in its own window (separate profile). Log in or pass any check there yourself. If Chrome and Edge are both missing, press <b>Install Chrome</b> once.</>,
         <>Press <b>Open browser</b>. It starts on Google. Type a URL in the address bar, or any words to search Google, then press Enter.</>,
         <>Click, scroll and type directly in the preview to control the page. Back, Forward and Reload are above it.</>
       ]} />
@@ -125,7 +125,7 @@ export const GuideExtra: React.FC<{ category: ExtraCategory }> = ({ category }) 
 
   return (<>
     <Card title="WHAT TEST MODE DOES">
-      <p style={p}>Turn on <b>Test mode</b> in the AI chat (Android Emulator → AI Agent, or Web Testing). Give the agent your test cases. It runs each one, records PASS, FAIL or BLOCKED with the evidence it saw, takes a screenshot as proof, and builds a report you can download as <b>PDF</b> or <b>DOCX</b>.</p>
+      <p style={p}>Turn on <b>Test mode</b> in the AI chat (Test Apps → AI Agent, or Test Websites). Give the agent your test cases. It runs each one, records PASS, FAIL or BLOCKED with the evidence it saw, takes a screenshot as proof, and builds a report you can download as <b>PDF</b> or <b>DOCX</b>.</p>
     </Card>
     <Card title="RUN A TEST">
       <Steps items={[

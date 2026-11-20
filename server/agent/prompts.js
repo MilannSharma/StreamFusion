@@ -2,6 +2,8 @@
 export const TEST_RULES = `
 TEST MODE is on and you are producing a formal test report.
 
+PROJECT CONTEXT: if the brief has a "Saved project context", use it before anything else: open the screens by the path it gives, re-check its open issues first, avoid its known quirks, and do not rediscover what it already says. Use the same feature names as the context so the memory stays tidy.
+
 WHO TESTS: read the brief, work out who really uses this product (for example teacher, student, admin, parent, customer) and test every feature from that person's point of view. When several logins are given (User 1, User 2, ...), use the login of the role the case needs. Put the role in "persona" on each check.
 
 EFFICIENCY (important: every call re-sends the whole conversation, so fewer calls = faster and far cheaper):
@@ -13,7 +15,8 @@ EFFICIENCY (important: every call re-sends the whole conversation, so fewer call
 
 REPORT: after each case call report_check with id, title, status (pass|fail|blocked), evidence (what you saw) and, whenever you can:
   module (the page or feature), persona, category (functional|ui|ux|accessibility|performance|security|compatibility|content),
-  description (what the case checks), steps (short list of what you did), issues (anything that went wrong while performing, even on a pass), expected, actual, remark (max 80 chars, printed under the screenshot), and for fail or blocked also severity (critical|major|minor|cosmetic), location (the exact page and button or field) and suggestion (how to fix it).
+  description (what the case checks), steps (short list of what you did), issues (anything that went wrong while performing, even on a pass), expected, actual, remark (max 80 chars, printed under the screenshot), and for fail or blocked also severity (critical|major|minor|cosmetic), location (the exact page and button or field). suggestion: on fail or blocked say how to fix it; on pass give an improvement idea only if you have one.
+  Write every case in this shape: id and a short title; description (what and why); steps (the real steps you did, in order); expected and actual (the output); status. The report prints them as Code-Title, Description, Steps, Output, Result, then How to fix (fail) or Suggestions (pass).
 Also watch for problems the test case did not ask about: buttons that do nothing or are disabled by mistake, wrong or unclear labels, misaligned, overlapping or cut-off elements, missing validation or error messages, slow loading, and (web) console errors and failed requests. If you see one while a case passes, still list it under defects in finish_report.
 
 FINISH: when every case is done call finish_report with
@@ -22,7 +25,9 @@ FINISH: when every case is done call finish_report with
   coverage {tested: [pages and features covered], notTested: [{area, reason}]}  (list pages and features you saw but did not test),
   defects [{title, severity, category, location, steps, expected, actual, persona}]  (extra problems found),
   suggestions [{type: enhancement|optimization|ux|accessibility|performance|security, text, priority: high|medium|low}],
-  risks [text].
+  risks [text],
+  features [{name, reach, notes, testData}]  (one per feature you tested, for the project memory: reach = the menu path to get there, e.g. "Home > Students > Add"; notes = short quirks you learned, e.g. "back key closes the form"; testData = non-secret data that worked. Never include passwords or logins).
+Never write report file paths, URLs or download links in your reply: the app shows the PDF and DOCX buttons by itself. Keep the final message short: verdict, the failed cases, what was not tested.
 Never mark a case pass without evidence. Use blocked only when the case could not be run, and say why.`;
 
 const S = (description) => ({ type: 'string', description });
@@ -33,7 +38,7 @@ export const CHECK_PROPS = {
   category: { type: 'string', enum: ['functional', 'ui', 'ux', 'accessibility', 'performance', 'security', 'compatibility', 'content'] },
   steps: SA('Short list of what you did'), expected: S('Expected result'), actual: S('Actual result'),
   severity: { type: 'string', enum: ['critical', 'major', 'minor', 'cosmetic'], description: 'For fail or blocked' },
-  location: S('Exact page and button or field where the problem is'), suggestion: S('How to fix or improve it'),
+  location: S('Exact page and button or field where the problem is'), suggestion: S('If fail or blocked: how to fix it. If pass: an optional improvement idea (leave empty if none)'),
   description: S('One or two lines: what this test case checks and why'), issues: SA('Problems that happened while performing the steps (errors, delays, odd behaviour), even if the case passed'), remark: S('Very short note (max 80 chars) printed under the screenshot')
 };
 export const FINISH_PROPS = {
@@ -42,5 +47,6 @@ export const FINISH_PROPS = {
   coverage: { type: 'object', properties: { tested: SA('Pages / features covered'), notTested: { type: 'array', items: { type: 'object', properties: { area: { type: 'string' }, reason: { type: 'string' } } } } } },
   defects: { type: 'array', description: 'Extra problems seen that are not a failed test case', items: { type: 'object', properties: { title: { type: 'string' }, severity: { type: 'string', enum: ['critical', 'major', 'minor', 'cosmetic'] }, category: { type: 'string' }, location: { type: 'string' }, steps: SA('Steps to see it'), expected: { type: 'string' }, actual: { type: 'string' }, persona: { type: 'string' } } } },
   suggestions: { type: 'array', items: { type: 'object', properties: { type: { type: 'string', description: 'enhancement | optimization | ux | accessibility | performance | security' }, text: { type: 'string' }, priority: { type: 'string', enum: ['high', 'medium', 'low'] } } } },
-  risks: SA('Risks for release')
+  risks: SA('Risks for release'),
+  features: { type: 'array', description: 'Per feature tested, for the project memory (no passwords)', items: { type: 'object', properties: { name: { type: 'string' }, reach: S('Menu path to reach it, e.g. Home > Students > Add'), notes: SA('Short quirks you learned about this feature'), testData: S('Non-secret test data that worked') } } }
 };

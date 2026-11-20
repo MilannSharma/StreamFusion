@@ -336,28 +336,7 @@ function createTray() {
     const iconPath = path.join(__dirname, '../StreamFusion.png');
     tray = new Tray(iconPath);
     tray.setToolTip('StreamFusion');
-
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Open StreamFusion',
-        click: () => {
-          if (mainWindow) {
-            mainWindow.show();
-            mainWindow.focus();
-          }
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit StreamFusion',
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        }
-      }
-    ]);
-
-    tray.setContextMenu(contextMenu);
+    buildTrayMenu('');
     tray.on('click', () => {
       if (mainWindow) {
         if (mainWindow.isVisible()) {
@@ -370,6 +349,19 @@ function createTray() {
   } catch (e) {
     console.warn('[StreamFusion] Tray creation failed:', e);
   }
+}
+
+function buildTrayMenu(status) {
+  if (!tray) return;
+  let openAtLogin = false; try { openAtLogin = app.getLoginItemSettings().openAtLogin; } catch (e) {}
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open StreamFusion', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } else createWindow(); } },
+    ...(status ? [{ label: status, enabled: false }] : []),
+    { type: 'separator' },
+    { label: 'Start with Windows (keeps phone and notifications on)', type: 'checkbox', checked: openAtLogin, click: (item) => { try { app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }); } catch (e) {} } },
+    { type: 'separator' },
+    { label: 'Quit StreamFusion', click: () => { isQuitting = true; app.quit(); } }
+  ]));
 }
 
 function openMirrorToolbar({ serial = '', title = '', orientation = 'horizontal' }) {
@@ -463,12 +455,45 @@ function startNotificationBridge() {
   setInterval(poll, 3000);
 }
 
+// Background service: while the window is closed (tray), the backend keeps phones connected and this shows the state in the tray.
+function startTrayStatus() {
+  let lastText = '';
+  const refresh = () => {
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/devices', timeout: 6000 }, (res) => {
+      let body = '';
+      res.on('data', d => { body += d; });
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(body);
+          const live = (j.devices || []).filter(d => d.state === 'device' && !d.isEmulator);
+          const names = live.map(d => d.nickname || d.displayName || d.model);
+          const text = names.length ? 'Connected: ' + names.join(', ') : 'No phone connected';
+          if (text === lastText || !tray) return;
+          lastText = text;
+          tray.setToolTip('StreamFusion - ' + text);
+          buildTrayMenu(text);
+        } catch (e) {}
+      });
+    });
+    req.on('error', () => {}); req.on('timeout', () => req.destroy());
+  };
+  setTimeout(refresh, 2500); setInterval(refresh, 15000);
+}
+
 app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId('com.milannsharma.streamfusion'); // lets Windows show our toasts under the app's name
   await startBackendIfNeeded();
   createWindow();
   createTray();
   startNotificationBridge();
+  startTrayStatus();
+  // First run of the installed app: start with Windows, hidden in the tray, so the phone reconnects and its notifications arrive without opening the app (can be turned off in Settings or the tray menu)
+  if (app.isPackaged) {
+    try {
+      const flag = path.join(app.getPath('userData'), 'autostart-default.json');
+      if (!fs.existsSync(flag)) { app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); fs.writeFileSync(flag, '{"done":true}'); }
+    } catch (e) {}
+  }
 
   if (!isDev) {
     try {
@@ -484,28 +509,53 @@ app.whenReady().then(async () => {
 });
 
 // Powering the emulator off cleanly writes its quick-boot snapshot; killing the app mid-run would lose it.
-function stopEmulatorGracefully() {
+function emuCall(method, p, timeout) {
   const http = require('http');
-  const call = (method, p, timeout) => new Promise((resolve) => {
+  return new Promise((resolve) => {
     const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method, timeout }, (res) => {
       let body = ''; res.on('data', (d) => (body += d)); res.on('end', () => resolve(body));
     });
     req.on('error', () => resolve('')); req.on('timeout', () => { req.destroy(); resolve(''); });
     req.end();
   });
-  return call('GET', '/api/emulator/status', 1500).then((b) => {
-    if (!/"isRunning":true/.test(b)) return;
-    return call('POST', '/api/emulator/stop', 60000);
-  });
+}
+const emulatorIsRunning = () => emuCall('GET', '/api/emulator/status', 1500).then((b) => /"isRunning":true/.test(b));
+const stopEmulatorGracefully = () => emuCall('POST', '/api/emulator/stop', 120000);
+function killEmulatorNow() {
+  try { require('child_process').execSync('taskkill /F /T /IM emulator.exe /IM qemu-system-x86_64.exe', { stdio: 'ignore', windowsHide: true, timeout: 8000 }); } catch (e) {}
 }
 
-let quitReady = false;
+// Quit never silently drops a running emulator: the user chooses to save and power it off (default), force exit, or stay.
+let quitState = 'idle'; // idle | asking | exiting
 app.on('before-quit', (e) => {
-  isQuitting = true;
-  if (quitReady || !serverProcess) { cleanExit(); return; }
+  if (quitState === 'exiting') { isQuitting = true; cleanExit(); return; }
   e.preventDefault();
-  quitReady = true;
-  stopEmulatorGracefully().catch(() => {}).finally(() => { cleanExit(); app.quit(); });
+  if (quitState === 'asking') return;
+  quitState = 'asking';
+  (async () => {
+    let running = false;
+    if (serverProcess || ownsServer) running = await emulatorIsRunning().catch(() => false);
+    if (!running) { isQuitting = true; quitState = 'exiting'; app.quit(); return; }
+    if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+    const r = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+      type: 'warning', title: 'The Android emulator is still running', noLink: true, cancelId: 2, defaultId: 0,
+      buttons: ['Save and power off, then exit', 'Force exit now', 'Stay in the app'],
+      message: 'The Android emulator is still running.',
+      detail: 'Save and power off (recommended): saves the phone\'s state and all installed apps, then closes. Takes a few seconds, and the next start is fast.\n\n'
+        + 'Force exit: closes the emulator instantly WITHOUT saving. The phone goes back to its last saved state, so apps you installed and anything you changed since then can be lost. The next start can be slow (a full restart), and in rare cases the phone may need a factory reset.\n\n'
+        + 'Stay in the app: nothing is closed.'
+    });
+    if (r.response === 2) { quitState = 'idle'; isQuitting = false; return; }
+    isQuitting = true;
+    if (r.response === 0) {
+      // the window shows the "Saving your apps and data…" animation while this runs
+      await stopEmulatorGracefully().catch(() => {});
+    } else {
+      killEmulatorNow();
+    }
+    quitState = 'exiting';
+    app.quit();
+  })().catch(() => { isQuitting = true; quitState = 'exiting'; app.quit(); });
 });
 
 app.on('window-all-closed', () => {

@@ -1,10 +1,12 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Play } from 'lucide-react';
+import { ProjectMemory, type ContextData } from '../Projects/ProjectMemory';
 
-export interface Brief { product: string; module: string; target: string; login: string; notes: string; cases: string }
+export interface Brief { product: string; module: string; target: string; login: string; notes: string; cases: string; persona: string }
 export interface BriefFile { name: string; text: string; kind: 'cases' | 'docs' }
-export const EMPTY_BRIEF: Brief = { product: '', module: '', target: '', login: '', notes: '', cases: '' };
+export const EMPTY_BRIEF: Brief = { product: '', module: '', target: '', login: '', notes: '', cases: '', persona: '' };
+export const PERSONA_SUGGESTIONS = ['Admin', 'Teacher', 'Student', 'Parent', 'Customer', 'Guest'];
 
 // Logins are kept as "User 1: ...", "User 2: ..." lines. Empty slots never reach the AI, the saved secret or the report masking.
 export const loginSlots = (login: string): string[] => {
@@ -27,11 +29,14 @@ export const briefMissing = (b: Brief, files: BriefFile[], isWeb: boolean): stri
 // What the agent receives. Logins and attached documents go to the AI but never into the saved report.
 export function composeBrief(b: Brief, files: BriefFile[], isWeb: boolean, history = '', context = '') {
   const cases = files.filter(f => f.kind === 'cases'), docs = files.filter(f => f.kind === 'docs');
-  const head = `# Test brief\nProduct: ${b.product.trim()}\nFeature / module: ${b.module.trim()}\n${isWeb ? 'URL(s)' : 'App (name or package)'}: ${b.target.trim()}`;
+  const who = b.persona.trim()
+    ? `\nTest as (role): ${b.persona.trim()}. Test every case from this role's point of view and use "${b.persona.trim()}" as the persona on each check.`
+    : `\nTest as: Auto. Work out the real user roles from this brief and the project context, pick the right role for every case, and name the role used in the persona field of each check.`;
+  const head = `# Test brief\nProduct: ${b.product.trim()}\nFeature / module: ${b.module.trim()}\n${isWeb ? 'URL(s)' : 'App (name or package)'}: ${b.target.trim()}${who}`;
   const summary = head + (b.cases.trim() ? '\n\n## Test cases\n' + b.cases.trim().slice(0, 1800) : '') + (cases.length ? '\n\nTest case files: ' + cases.map(f => f.name).join(', ') : '');
   const full = head
     + (cleanLogin(b.login) ? '\n\n## Login / credentials: several users may be given (User 1, User 2, ...). Use the one the test case needs; use User 1 when a case does not say which.\n' + cleanLogin(b.login) : '')
-    + (context.trim() ? '\n\n## Saved project context (who uses the product, pages already covered, known issues, what is still untested: use it to choose roles and what to test)\n' + context.trim() : '')
+    + (context.trim() ? '\n\n## Saved project context (per feature: how to reach it, cases and results, open issues, quirks; plus roles and what is still untested. Use it first: go straight to the known screens and re-check the open issues)\n' + context.trim() : '')
     + (history ? '\n\n## What earlier runs of this project found (use as context, re-verify fixed items)\n' + history : '')
     + (b.notes.trim() ? '\n\n## PRD / notes / environment\n' + b.notes.trim() : '')
     + (b.cases.trim() ? '\n\n## Test cases\n' + b.cases.trim() : '')
@@ -121,11 +126,11 @@ interface Props {
   isWeb: boolean; brief: Brief; setBrief: (b: Brief) => void; files: BriefFile[];
   addFiles: (list: FileList | null, kind: 'cases' | 'docs') => void; removeFile: (i: number) => void;
   step: number; setStep: (n: number) => void; showErrors: boolean;
-  projectContext?: string; onSaveContext?: (text: string) => Promise<void> | void;
+  projectContext?: string; projectMemory?: ContextData | null; onSaveContext?: (text: string) => Promise<void> | void;
   savedDocs?: { name: string }[]; savedCaseFiles?: { name: string }[]; toggleFile?: (name: string, kind: 'cases' | 'docs', on: boolean) => void;
 }
 
-export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId, onPickProject, modules, onModule, isWeb, brief, setBrief, files, addFiles, removeFile, step, setStep, showErrors, projectContext = '', onSaveContext, savedDocs = [], savedCaseFiles = [], toggleFile }) => {
+export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId, onPickProject, modules, onModule, isWeb, brief, setBrief, files, addFiles, removeFile, step, setStep, showErrors, projectContext = '', projectMemory, onSaveContext, savedDocs = [], savedCaseFiles = [], toggleFile }) => {
   const [ctxEdit, setCtxEdit] = useState(false), [ctxText, setCtxText] = useState(''), [ctxBusy, setCtxBusy] = useState(false), [ctxOpen, setCtxOpen] = useState(false);
   const picker = (list: { name: string }[], kind: 'cases' | 'docs', title: string) => list.length > 0 && toggleFile && (
     <div style={{ ...group, padding: '8px 14px', marginTop: 10 }}>
@@ -197,14 +202,17 @@ export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId
               {!ctxEdit && <button style={linkBtn} onClick={() => setCtxOpen(o => !o)}>{ctxOpen ? 'Hide' : 'View'}</button>}
               {!ctxEdit && <button style={linkBtn} onClick={() => { setCtxText(projectContext); setCtxEdit(true); setCtxOpen(true); }}>Edit</button>}
             </div>
-            <div style={{ fontSize: 11.5, color: SUB, padding: '2px 0 4px' }}>{projectContext.trim() ? 'Saved for this project and sent to the AI with every test. It updates itself after each run (roles, pages covered, known issues, not tested yet).' : 'Empty for now. It fills itself after the first test run, or write your own notes here.'}</div>
+            <div style={{ fontSize: 11.5, color: SUB, padding: '2px 0 4px' }}>{projectContext.trim() ? 'Saved for this project and sent to the AI with every test. It updates itself after every test case, feature by feature: how to reach it, cases and results, open issues, tips, and what is still untested.' : 'Empty for now. It fills itself after the first test run, or write your own notes here.'}</div>
             {ctxEdit ? (<>
               <textarea style={{ ...field, width: '100%', minHeight: 180, resize: 'vertical', lineHeight: 1.45, fontSize: 12.5, background: 'rgba(120,120,128,0.08)', borderRadius: 8, padding: 8, fontFamily: 'ui-monospace, Consolas, monospace' }} value={ctxText} onChange={e => setCtxText(e.target.value)} />
               <div style={{ display: 'flex', gap: 12, paddingTop: 6 }}>
                 <button style={{ ...linkBtn, fontWeight: 700 }} disabled={ctxBusy} onClick={async () => { setCtxBusy(true); try { await onSaveContext?.(ctxText); } finally { setCtxBusy(false); setCtxEdit(false); } }}>{ctxBusy ? 'Saving…' : 'Save'}</button>
                 <button style={linkBtn} onClick={() => setCtxEdit(false)}>Cancel</button>
               </div></>
-            ) : ctxOpen && <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5, maxHeight: 220, overflowY: 'auto', fontFamily: 'inherit', color: INK }}>{projectContext.replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)'}</pre>}
+            ) : ctxOpen && <div style={{ marginTop: 6, maxHeight: 340, overflowY: 'auto' }}>
+              <ProjectMemory data={projectMemory} />
+              {(() => { const mine = projectContext.replace(/<!-- sf:auto:start -->[\s\S]*?<!-- sf:auto:end -->/, '').trim(); return mine ? <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 6, paddingTop: 8, fontSize: 12.5, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}><div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, color: SUB, textTransform: 'uppercase', marginBottom: 2 }}>Your notes</div>{mine}</div> : null; })()}
+            </div>}
           </div>
         )}
       </>}
@@ -232,6 +240,15 @@ export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId
           <button style={linkBtn} onClick={() => docsRef.current?.click()}>Upload document</button>
           <input ref={docsRef} type="file" multiple accept={accept} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files, 'docs'); e.target.value = ''; }} />
         </div>
+        <div style={{ ...group, marginBottom: 12 }}>
+          <Row label="Test as" first>
+            <input style={field} value={brief.persona} onChange={set('persona')} placeholder="Auto: the AI picks the role for each case" />
+            {brief.persona && <button style={linkBtn} onClick={() => setBrief({ ...brief, persona: '' })}>Auto</button>}
+          </Row>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '0 14px 10px 14px' }}>
+            {PERSONA_SUGGESTIONS.map(p => <button key={p} onClick={() => setBrief({ ...brief, persona: p })} style={{ ...chip, border: 'none', cursor: 'pointer', background: brief.persona === p ? '#4f46e5' : 'rgba(79,70,229,0.08)', color: brief.persona === p ? '#fff' : '#4f46e5' }}>{p}</button>)}
+          </div>
+        </div>
         <div style={group}>
           {slots.map((v, i) => (
             <Row key={i} label={'User ' + (i + 1)} first={i === 0}>
@@ -247,6 +264,7 @@ export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId
           <div style={{ fontWeight: 650, marginBottom: 2 }}>Ready to start?</div>
           <div><span style={{ color: SUB }}>Project</span> {brief.product || <i style={{ color: RED }}>missing</i>} · {brief.module || <i style={{ color: RED }}>missing</i>}</div>
           <div><span style={{ color: SUB }}>{isWeb ? 'URL' : 'App'}</span> {brief.target || <i style={{ color: RED }}>missing</i>}</div>
+          <div><span style={{ color: SUB }}>Test as</span> {brief.persona || 'Auto (AI picks the role, shown in the chat)'}</div>
           <div><span style={{ color: SUB }}>Test cases</span> {n > 0 || caseFiles ? (n ? n + ' written' : '') + (caseFiles ? (n ? ' + ' : '') + caseFiles + ' file' + (caseFiles > 1 ? 's' : '') : '') : <i style={{ color: RED }}>missing</i>}</div>
         </div>
       </div>}

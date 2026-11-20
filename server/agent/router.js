@@ -1,13 +1,25 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { setContext } from '../automation/assertions.js';
 import { loginTokens } from '../automation/format.js';
-import { listRuns, getRun, shotPath, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras } from '../testmode/runs.js';
+import { listRuns, getRun, shotPath, REPORTS_DIR, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras } from '../testmode/runs.js';
 import { WORLD_PROMPT } from './agent.js';
 import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
 import { extractText } from './extract.js';
 import { listChats, getChat, saveChat, deleteChat, renameChat } from './chats.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
+
+// A built PDF / DOCX is kept next to the run and reused until run.json changes (opening or downloading again is instant)
+const CACHE_VER = 'v3';
+async function cachedBuild(run, fmt) {
+  const dir = path.join(REPORTS_DIR, run.id), cache = path.join(dir, `cache-${CACHE_VER}.${fmt}`), src = path.join(dir, 'run.json');
+  try { if (fs.statSync(cache).mtimeMs >= fs.statSync(src).mtimeMs) return fs.readFileSync(cache); } catch (e) {}
+  const buf = fmt === 'docx' ? await buildDocx(run) : await buildPdf(run);
+  if (run.status !== 'running') { try { fs.writeFileSync(cache, buf); } catch (e) {} }
+  return buf;
+}
 
 export function createAgentRouter({ tools }) {
   const router = express.Router();
@@ -82,7 +94,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     const fmt = req.params.fmt;
     const types = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf', json: 'application/json' };
     try {
-      const buf = fmt === 'docx' ? await buildDocx(r) : fmt === 'pdf' ? await buildPdf(r) : Buffer.from(JSON.stringify(r, null, 1));
+      const buf = fmt === 'json' ? Buffer.from(JSON.stringify(r, null, 1)) : await cachedBuild(r, fmt);
       res.setHeader('Content-Type', types[fmt]); res.setHeader('Content-Disposition', 'attachment; filename="' + r.id + '.' + fmt + '"'); res.send(buf);
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
   });

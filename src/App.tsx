@@ -6,7 +6,7 @@ import {
   RefreshCw, Play, Square, Camera, Download, Upload,
   CheckCircle, AlertCircle, Sparkles, FileText, PlayCircle,
   Minus, Square as WindowMax, X, Github, Cable, Radio, ArrowRight,
-  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff, Info, Briefcase
+  Edit2, Check, Wrench, Clipboard, Monitor, Bell, Gamepad2, Globe, Pin, PinOff, Info, Briefcase, QrCode, MoreHorizontal, FlaskConical
 } from 'lucide-react';
 
 // lottie-web (300 KB) and the animation files load only when an animation is actually shown
@@ -52,6 +52,7 @@ const ApiSection = lazyView(() => import('./components/Settings/SettingsSections
 const EmulatorSection = lazyView(() => import('./components/Settings/SettingsSections'), 'EmulatorSection');
 const WebSection = lazyView(() => import('./components/Settings/SettingsSections'), 'WebSection');
 const AppearanceSection = lazyView(() => import('./components/Settings/SettingsSections'), 'AppearanceSection');
+import { PairWithoutCable } from './components/Pairing/PairWithoutCable';
 const EmulatorStudioModal = lazyView(() => import('./components/Emulator/EmulatorStudioModal'), 'EmulatorStudioModal');
 const EmulatorStudioView = lazyView(() => import('./components/Emulator/EmulatorStudioModal'), 'EmulatorStudioView');
 declare const __APP_VERSION__: string;
@@ -432,6 +433,8 @@ export default function App() {
 
   // Wireless Mirror Modal State
   const [wirelessModalOpen, setWirelessModalOpen] = useState(false);
+  const [pairOpen, setPairOpen] = useState(false);
+  const [homeMenu, setHomeMenu] = useState(false);
   const [wirelessStep, setWirelessStep] = useState<'connect_usb' | 'ready_to_switch' | 'switching' | 'success_unplug'>('connect_usb');
   const [wirelessTargetDevice, setWirelessTargetDevice] = useState<any>(null);
   const [manualIpMode, setManualIpMode] = useState(false);
@@ -452,12 +455,17 @@ export default function App() {
 
   // Compute Active Device
   const selectedDevice = devices.find(d => d.serial === selectedSerial) || devices[0] || null;
+  // one row per phone: hide a saved phone while any of its addresses (or its hardware id) is connected
+  const offlineSaved = savedDevices.filter((s: any) => !devices.some(d =>
+    (s.hwId && d.hwId === s.hwId) || d.serial === s.serial || d.ipAddress === s.ip || (s.ips || []).some((a: any) => d.ipAddress === a.ip)));
+  const fullPage = activeTab === 'emulator' || activeTab === 'web';
   const usbConnectedDevice = devices.find(d => !d.isWifi);
   const wifiConnectedDevice = devices.find(d => d.isWifi);
 
   // Helper: Get user-customized or automatic phone name
   const getDeviceName = (dev: any) => {
     if (!dev) return 'Android Phone';
+    if (dev.nickname) return dev.nickname;
     if (customNames[dev.serial]) return customNames[dev.serial];
     return dev.displayName || dev.model || 'Android Phone';
   };
@@ -474,6 +482,10 @@ export default function App() {
     try {
       localStorage.setItem('streamfusion_custom_names', JSON.stringify(updated));
     } catch (e) {}
+    // also keep the nickname on the server by phone id, so it follows the phone across networks and shows in every list
+    const target = devices.find(d => d.serial === serial);
+    fetch('/api/wifi/nickname', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hwId: target?.hwId, serial, nickname: trimmed }) })
+      .then(r => r.json()).then(j => { if (j.success) setDevices(prev => prev.map(d => d.serial === serial ? { ...d, nickname: trimmed } : d)); }).catch(() => {});
     setEditingSerial(null);
     showToast(`Device renamed to "${trimmed || 'Default'}"`, '✏️');
   };
@@ -518,24 +530,27 @@ export default function App() {
 
   // Reconnect to a saved Wi-Fi phone with 1 click
   const handleReconnectSavedWifi = async (dev: any) => {
-    const targetName = dev.displayName || dev.model || dev.ip;
-    showToast(`Connecting to ${targetName} (${dev.ip})...`, '📶');
-    try {
-      const res = await fetch('/api/wifi/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: dev.ip, port: dev.port || 5555 })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`Connected to ${targetName}!`, '✅');
-        fetchDevices();
-      } else {
-        showToast(`Connection failed: ${data.message || data.error}`, '❌');
-      }
-    } catch (e: any) {
-      showToast(`Error: ${e.message}`, '❌');
+    const targetName = dev.nickname || dev.displayName || dev.model || dev.ip;
+    const addrs: any[] = (dev.ips && dev.ips.length) ? dev.ips : [{ ip: dev.ip, port: dev.port || 5555 }];
+    showToast(`Connecting to ${targetName}...`, '📶');
+    let lastErr = '';
+    for (const a of addrs) { // every network this phone was seen on, newest first
+      try {
+        const res = await fetch('/api/wifi/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip: a.ip, port: a.port || 5555 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Connected to ${targetName}!`, '✅');
+          fetchDevices();
+          return;
+        }
+        lastErr = data.message || data.error || '';
+      } catch (e: any) { lastErr = e.message; }
     }
+    showToast(`Connection failed: ${lastErr || 'phone not reachable on any saved network'}`, '❌');
   };
 
   // Wake screen if phone screen is off or locked
@@ -1167,29 +1182,23 @@ export default function App() {
             <button
               onClick={() => setActiveTab('emulator')}
               className={`sidebar-tab ${activeTab === 'emulator' ? 'active' : ''}`}
-              style={{
-                marginTop: 6,
-                color: activeTab === 'emulator' ? '#2563eb' : '#4338ca',
-                fontWeight: 700,
-                background: activeTab === 'emulator' ? '#e0e7ff' : 'rgba(99, 102, 241, 0.08)',
-                border: '1px solid #c7d2fe'
-              }}
+              title="Test an Android app on the built-in emulator or your own phone, with AI"
             >
-              <Gamepad2 size={16} color="#6366f1" /> Android Emulator
+              <FlaskConical size={16} /> Test Apps
             </button>
             <button
               onClick={() => setActiveTab('web')}
               className={`sidebar-tab ${activeTab === 'web' ? 'active' : ''}`}
-              style={{ marginTop: 6, fontWeight: 700 }}
+              title="Test a website in Chrome, with AI"
             >
-              <Globe size={16} color="#6366f1" /> Web Testing
+              <Globe size={16} /> Test Websites
             </button>
             <button
               onClick={() => setActiveTab('projects')}
               className={`sidebar-tab ${activeTab === 'projects' ? 'active' : ''}`}
-              style={{ marginTop: 6, fontWeight: 700 }}
+              title="Saved projects: test cases, logins and what the tests learned"
             >
-              <Briefcase size={16} color="#6366f1" /> Projects
+              <Briefcase size={16} /> Projects
             </button>
 
             <div style={{ height: 1, background: 'var(--border-subtle)', margin: '8px 6px' }} />
@@ -1243,7 +1252,7 @@ export default function App() {
         </div>
 
         {/* Content Main Panel */}
-        <main style={{ flex: 1, overflowY: activeTab === 'emulator' ? 'hidden' : 'auto', padding: activeTab === 'emulator' ? '16px 24px' : '24px 30px', position: 'relative', background: 'var(--bg-deep)', ...(activeTab === 'emulator' ? { display: 'flex', flexDirection: 'column' as const, minHeight: 0 } : {}) }}>
+        <main style={{ flex: 1, overflowY: fullPage ? 'hidden' : 'auto', padding: fullPage ? 0 : '24px 30px', position: 'relative', background: 'var(--bg-deep)', ...(fullPage ? { display: 'flex', flexDirection: 'column' as const, minHeight: 0 } : {}) }}>
           {/* TAB 1: SCREEN MIRROR (HOME) */}
           {activeTab === 'devices' && (
             <div>
@@ -1256,13 +1265,13 @@ export default function App() {
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
-                    onClick={() => setIsFixConnectionOpen(true)}
-                    className="btn-secondary"
-                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    title="Self-healing diagnostic assistant for ADB and drivers"
+                    onClick={() => setPairOpen(true)}
+                    className="btn-primary"
+                    style={{ padding: '8px 14px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title="Connect an Android 11+ phone over Wi-Fi with no USB cable (QR code or pairing code)"
                   >
-                    <Wrench size={13} color="#2563eb" />
-                    <span>Fix Connection</span>
+                    <QrCode size={13} />
+                    <span>Connect without cable</span>
                   </button>
                   <button
                     onClick={() => setIsClipboardSyncOpen(true)}
@@ -1271,58 +1280,40 @@ export default function App() {
                     title="Send Hindi/English text and sync clipboard with phone"
                   >
                     <Clipboard size={13} color="#2563eb" />
-                    <span>Clipboard Sync</span>
+                    <span>Clipboard</span>
                   </button>
-                  <button
-                    onClick={() => {
-                      const target = devices.find(d => d.serial === selectedSerial) || devices[0];
-                      setVirtualScreenDevice(target || { serial: '', name: 'Selected Device' });
-                    }}
-                    className="btn-secondary"
-                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#3b82f6', color: '#2563eb' }}
-                    title="Launch independent second Android display window on PC"
-                  >
-                    <Monitor size={13} color="#2563eb" />
-                    <span>Virtual Screen</span>
-                  </button>
-                  <button
-                    onClick={() => setIsWebcamStudioOpen(true)}
-                    className="btn-secondary"
-                    style={{ padding: '8px 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    title="Use phone as HD PC Webcam"
-                  >
-                    <Camera size={13} color="#2563eb" />
-                    <span>HD Webcam</span>
-                  </button>
-                  <button
-                    onClick={fetchDevices}
-                    className="btn-secondary"
-                    style={{ padding: '8px 14px', fontSize: 12 }}
-                  >
-                    <RefreshCw size={13} className={isScanning ? 'pulse' : ''} />
-                    <span>Scan</span>
-                  </button>
-                  <button
-                    onClick={() => openWirelessMirrorModal()}
-                    className="btn-primary"
-                    style={{ padding: '8px 16px', fontSize: 12 }}
-                  >
-                    <Wifi size={13} />
-                    <span>Wireless Mirror</span>
-                  </button>
+                  <div style={{ position: 'relative' }}>
+                    <button onClick={() => setHomeMenu(v => !v)} className="btn-secondary" title="More" style={{ padding: '8px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center' }}><MoreHorizontal size={15} /></button>
+                    {homeMenu && <>
+                      <div onClick={() => setHomeMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                      <div className="glass-panel" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41, width: 230, padding: 6, display: 'flex', flexDirection: 'column', boxShadow: '0 12px 32px rgba(0,0,0,0.25)' }}>
+                        {[
+                          { icon: <Wrench size={14} />, label: 'Fix connection', hint: 'Drivers and adb repair', run: () => setIsFixConnectionOpen(true) },
+                          { icon: <Camera size={14} />, label: 'Use phone as webcam', hint: 'HD camera for the PC', run: () => setIsWebcamStudioOpen(true) },
+                          { icon: <Wifi size={14} />, label: 'Switch USB phone to Wi-Fi', hint: 'Plug in once, then go wireless', run: () => openWirelessMirrorModal() },
+                          { icon: <RefreshCw size={14} />, label: 'Scan for phones now', hint: 'It also scans by itself', run: () => fetchDevices() }
+                        ].map(it => (
+                          <button key={it.label} onClick={() => { setHomeMenu(false); it.run(); }} style={{ background: 'transparent', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', color: 'var(--text-main)', fontFamily: 'inherit' }}>
+                            <span style={{ color: '#2563eb', display: 'inline-flex' }}>{it.icon}</span>
+                            <span style={{ display: 'flex', flexDirection: 'column' }}><span style={{ fontSize: 13, fontWeight: 600 }}>{it.label}</span><span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{it.hint}</span></span>
+                          </button>
+                        ))}
+                      </div>
+                    </>}
+                  </div>
                 </div>
               </div>
 
               {/* Saved Wi-Fi Devices (Auto-Paired, No USB Cable Needed) */}
-              {savedDevices.filter(s => !devices.some(d => d.serial === s.serial || d.ipAddress === s.ip)).length > 0 && (
+              {offlineSaved.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Saved Wi-Fi Devices · Wire-Free (No USB Needed)
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {savedDevices.filter(s => !devices.some(d => d.serial === s.serial || d.ipAddress === s.ip)).map(saved => (
+                    {offlineSaved.map(saved => (
                       <div
-                        key={saved.ip}
+                        key={saved.hwId || saved.ip}
                         className="glass-panel"
                         style={{
                           padding: '16px 20px',
@@ -1346,19 +1337,22 @@ export default function App() {
                             justifyContent: 'center',
                             fontSize: 22
                           }}>
-                            📶
+                            <span style={{ position: 'relative', display: 'inline-flex' }}>
+                              <Smartphone size={24} color="#2563eb" />
+                              <span style={{ position: 'absolute', right: -7, bottom: -5, width: 14, height: 14, borderRadius: '50%', background: '#2563eb', border: '2px solid var(--bg-deep, #0b0b10)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Wifi size={8} color="#fff" /></span>
+                            </span>
                           </div>
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                               <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-main)' }}>
-                                {saved.displayName || saved.model}
+                                {saved.nickname || saved.displayName || saved.model}
                               </span>
                               <span className="badge badge-cyan" style={{ fontSize: 10 }}>
                                 Saved Wi-Fi Phone
                               </span>
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                              IP: <strong>{saved.ip}</strong> · Plug-free Wireless Streaming
+                              IP: <strong>{saved.ip}</strong>{(saved.ips || []).length > 1 ? ` · ${(saved.ips || []).length} networks saved` : ''} · Plug-free Wireless Streaming
                             </div>
                           </div>
                         </div>
@@ -1439,7 +1433,10 @@ export default function App() {
                           justifyContent: 'center',
                           fontSize: 24
                         }}>
-                          {dev.isWifi ? '📶' : '📱'}
+                          <span style={{ position: 'relative', display: 'inline-flex' }}>
+                            <Smartphone size={26} color={dev.isWifi ? '#2563eb' : '#16a34a'} />
+                            <span style={{ position: 'absolute', right: -7, bottom: -5, width: 15, height: 15, borderRadius: '50%', background: dev.isWifi ? '#2563eb' : '#16a34a', border: '2px solid var(--bg-deep, #0b0b10)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{dev.isWifi ? <Wifi size={8} color="#fff" /> : <Cable size={8} color="#fff" />}</span>
+                          </span>
                         </div>
 
                         <div>
@@ -2036,13 +2033,13 @@ export default function App() {
                   onClick={() => setGuideCategory('emulator')}
                   className={`brand-pill ${guideCategory === 'emulator' ? 'active' : ''}`}
                 >
-                  🤖 Android Emulator
+                  🤖 Test Apps
                 </button>
                 <button
                   onClick={() => setGuideCategory('web')}
                   className={`brand-pill ${guideCategory === 'web' ? 'active' : ''}`}
                 >
-                  🌐 Web Testing
+                  🌐 Test Websites
                 </button>
                 <button
                   onClick={() => setGuideCategory('tests')}
@@ -2232,7 +2229,7 @@ export default function App() {
 
           {/* TAB 6: STREAMFUSION ANDROID EMULATOR (FULL PAGE DEDICATED VIEW) */}
           {activeTab === 'emulator' && (
-            <div className="glass-panel" style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-deep)' }}>
               <EmulatorStudioView
                 onToast={(msg, icon) => showToast(msg, icon)}
                 onStartMirror={(serial) => startMirror(serial)}
@@ -2241,15 +2238,15 @@ export default function App() {
             </div>
           )}
           {webVisited && (
-            <div style={{ display: activeTab === 'web' ? 'block' : 'none' }}>
+            <div style={{ display: activeTab === 'web' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg-deep)' }}>
               <WebStudio active={activeTab === 'web'} />
             </div>
           )}
         </main>
       </div>
 
-      {/* 3. Ultra-Clean Footer */}
-      <footer style={{
+      {/* 3. Ultra-Clean Footer (Home and About only; the testing pages use the whole window) */}
+      {(activeTab === 'devices' || activeTab === 'about') && <footer style={{
         height: 36,
         background: 'var(--glass-bg)',
         borderTop: '1px solid var(--border-subtle)',
@@ -2282,7 +2279,9 @@ export default function App() {
             <span>Milann Sharma</span>
           </button>
         </div>
-      </footer>
+      </footer>}
+
+      {pairOpen && <PairWithoutCable onClose={() => setPairOpen(false)} onConnected={() => { fetchDevices(); showToast('Phone connected over Wi-Fi', '✅'); }} />}
 
       {/* 4. Wireless Mirror Modal */}
       {wirelessModalOpen && (
@@ -2826,6 +2825,7 @@ export default function App() {
         onClose={() => setIsFixConnectionOpen(false)}
         onRefreshDevices={fetchDevices}
         onToast={showToast}
+        onOpenPair={() => { setIsFixConnectionOpen(false); setPairOpen(true); }}
       />
 
       {/* 9. Bi-Directional Clipboard & Hindi Unicode Text Bridge (Phase 1.2) */}

@@ -53,9 +53,9 @@ export const Markdown: React.FC<{ text: string }> = ({ text }) => {
       if (ln.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
         const head = cells(ln); i += 2; const rows: string[][] = [];
         while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(cells(lines[i++]));
-        nodes.push(<div key={k} style={{ overflowX: 'auto', margin: '6px 0' }}><table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr>{head.map((c, j) => <th key={j} style={{ border, padding: '4px 8px', background: 'rgba(120,120,128,0.12)', textAlign: 'left' }}>{inline(c, k + 'h' + j)}</th>)}</tr></thead>
-          <tbody>{rows.map((r, a) => <tr key={a}>{r.map((c, j) => <td key={j} style={{ border, padding: '4px 8px', verticalAlign: 'top' }}>{inline(c, k + a + '_' + j)}</td>)}</tr>)}</tbody></table></div>);
+        nodes.push(<div key={k} style={{ overflowX: 'auto', margin: '8px 0', border: '1px solid rgba(120,120,128,0.2)', borderRadius: 10 }}><table style={{ borderCollapse: 'collapse', fontSize: 12.5, width: '100%' }}>
+          <thead><tr>{head.map((c, j) => <th key={j} style={{ padding: '6px 10px', background: 'rgba(120,120,128,0.1)', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid rgba(120,120,128,0.2)' }}>{inline(c, k + 'h' + j)}</th>)}</tr></thead>
+          <tbody>{rows.map((r, a) => <tr key={a}>{r.map((c, j) => <td key={j} style={{ padding: '6px 10px', verticalAlign: 'top', borderTop: a ? '1px solid rgba(120,120,128,0.14)' : 'none' }}>{inline(c, k + a + '_' + j)}</td>)}</tr>)}</tbody></table></div>);
         continue;
       }
       if (/^\s*>\s?/.test(ln)) {

@@ -2,6 +2,7 @@ const { autoUpdater } = require('electron-updater');
 const { ipcMain } = require('electron');
 
 function initAutoUpdater(mainWindow) {
+  const startedAt = Date.now();
   // Configure logging
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -39,6 +40,10 @@ function initAutoUpdater(mainWindow) {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    // Fresh install or first launch with an older installer: take the newest version right away instead of running the old one.
+    if (Date.now() - startedAt < 3 * 60 * 1000) {
+      setTimeout(() => { try { autoUpdater.quitAndInstall(true, true); } catch (e) {} }, 1500);
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('updater-status', {
         status: 'downloaded',
@@ -75,12 +80,10 @@ function initAutoUpdater(mainWindow) {
     }
   });
 
-  // Initial silent check after 5 seconds
-  setTimeout(() => {
-    try {
-      autoUpdater.checkForUpdates();
-    } catch (e) {}
-  }, 5000);
+  // First check right after launch (and a retry shortly after in case the network was not ready yet)
+  const first = () => { try { autoUpdater.checkForUpdates(); } catch (e) {} };
+  setTimeout(first, 1500);
+  setTimeout(first, 45000);
 
   // Keep checking quietly; downloads happen in the background and install silently when the app is closed.
   setInterval(() => {

@@ -26,7 +26,7 @@ const avdConfig = path.join(AVD_HOME, `${AVD_NAME}.avd`, 'config.ini');
 
 export const state = {
   isInstalling: false, progress: 0, stage: '', error: null,
-  booting: false, booted: false, headless: false, bootMode: 'cold'
+  booting: false, booted: false, headless: false, bootMode: 'cold', saving: false
 };
 let proc = null;
 let stopping = false;   // user asked to stop: never auto-repair
@@ -94,11 +94,13 @@ function run(file, args, { input, onPercent } = {}) {
 
 // User-tunable resources (Settings -> Engine Specs). Applied to the AVD each time it starts.
 const CONFIG_FILE = path.join(BASE, 'emulator-config.json');
-export const DEFAULT_CONFIG = { ramMB: 6144, cores: 4, heapMB: 384 };
+// 2 GB keeps the saved state small (about 2 GB instead of 6): saving and resuming take seconds, not minutes.
+export const DEFAULT_CONFIG = { ramMB: 2048, cores: 4, heapMB: 256 };
 const LIMITS = { ramMB: [1024, 8192], cores: [1, 16], heapMB: [128, 1024] };
 export function getConfig() {
   let c = {};
   try { c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch (e) {}
+  if (c.v !== 2) c = { cores: c.cores }; // older saved memory sizes were the slow 6 GB default: use the new fast one
   const out = { ...DEFAULT_CONFIG };
   for (const k of Object.keys(DEFAULT_CONFIG)) {
     const n = Math.round(Number(c[k]));
@@ -107,7 +109,7 @@ export function getConfig() {
   return out;
 }
 export function setConfig(patch) {
-  const next = { ...getConfig(), ...patch };
+  const next = { ...getConfig(), ...patch, v: 2 };
   fs.mkdirSync(BASE, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2));
   return getConfig();
@@ -279,15 +281,15 @@ async function waitForBoot(runAdb, p) {
 export async function stop(runAdb) {
   stopping = true; pendingRun = null;
   const wasBooted = state.booted;
-  if (isProcessAlive() && wasBooted) {
-    log('info', 'Saving emulator state so the next start is fast...');
-    await runAdb(['-s', SERIAL, 'emu', 'avd', 'snapshot', 'save', 'default_boot'], 90000);
-  }
+  state.saving = isProcessAlive() && wasBooted; // the UI shows "Saving..." while the emulator writes its state
+  // A normal quit already saves the quick-boot snapshot (installed apps and data stay), so no second explicit save.
+  if (isProcessAlive() && wasBooted) log('info', 'Saving emulator state so the next start is fast...');
   await runAdb(['-s', SERIAL, 'emu', 'kill'], 8000);
   const t0 = Date.now();
-  while (isProcessAlive() && Date.now() - t0 < 30000) await new Promise(r => setTimeout(r, 500));
+  while (isProcessAlive() && Date.now() - t0 < 90000) await new Promise(r => setTimeout(r, 400));
   if (isProcessAlive()) { try { proc.kill(); } catch (e) {} }
-  Object.assign(state, { booting: false, booted: false });
+  Object.assign(state, { booting: false, booted: false, saving: false });
+  log('success', 'Emulator saved and powered off');
 }
 
 export const snapshot = (runAdb, action, name) =>

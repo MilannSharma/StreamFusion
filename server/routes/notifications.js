@@ -52,7 +52,7 @@ export function createNotificationsRouter({ runAdb, dataDir }) {
   const queue = []; let seq = 0;
   const lastAt = new Map(); // key -> time of the last alert: counters that update every few seconds (steps, downloads) alert at most every 30 s
   const state = new Map(); // serial -> Map(key -> signature); a serial is "baselined" once it has an entry
-  const enabled = () => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8')).notificationMirroring === true; } catch (e) { return false; } };
+  const enabled = () => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8')).notificationMirroring !== false; } catch (e) { return true; } };
   const idCache = new Map(); // adb serial -> hardware serial, so one phone connected by USB and Wi-Fi alerts once
   let busy = false, timer = null, lastScan = 0, lastCost = 0;
   async function tick() {

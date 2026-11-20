@@ -100,45 +100,100 @@ const userPart = (text) => String(text || '').replace(/<!-- sf:auto:start -->[\s
 const same = (a, b) => { const x = String(a).toLowerCase().trim(), y = String(b).toLowerCase().trim(); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
 
 export function renderContext(p) {
-  const d = p.contextData || { features: {}, personas: {}, notTested: [], issues: [], lastRun: null };
-  const L = [`## Project context: ${p.name}`];
-  const t = [p.targets?.web && 'Web: ' + p.targets.web, p.targets?.app && 'App: ' + p.targets.app].filter(Boolean).join(' · ');
-  if (t) L.push(t);
-  const per = Object.entries(d.personas || {});
-  if (per.length) { L.push('', '### Who uses it (roles tested)'); per.forEach(([n, g]) => L.push(`- ${n}${g ? ': ' + g : ''}`)); }
-  const feats = Object.entries(d.features || {});
-  if (feats.length) { L.push('', '### Pages and features covered'); feats.forEach(([n, f]) => L.push(`- ${n}${f.cases ? ` (${f.pass} pass, ${f.fail} fail, ${f.blocked} blocked in the last run)` : ''}`)); }
-  if (d.issues?.length) { L.push('', '### Known issues from the last run (re-check these)'); d.issues.slice(0, 15).forEach(i => L.push(`- [${i.severity}] ${i.location ? i.location + ': ' : ''}${i.title}`)); }
-  if (d.notTested?.length) { L.push('', '### Not tested yet'); d.notTested.slice(0, 20).forEach(n => L.push(`- ${n.area}${n.reason ? ' (' + n.reason + ')' : ''}`)); }
-  if (d.lastRun) L.push('', `Last run: ${d.lastRun.date} · ${d.lastRun.pass} pass / ${d.lastRun.fail} fail / ${d.lastRun.blocked} blocked`);
-  const auto = CTX_START + '\n' + L.join('\n') + '\n' + CTX_END;
+  const d = p.contextData || { features: {}, personas: {}, notTested: [], lastRun: null };
+  const feats = Object.entries(d.features || {}).sort((a, b) => String(b[1].lastDate || '').localeCompare(String(a[1].lastDate || '')));
+  const build = (nFeatures) => {
+    const L = [`## Project context: ${p.name}`];
+    const t = [p.targets?.web && 'Web: ' + p.targets.web, p.targets?.app && 'App: ' + p.targets.app].filter(Boolean).join(' · ');
+    if (t) L.push(t);
+    L.push('(Use this first: go straight to the known screens, re-check the open issues, do not rediscover what is written here.)');
+    const per = Object.entries(d.personas || {});
+    if (per.length) { L.push('', '### Who uses it (roles tested)'); per.forEach(([n, g]) => L.push(`- ${n}${g ? ': ' + g : ''}`)); }
+    if (feats.length) {
+      L.push('', '### Features (known per feature)');
+      for (const [n, f] of feats.slice(0, nFeatures)) {
+        L.push('', `#### ${n}`);
+        const meta = [f.lastDate && 'last tested ' + f.lastDate, f.runs && f.runs + ' run' + (f.runs > 1 ? 's' : ''), f.cases && `${f.pass || 0} pass / ${f.fail || 0} fail / ${f.blocked || 0} blocked in the last run`].filter(Boolean).join(' · ');
+        if (meta) L.push(meta);
+        if (f.reach) L.push('How to reach: ' + f.reach);
+        if (f.testData) L.push('Test data that worked: ' + f.testData);
+        const cl = (f.caseList || []).slice().sort((x, y) => (x.status === 'pass') - (y.status === 'pass')).slice(0, 12);
+        if (cl.length) L.push('Cases: ' + cl.map(c => `${c.id ? c.id + ' ' : ''}${c.title} [${String(c.status).toUpperCase()}]`).join('; '));
+        if (f.issues?.length) { L.push('Open issues (re-check these):'); f.issues.slice(0, 8).forEach(i => L.push(`- [${i.severity}] ${i.title}${i.location ? ' (' + i.location + ')' : ''}, since ${i.since}`)); }
+        if (f.fixed?.length) L.push('Recently fixed: ' + f.fixed.slice(0, 4).map(x => x.title).join('; '));
+        if (f.notes?.length) { L.push('Tips and quirks:'); f.notes.slice(0, 8).forEach(x => L.push('- ' + x)); }
+      }
+      if (feats.length > nFeatures) L.push('', `(${feats.length - nFeatures} older features not shown here; they are still saved in the project.)`);
+    }
+    if (d.notTested?.length) { L.push('', '### Not tested yet'); d.notTested.slice(0, 20).forEach(n => L.push(`- ${n.area}${n.reason ? ' (' + n.reason + ')' : ''}`)); }
+    if (d.lastRun) L.push('', `Last run: ${d.lastRun.date} · ${d.lastRun.pass} pass / ${d.lastRun.fail} fail / ${d.lastRun.blocked} blocked`);
+    return L.join('\n');
+  };
+  let k = feats.length, body = build(k);
+  while (body.length > 12000 && k > 3) body = build(--k); // keeps what the AI receives small: the most recently tested features win
+  const auto = CTX_START + '\n' + body + '\n' + CTX_END;
   const mine = userPart(p.context);
   return auto + (mine ? '\n\n' + mine : '');
 }
 
+// Merge one run into the project's memory. Safe to call after every single check (it is also called when the run ends):
+// cases and issues are keyed, so repeating it never duplicates anything, and a run is counted once.
 export function updateContextFromRun(run) {
   if (!run?.projectId || !run.checks?.length) return null;
   const p = getProject(run.projectId); if (!p) return null;
-  const d = p.contextData || { features: {}, personas: {}, notTested: [], issues: [], lastRun: null };
+  const d = p.contextData || { features: {}, personas: {}, notTested: [], lastRun: null };
+  d.features ||= {}; d.personas ||= {}; delete d.issues; // issues now live inside each feature
   const rep = run.report || {};
-  const touched = new Map();
+  const date = String(run.startedAt).slice(0, 10);
+  const firstTime = d.lastRun?.id !== run.id;
+  const featureKey = (name) => { const n = clip(name || 'General', 80); return Object.keys(d.features).find(k => k.toLowerCase() === n.toLowerCase()) || Object.keys(d.features).find(k => same(k, n)) || n; };
+  const feat = (name) => { const k = featureKey(name); return (d.features[k] ||= { cases: 0, pass: 0, fail: 0, blocked: 0 }); };
+  const caseKey = (c) => String(c.id || c.title || '').toLowerCase().trim().slice(0, 80);
+
+  const stats = new Map();
   for (const c of run.checks) {
-    const k = clip(c.module || 'General', 80);
-    const f = touched.get(k) || { cases: 0, pass: 0, fail: 0, blocked: 0 };
-    f.cases++; f[c.status] = (f[c.status] || 0) + 1; touched.set(k, f);
+    const k = featureKey(c.module);
+    const st = stats.get(k) || { cases: 0, pass: 0, fail: 0, blocked: 0 };
+    st.cases++; st[c.status] = (st[c.status] || 0) + 1; stats.set(k, st);
     if (c.persona && !(c.persona in d.personas)) d.personas[clip(c.persona, 60)] = '';
+    const f = feat(c.module);
+    f.caseList ||= []; f.issues ||= []; f.fixed ||= [];
+    const key = caseKey(c);
+    const entry = { id: clip(c.id, 30), title: clip(c.title, 120), status: c.status, date };
+    const ci = f.caseList.findIndex(x => caseKey(x) === key);
+    if (ci >= 0) f.caseList[ci] = entry; else f.caseList.push(entry);
+    if (f.caseList.length > 40) f.caseList = f.caseList.slice(-40);
+    const ii = f.issues.findIndex(x => x.key === key);
+    if (c.status !== 'pass') {
+      const issue = { key, title: clip(c.title, 140), severity: c.severity || (c.status === 'fail' ? 'major' : 'minor'), location: clip(c.location || '', 100), since: ii >= 0 ? f.issues[ii].since : date };
+      if (ii >= 0) f.issues[ii] = issue; else f.issues.push(issue);
+    } else if (ii >= 0) { // passes now: the problem is fixed
+      const [gone] = f.issues.splice(ii, 1);
+      f.fixed = [{ title: gone.title, date }, ...f.fixed.filter(x => x.title !== gone.title)].slice(0, 5);
+    }
   }
-  for (const [k, f] of touched) d.features[k] = f;
-  for (const t of rep.coverage?.tested || []) if (!Object.keys(d.features).some(k => same(k, t))) d.features[clip(t, 80)] = { cases: 0, pass: 0, fail: 0, blocked: 0 };
+  for (const [k, st] of stats) { const f = d.features[k]; Object.assign(f, st); f.lastDate = date; if (firstTime) f.runs = (f.runs || 0) + 1; }
+
+  for (const t of rep.coverage?.tested || []) if (!Object.keys(d.features).some(k => same(k, t))) d.features[clip(t, 80)] = { cases: 0, pass: 0, fail: 0, blocked: 0, lastDate: date };
   for (const x of rep.personas || []) if (x.name) d.personas[clip(x.name, 60)] = clip(x.goal || d.personas[x.name] || '', 200);
-  d.issues = [
-    ...run.checks.filter(c => c.status !== 'pass').map(c => ({ title: clip(c.title, 140), severity: c.severity || (c.status === 'fail' ? 'major' : 'minor'), location: clip(c.location || c.module || '', 100) })),
-    ...(rep.defects || []).map(x => ({ title: clip(x.title, 140), severity: x.severity || 'minor', location: clip(x.location, 100) }))
-  ];
+  for (const x of rep.defects || []) { // problems seen while a case still passed
+    const f = feat(Object.keys(d.features).find(k => same(k, x.location)) || 'General'); f.issues ||= [];
+    const key = 'obs:' + String(x.title).toLowerCase().slice(0, 70);
+    const issue = { key, title: clip(x.title, 140), severity: x.severity || 'minor', location: clip(x.location, 100), since: f.issues.find(i => i.key === key)?.since || date };
+    const i = f.issues.findIndex(y => y.key === key); if (i >= 0) f.issues[i] = issue; else f.issues.push(issue);
+  }
+  for (const x of rep.features || []) { // what the AI learned about getting around each feature
+    if (!x?.name) continue;
+    const f = feat(x.name);
+    if (x.reach) f.reach = clip(x.reach, 200);
+    if (x.testData) f.testData = clip(x.testData, 200);
+    const notes = [...(x.notes || []), ...(f.notes || [])];
+    f.notes = notes.filter((n, i) => notes.findIndex(m => same(m, n)) === i).slice(0, 8);
+  }
   const gaps = [...(d.notTested || []), ...(rep.coverage?.notTested || [])];
   d.notTested = gaps.filter((n, i) => gaps.findIndex(m => same(m.area, n.area)) === i && !Object.keys(d.features).some(k => same(k, n.area) && d.features[k].cases > 0)).slice(0, 40);
   const pass = run.checks.filter(c => c.status === 'pass').length, fail = run.checks.filter(c => c.status === 'fail').length;
-  d.lastRun = { id: run.id, date: String(run.startedAt).slice(0, 10), pass, fail, blocked: run.checks.length - pass - fail };
+  d.lastRun = { id: run.id, date, pass, fail, blocked: run.checks.length - pass - fail };
   p.contextData = d;
   p.context = renderContext(p);
   return write(p);

@@ -63,6 +63,14 @@ export const PowerPanel: React.FC<Props> = ({ emu, dark, onStarted }) => {
     </div>
   );
 
+  if (phase === 'saving') return (
+    <div style={wrap}>{spin}
+      <Loader2 size={30} className="sf-spin" color="#818cf8" />
+      <div style={{ fontWeight: 800, fontSize: 15 }}>Saving your apps and data…</div>
+      <div style={{ fontSize: 12, color: muted, maxWidth: 240, lineHeight: 1.5 }}>Installed apps stay on the phone. The next start resumes from here.</div>
+    </div>
+  );
+
   if (phase === 'running') return (
     <div style={wrap}>
       <div style={{ fontWeight: 800, fontSize: 14, color: '#22c55e' }}>● Running</div>

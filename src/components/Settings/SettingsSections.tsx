@@ -41,7 +41,7 @@ export const ApiSection: React.FC = () => {
       <ConnectOptions hasKey={!!saved} />
     </Card>
     <Card title="ANTHROPIC API KEY">
-      <div style={{ ...muted, marginBottom: 10 }}>Used by the built-in AI agent (Android Emulator and Web Testing). {saved ? <b style={{ color: '#16a34a' }}>Key saved.</b> : <b style={{ color: '#b91c1c' }}>Not connected.</b>}</div>
+      <div style={{ ...muted, marginBottom: 10 }}>Used by the built-in AI agent (Test Apps and Test Websites). {saved ? <b style={{ color: '#16a34a' }}>Key saved.</b> : <b style={{ color: '#b91c1c' }}>Not connected.</b>}</div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input type="password" placeholder={saved ? 'Paste a new key to replace the saved one' : 'sk-ant-...'} value={draft} onChange={e => setDraft(e.target.value)} style={{ flex: 1, width: 'auto', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 9, padding: '9px 12px', fontSize: 13, color: 'var(--text-main)', userSelect: 'text' }} />
         <button className="btn-primary" disabled={!draft.trim()} onClick={async () => { const k = draft.trim(); await saveKey(k); setSaved(k); setDraft(''); }}><KeyRound size={14} /> Save</button>
@@ -96,7 +96,7 @@ export const WebSection: React.FC = () => {
         </div>
       ) : (<>
         <div style={{ ...muted, marginBottom: 6 }}><Globe size={13} style={{ verticalAlign: -2 }} /> <b style={{ color: '#16a34a' }}>{web.browser} found.</b> Nothing to install.</div>
-        <div style={muted}>Web Testing opens your own browser in its own window with a separate profile, so you can log in or pass bot checks yourself. The AI agent controls that same window. Your normal browser profile is not touched.</div>
+        <div style={muted}>Test Websites opens your own browser in its own window with a separate profile, so you can log in or pass bot checks yourself. The AI agent controls that same window. Your normal browser profile is not touched.</div>
       </>)}
     </Card>
   );

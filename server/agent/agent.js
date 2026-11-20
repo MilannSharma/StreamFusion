@@ -153,7 +153,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
             let shot = null;
             try { const sc = lastWorld === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
             addCheck(run, { ...ck, screenshot: shot });
-            emit({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence } });
+            emit({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } });
           } else { run.summary = String(c.input.summary || ''); run.report = cleanExtras(c.input); }
           results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(r) });
           continue;
