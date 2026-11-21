@@ -75,6 +75,48 @@ export const Markdown: React.FC<{ text: string }> = ({ text }) => {
   })}</>;
 };
 
+// ---------- plain-language description of a tool call, so the user sees what is happening ----------
+const clip = (v: any, n = 40) => { const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+const hostOf = (u: any) => { try { return new URL(String(u)).host; } catch (e) { return clip(u, 40); } };
+export function humanStep(rawName: string, input: any): string {
+  const name = String(rawName || '').replace(/^mcp__[^_]+(?:_[^_]+)*__/, '');
+  const i = input || {};
+  const target = clip(i.text || i.label || i.selector || i.element || i.ref || i.name || i.description || i.query || '', 36);
+  const fieldWord = /pass/i.test(String(i.selector || i.label || i.name || i.element || '')) ? 'password' : target;
+  switch (name) {
+    case 'web_navigate': return 'Opening ' + hostOf(i.url);
+    case 'web_attach_chrome': case 'web_attach_android': return 'Opening the browser';
+    case 'web_click': case 'web_click_at': return 'Clicking' + (target ? ' “' + target + '”' : '');
+    case 'web_fill': return 'Typing into ' + (fieldWord ? '“' + fieldWord + '”' : 'a field');
+    case 'web_press': return 'Pressing ' + clip(i.key || 'a key', 20);
+    case 'web_select': return 'Choosing ' + (clip(i.value || i.label || '', 30) || 'an option');
+    case 'web_snapshot': case 'web_text': return 'Reading the page';
+    case 'web_wait': return 'Waiting for the page';
+    case 'web_screenshot': case 'screenshot': return 'Taking a screenshot';
+    case 'web_assert_text': case 'assert_text': case 'web_assert_url': case 'web_assert_screenshot': case 'assert_screenshot': return 'Checking the result on screen';
+    case 'web_eval': return 'Reading data from the page';
+    case 'web_console': case 'web_network': return 'Checking the page for errors';
+    case 'web_close': return 'Closing the browser';
+    case 'launch_app': case 'streamfusion_open_app': return 'Opening the app';
+    case 'stop_app': return 'Closing the app';
+    case 'tap': case 'tap_element': return 'Tapping' + (target ? ' “' + target + '”' : '');
+    case 'type_text': return 'Typing text';
+    case 'swipe': case 'scroll': return 'Scrolling';
+    case 'key': return 'Pressing a phone key';
+    case 'ui_tree': return 'Looking at the screen';
+    case 'install_apk': return 'Installing the app';
+    case 'clear_data': return 'Clearing app data';
+    case 'grant_permission': return 'Allowing a permission';
+    case 'wake_screen': return 'Waking the phone';
+    case 'logcat': case 'assert_no_crash': return 'Checking the app did not crash';
+    case 'report_begin': return 'Starting the report';
+    case 'report_check': return 'Saving a test result';
+    case 'report_finish': return 'Finishing the report';
+    case 'device_batch': case 'web_batch': return 'Doing several steps';
+    default: return name.replace(/_/g, ' ');
+  }
+}
+
 // ---------- consecutive tool calls collapse into one expandable row ----------
 export const ToolGroup: React.FC<{ tools: { id: string; name: string; input: any; state: 'running' | 'ok' | 'error'; summary?: string }[] }> = ({ tools }) => {
   const [open, setOpen] = useState(false);
@@ -88,13 +130,12 @@ export const ToolGroup: React.FC<{ tools: { id: string; name: string; input: any
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span style={{ fontWeight: 700 }}>{tools.length} step{tools.length > 1 ? 's' : ''}</span>
         <span style={{ color: MUTED, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, Consolas, monospace' }}>
-          {running ? 'running ' + last.name + '…' : 'last: ' + last.name}</span>
+          {running ? humanStep(last.name, last.input) + '…' : 'Done: ' + humanStep(last.name, last.input)}</span>
         <span style={{ color, fontWeight: 700 }}>{running ? '●' : failed ? failed + ' failed' : '✓'}</span>
       </div>
       {open && <div style={{ borderTop: border, padding: '4px 9px', maxHeight: 220, overflowY: 'auto', fontFamily: 'JetBrains Mono, Consolas, monospace' }}>
         {tools.map(t => <div key={t.id} style={{ padding: '2px 0' }}>
-          <span style={{ color: t.state === 'ok' ? '#16a34a' : t.state === 'error' ? '#dc2626' : '#d97706' }}>{t.state === 'ok' ? '✓' : t.state === 'error' ? '✗' : '…'}</span> <b>{t.name}</b>
-          <span style={{ color: MUTED }}> {JSON.stringify(t.input || {}).slice(0, 100)}</span>
+          <span style={{ color: t.state === 'ok' ? '#16a34a' : t.state === 'error' ? '#dc2626' : '#d97706' }}>{t.state === 'ok' ? '✓' : t.state === 'error' ? '✗' : '…'}</span> <b>{humanStep(t.name, t.input)}</b>
           {t.summary && <div style={{ color: MUTED, paddingLeft: 14 }}>{t.summary}</div>}
         </div>)}
       </div>}
@@ -103,7 +144,7 @@ export const ToolGroup: React.FC<{ tools: { id: string; name: string; input: any
 };
 
 // ---------- History panel: fills the chat area, like a session list ----------
-export interface ChatSummary { id: string; title: string; world: string; status: string; updatedAt: number; isTest: boolean; messages: number; pass: number; fail: number; total: number; preview: string }
+export interface ChatSummary { id: string; projectId?: string; title: string; world: string; status: string; updatedAt: number; isTest: boolean; messages: number; pass: number; fail: number; total: number; preview: string }
 
 const ago = (t: number) => {
   const s = Math.max(1, Math.round((Date.now() - t) / 1000));

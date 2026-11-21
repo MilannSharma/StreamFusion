@@ -1,6 +1,6 @@
 // M3-A: Chat agent. A manual tool loop over the M2 device tools using the official Anthropic SDK.
 import Anthropic from '@anthropic-ai/sdk';
-import { createRun, saveShot, addStep, addCheck, finishRun, discardRun, cleanCheck, cleanExtras, progressOf, findRunBySession, reopenRun } from '../testmode/runs.js';
+import { createRun, saveShot, addStep, addCheck, finishRun, discardRun, cleanCheck, cleanExtras, progressOf, findRunBySession, reopenRun, surfaceSince } from '../testmode/runs.js';
 import { TEST_RULES, CHECK_PROPS, FINISH_PROPS } from './prompts.js';
 import { compactUiTree } from '../mcp/compact.mjs';
 
@@ -88,7 +88,7 @@ const summarize = (name, r) => {
 
 export const WORLD_PROMPT = {
   web: '\n\nThis chat is for WEB testing in the browser. Use only the web_* tools. Do NOT start or use the Android emulator.',
-  phone: '\n\nThis chat is for ANDROID app testing on the emulator/device. Use the device tools for the app. You may ALSO use the web_* browser tools, which run in a hidden background browser, but ONLY to cross-check on the website what you changed or saw in the app (for example a record created in the app must also appear on the web side). Before the first browser step you need the website URL and a login for it: if the brief does not give them, STOP, ask the user for exactly what is missing and continue only after they answer.'
+  phone: '\n\nThis chat is for ANDROID app testing on the emulator/device. Use the device tools for the app. You may ALSO use the web_* browser tools, which run in a hidden background browser, but ONLY to cross-check on the website what you changed or saw in the app (for example a record created in the app must also appear on the web side). Before the first browser step you need the website URL and a login for it: if the brief does not give them, do NOT stop: mark only the browser-dependent cases blocked ("Website URL / login not provided"), keep testing all the other cases, and at the end tell the user exactly what is missing so they can send it and say continue.'
 };
 
 export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL, testMode, world }) {
@@ -151,8 +151,8 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
         if (run && (c.name === 'report_check' || c.name === 'finish_report')) {
           let r = { ok: true };
           if (c.name === 'report_check') {
-            const ck = cleanCheck(c.input); const status = ck.status;
-            let shot = null;
+            const sf = surfaceSince(run); const ck = cleanCheck({ ...c.input, surface: sf.label || (lastWorld === 'web' ? 'Browser' : 'App') }); const status = ck.status;
+            let shot = null; if (sf.last) lastWorld = sf.last === 'web' ? 'web' : 'device';
             try { const sc = lastWorld === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
             addCheck(run, { ...ck, screenshot: shot });
             emit({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } });

@@ -25,7 +25,7 @@ export function listChats(world) {
     const msgs = Array.isArray(c.msgs) ? c.msgs : [];
     const checks = msgs.filter(m => m.kind === 'check');
     out.push({
-      id: c.id, title: c.title || 'Chat', world: c.world, status: c.status || 'idle', updatedAt: c.updatedAt, createdAt: c.createdAt,
+      id: c.id, projectId: c.test?.projectId || '', title: c.title || 'Chat', world: c.world, status: c.status || 'idle', updatedAt: c.updatedAt, createdAt: c.createdAt,
       isTest: !!c.test, messages: msgs.filter(m => m.kind === 'user' || m.kind === 'agent').length,
       pass: checks.filter(m => m.status === 'pass').length, fail: checks.filter(m => m.status === 'fail').length, total: checks.length,
       preview: String((msgs.filter(m => m.kind === 'agent').pop() || {}).text || '').slice(0, 140)

@@ -46,6 +46,13 @@ export function historyOf(id) {
   return lines.join('\n');
 }
 
+// Every open issue of the project (all features): what earlier runs found that is not fixed yet
+export function openIssuesOf(id) {
+  const p = getProject(id); const out = [];
+  for (const [feature, f] of Object.entries(p?.contextData?.features || {})) for (const i of f.issues || []) out.push({ feature, key: i.key, title: i.title, severity: i.severity, location: i.location || '', since: i.since });
+  return out;
+}
+
 // Called when a test starts from the brief form: create the project the first time, then keep it up to date.
 export function saveFromBrief({ projectId, world, brief = {}, files = [] }) {
   const name = clip(brief.product, 80).trim();

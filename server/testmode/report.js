@@ -57,8 +57,16 @@ export function analyze(run) {
   const bySeverity = SEV_ORDER.map(s => ({ name: s, count: defects.filter(d => d.severity === s).length }));
   const planned = run.total || 0;
   const verdict = !total ? 'NO RESULTS' : (run.status === 'aborted' || planned > total) ? 'INCOMPLETE' : bySeverity[0].count ? 'FAIL: CRITICAL ISSUES' : fail ? 'FAIL' : blocked ? 'PASS WITH BLOCKED CASES' : 'PASS';
+  // issues reported in earlier runs of this project: fixed now, still failing, or not tested this time
+  const kk = (c) => String(c.id || c.title || '').toLowerCase().trim();
+  const sameT = (a, b) => { const x = String(a || '').toLowerCase().trim(), y = String(b || '').toLowerCase().trim(); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
+  const earlier = (run.priorIssues || []).map(i => {
+    const c = checks.find(c => kk(c) === i.key || sameT(c.title, i.title) || (i.key && sameT(c.id, String(i.key).replace(/^obs:/, ''))));
+    return { ...i, now: !c ? 'Not re-tested in this run' : c.status === 'pass' ? 'Fixed (passed now)' : c.status === 'fail' ? 'Still failing' : 'Still blocked' };
+  });
   const steps = run.steps || [];
   return {
+    earlier,
     pass, fail, blocked, total, planned, passRate: total ? Math.round(pass / total * 100) : 0, durationMs: t1 - t0, avgMs: total ? Math.round((t1 - t0) / total) : 0,
     actions: steps.length, failedActions: steps.filter(s => !s.ok).length, defects, bySeverity, verdict,
     byModule: group('module', 'General'), byPersona: group('persona', 'General user'), byCategory: group('category', 'functional'),
@@ -79,7 +87,7 @@ export function caseFields(k) {
     [failed ? 'How to fix' : 'Suggestions', fix, failed ? 'fix' : 'sugg']
   ].filter(f => f[1]);
 }
-const caseMeta = (k) => [k.module && 'Feature: ' + k.module, k.persona && 'User: ' + k.persona, k.category && 'Type: ' + k.category, k.severity && k.status !== 'pass' && 'Severity: ' + k.severity, k.location && 'Where: ' + k.location].filter(Boolean).join('  ·  ');
+const caseMeta = (k) => [k.surface && 'Tested on: ' + k.surface, k.module && 'Feature: ' + k.module, k.persona && 'User: ' + k.persona, k.category && 'Type: ' + k.category, k.severity && k.status !== 'pass' && 'Severity: ' + k.severity, k.location && 'Where: ' + k.location].filter(Boolean).join('  ·  ');
 
 export function appRows(run, a) {
   const i = appInfo(run), dev = run.deviceInfo;
@@ -148,8 +156,12 @@ export async function buildDocx(run) {
       table(['Ref', 'Severity', 'Where (page / button)', 'Problem', 'Expected → Actual'], a.defects.map(d => [d.ref, st(d.severity), d.location || '-', d.title, [d.expected && 'Expected: ' + d.expected, d.actual && 'Actual: ' + d.actual].filter(Boolean).join('\n') || '-']), [8, 11, 20, 26, 35]));
   }
 
+  if (a.earlier.length) kids.push(H('Earlier issues (reported in previous runs)', HeadingLevel.HEADING_1),
+    P('These were found in earlier test runs of this project. The table shows what happened to each one in this run.', { size: 17, color: '64748B' }),
+    table(['Issue', 'Feature', 'Severity', 'First seen', 'Status now'], a.earlier.map(e => [e.title, e.feature || '', cap(e.severity || ''), e.since || '', e.now]), [38, 18, 11, 13, 20]));
+
   kids.push(H('6. Test case results', HeadingLevel.HEADING_1),
-    table(['#', 'Check', 'Feature', 'User', 'Result'], run.checks.map((k, i) => [k.id || String(i + 1), k.title, k.module || '', k.persona || '', st(k.status)]), [8, 42, 20, 16, 14]));
+    table(['#', 'Check', 'Tested on', 'Feature', 'User', 'Result'], run.checks.map((k, i) => [k.id || String(i + 1), k.title, k.surface || '', k.module || '', k.persona || '', st(k.status)]), [8, 34, 12, 18, 14, 14]));
 
   kids.push(H('7. Details and evidence', HeadingLevel.HEADING_1));
   const NB = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, NOB = { top: NB, bottom: NB, left: NB, right: NB };
@@ -254,8 +266,11 @@ export function buildPdf(run) {
     else { p('Severity: ' + SEV_ORDER.map(s => `${cap(s)} = ${SEV_HELP[s]}`).join('; ') + '.', { size: 8.5, color: '#64748b' }); doc.moveDown(0.3);
       table(['Ref', 'Severity', 'Where (page / button)', 'Problem', 'Expected / Actual'], a.defects.map(d => [d.ref, st(d.severity), d.location || '-', d.title, [d.expected && 'Expected: ' + d.expected, d.actual && 'Actual: ' + d.actual].filter(Boolean).join('\n') || '-']), [8, 11, 20, 26, 35]); }
 
+    if (a.earlier.length) { h1('Earlier issues (reported in previous runs)'); p('These were found in earlier test runs of this project. The table shows what happened to each one in this run.', { size: 9, color: '#64748b' });
+      table(['Issue', 'Feature', 'Severity', 'First seen', 'Status now'], a.earlier.map(e => [e.title, e.feature || '', cap(e.severity || ''), e.since || '', e.now]), [38, 18, 11, 13, 20]); }
+
     h1('6. Test case results');
-    table(['#', 'Check', 'Feature', 'User', 'Result'], run.checks.map((k, i) => [k.id || String(i + 1), k.title, k.module || '', k.persona || '', st(k.status)]), [8, 42, 20, 16, 14]);
+    table(['#', 'Check', 'Tested on', 'Feature', 'User', 'Result'], run.checks.map((k, i) => [k.id || String(i + 1), k.title, k.surface || '', k.module || '', k.persona || '', st(k.status)]), [8, 34, 12, 18, 14, 14]);
 
     h1('7. Details and evidence');
     run.checks.forEach((k, i) => {

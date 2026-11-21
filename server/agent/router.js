@@ -3,13 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import { setContext, getContext } from '../automation/assertions.js';
 import { loginTokens } from '../automation/format.js';
-import { listRuns, getRun, shotPath, REPORTS_DIR, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras , progressOf , findRunBySession, reopenRun, addStep } from '../testmode/runs.js';
+import { listRuns, getRun, shotPath, REPORTS_DIR, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras , progressOf , findRunBySession, reopenRun, addStep, surfaceSince, reportFileName, setPriorIssues } from '../testmode/runs.js';
 import { WORLD_PROMPT } from './agent.js';
 import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
 import { extractText } from './extract.js';
 import { listChats, getChat, saveChat, deleteChat, renameChat } from './chats.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
+import { openIssuesOf } from '../projects/store.js';
+import { setWebBackground, shutdownBackgroundBrowser } from '../web/tools.js';
 
 // A built PDF / DOCX is kept next to the run and reused until run.json changes (opening or downloading again is instant)
 const CACHE_VER = 'v3';
@@ -62,6 +64,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
           try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
           run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo, projectId: b.testMode.projectId ? String(b.testMode.projectId) : null, sessionId: String(b.sessionId) });
         }
+        if (run.projectId) { try { setPriorIssues(run, openIssuesOf(run.projectId)); } catch (e) {} }
         current = run; chatRun = run; run.emit = emit;
         emit({ type: 'run_started', runId: run.id });
       }
@@ -77,6 +80,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
       if (run && run.total > run.checks.length && reason === 'complete') emit({ type: 'text', text: `Only ${run.checks.length} of ${run.total} test cases have a result so far. Send "continue" and I will carry on with the rest: the same report keeps growing.` });
       if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
       chatRun = null;
+      if (b.world === 'phone') await shutdownBackgroundBrowser().catch(() => {}); // the hidden browser used for cross-checks is closed when the turn ends
       return res.end();
     }
     await runAgent({
@@ -110,7 +114,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     const types = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf', json: 'application/json' };
     try {
       const buf = fmt === 'json' ? Buffer.from(JSON.stringify(r, null, 1)) : await cachedBuild(r, fmt);
-      res.setHeader('Content-Type', types[fmt]); res.setHeader('Content-Disposition', 'attachment; filename="' + r.id + '.' + fmt + '"'); res.send(buf);
+      res.setHeader('Content-Type', types[fmt]); const nice = reportFileName(r) + '.' + fmt; res.setHeader('Content-Disposition', 'attachment; filename="' + nice.replace(/[^ -~]/g, '_').replace(/"/g, '') + '"; filename*=UTF-8' + "''" + encodeURIComponent(nice)); res.send(buf);
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
   });
 
@@ -134,6 +138,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     let deviceInfo = null;
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
     current = createRun({ title: String(req.body?.title || 'Test run').slice(0, 120), model: String(req.body?.client || 'MCP client'), serial, projectId: getContext().projectId || null, instructions: String(req.body?.instructions || '').slice(0, 4000), deviceInfo });
+    if (current.projectId) { try { setPriorIssues(current, openIssuesOf(current.projectId)); } catch (e) {} }
     res.json({ ok: true, runId: current.id });
   });
   router.post('/report/check', async (req, res) => {
@@ -141,10 +146,11 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     if (!current) return res.json({ ok: false, error: 'No open report. Call report_begin first (or turn on Test mode in StreamFusion).' });
     const b = req.body || {};
     const status = ['pass', 'fail', 'blocked'].includes(b.status) ? b.status : 'blocked';
-    const world = b.world === 'web' || b.world === 'phone' ? b.world : lastWorld();
+    const sf = surfaceSince(current);
+    const world = b.world === 'web' || b.world === 'phone' ? b.world : (sf.last || lastWorld()); // the screenshot comes from the side the case really used
     let shot = null;
     try { const sc = world === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial: current.serial, maxDim: 700 }); if (sc.ok) shot = saveShot(current, sc.imageBase64, status); } catch (e) {}
-    const ck = cleanCheck({ ...b, status });
+    const ck = cleanCheck({ ...b, status, surface: sf.label || (world === 'web' ? 'Browser' : 'App') });
     addCheck(current, { ...ck, screenshot: shot });
     try { current.emit?.({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } }); current.emit?.({ type: 'progress', ...progressOf(current) }); } catch (e) {}
     res.json({ ok: true, recorded: current.checks.length, ofTotal: current.total || undefined, screenshot: !!shot });

@@ -1,6 +1,6 @@
 {
   "name": "streamfusion",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "description": "StreamFusion - Android mirroring, wireless control and AI-driven app and web testing with detailed reports",
   "author": "Milann Sharma <https://github.com/Milannsharma>",
   "main": "electron/main.cjs",

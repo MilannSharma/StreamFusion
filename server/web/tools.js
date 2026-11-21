@@ -144,6 +144,7 @@ const DESKTOP_PORT = 9333;
 let background = false; // app testing: the browser is opened hidden (headless), so the user is not disturbed
 export function setWebBackground(on) { background = !!on; }
 async function cdpAlive() { try { const r = await fetch('http://127.0.0.1:' + DESKTOP_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }); return r.ok; } catch (e) { return false; } }
+let spawnedHeadless = null; // pid of the hidden browser WE started for app testing (never the user's own Chrome)
 let attaching = null;
 export function attachDesktop() { return (attaching ||= doAttach().finally(() => { attaching = null; })); }
 async function doAttach() {
@@ -153,7 +154,7 @@ async function doAttach() {
     // A separate profile folder is required for remote debugging; it keeps your logins between sessions.
     const dir = path.join(BASE, 'own-chrome-profile');
     fs.mkdirSync(dir, { recursive: true });
-    spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', '--no-default-browser-check', ...(background ? ['--headless=new', '--window-size=1366,850', 'about:blank'] : ['https://www.google.com'])], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    const child = spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', '--no-default-browser-check', ...(background ? ['--headless=new', '--window-size=1366,850', 'about:blank'] : ['https://www.google.com'])], { detached: true, stdio: 'ignore', windowsHide: true }); child.unref(); if (background) spawnedHeadless = child.pid;
     for (let i = 0; i < 40 && !(await cdpAlive()); i++) await new Promise(r => setTimeout(r, 500));
     if (!(await cdpAlive())) throw new Error('The browser started but did not open its debugging port.');
   }
@@ -170,11 +171,26 @@ async function doAttach() {
   return { pages: livePages().length };
 }
 
+// After the browser part of an app test: disconnect and close the hidden browser we started (the user's own visible Chrome is left alone).
+export async function shutdownBackgroundBrowser() {
+  await closeBrowser();
+  const pid = spawnedHeadless; spawnedHeadless = null;
+  if (!pid) { // one left over from an earlier session (e.g. the server restarted): find it by its hidden-profile command line
+    if (!background) return false;
+    await new Promise(r => { try { const k = spawn('powershell', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { $_.CommandLine -match 'own-chrome-profile' -and $_.CommandLine -match '--headless' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"], { windowsHide: true, stdio: 'ignore' }); k.on('close', r); k.on('error', r); } catch (e) { r(); } });
+    return true;
+  }
+  await new Promise(r => { try { const k = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); k.on('close', r); k.on('error', r); } catch (e) { r(); } });
+  return true;
+}
+
 export function createWebTools({ runAdb } = {}) {
   const TOOLS = {};
   const def = (name, description, properties, required, handler, dangerous = false) => {
     TOOLS[name] = { name, description, dangerous, inputSchema: { type: 'object', properties, required }, handler: async (a) => {
-      try { return await handler(a); } catch (e) { return { ok: false, error: String(e.message || e).split('\n')[0].slice(0, 500) }; }
+      // a step that never answers (frozen tab, broken browser link) must not freeze the whole test: give up after 75s, drop the link so the next step reconnects
+      let timer; const hang = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('The browser did not respond in 75 seconds (' + name + '). The browser connection was reset; try the step again.')), 75000); });
+      try { return await Promise.race([handler(a), hang]); } catch (e) { if (/did not respond in 75 seconds/.test(String(e.message))) { try { await closeBrowser(); } catch (x) {} } return { ok: false, error: String(e.message || e).split('\n')[0].slice(0, 500) }; } finally { clearTimeout(timer); }
     } };
   };
   const SEL = { selector: { type: 'string', description: 'Playwright selector: css, text="Sign in", role=button[name="Sign in"], label=Email, placeholder=Search. Get names from web_snapshot.' } };

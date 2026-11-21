@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowUp, ArrowDown, Square, Plus, Plug, ShieldAlert, Power, FlaskConical, FileText, X, Download, PanelLeftClose, PanelLeftOpen, History, MoreHorizontal, RotateCcw, User, Globe, Smartphone } from 'lucide-react';
-import { Markdown, CopyBtn, ToolGroup, HistoryPanel, ResumeBanner, type ChatSummary } from './ChatBits';
+import { Markdown, CopyBtn, ToolGroup, humanStep, HistoryPanel, ResumeBanner, type ChatSummary } from './ChatBits';
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
 import { WebPane } from './WebPane';
@@ -580,7 +580,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           </>}
         </div>
 
-        {showHistory && <HistoryPanel chats={chats} currentId={sessionId.current} liveId={busy ? sessionId.current : null} onOpen={loadChat} onContinue={continueChat} onRename={renameChat} onDelete={deleteChat} onNew={reset} onClose={() => setShowHistory(false)} />}
+        {showHistory && <HistoryPanel chats={curProjectRef.current ? chats.filter(c => !c.projectId || c.projectId === curProjectRef.current || c.id === sessionId.current) : chats} currentId={sessionId.current} liveId={busy ? sessionId.current : null} onOpen={loadChat} onContinue={continueChat} onRename={renameChat} onDelete={deleteChat} onNew={reset} onClose={() => setShowHistory(false)} />}
         {(() => {
           const cks = msgs.filter(m => m.kind === 'check') as any[]; if (!cks.length && !(busy && testInfoRef.current)) return null;
           const p = cks.filter(c => c.status === 'pass').length, f = cks.filter(c => c.status === 'fail').length, o = cks.length - p - f;
@@ -591,7 +591,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             {busy && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d97706' }} />}
             <b style={{ color: 'var(--text-main, #0f172a)' }}>{busy ? 'Testing' : 'Results'}</b>
             {(() => { const tot = Math.max(progress?.total || 0, cks.length), dn = cks.length; return tot > 0 ? <span title={`${dn} of ${tot} test cases done`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-              <b style={{ color: 'var(--text-main, #0f172a)', fontVariantNumeric: 'tabular-nums' }}>{busy && dn < tot ? 'Case ' + (dn + 1) : dn}/{tot}</b>
+              <b style={{ color: 'var(--text-main, #0f172a)', fontVariantNumeric: 'tabular-nums' }}>{dn}/{tot} done</b>{busy && dn < tot && <span style={{ color: '#d97706', fontWeight: 600 }}>· testing case {dn + 1}</span>}<b style={{ display: 'none' }} />
               <span style={{ width: 90, height: 6, borderRadius: 3, background: 'rgba(120,120,128,0.2)', overflow: 'hidden', display: 'inline-flex' }}>
                 <span style={{ width: (p / tot * 100) + '%', background: '#16a34a', transition: 'width .4s' }} /><span style={{ width: (f / tot * 100) + '%', background: '#dc2626', transition: 'width .4s' }} /><span style={{ width: (o / tot * 100) + '%', background: '#d97706', transition: 'width .4s' }} />
               </span></span> : null; })()}
@@ -640,7 +640,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             }
             return out;
           })()}
-          {busy && <div style={{ fontSize: 12.5, color: 'var(--text-muted, #64748b)' }}>Working…</div>}
+          {busy && (() => { const rt: any = [...msgs].reverse().find(x => x.kind === 'tool' && x.state === 'running'); return <div style={{ fontSize: 12.5, color: 'var(--text-muted, #64748b)' }}>{rt ? humanStep(rt.name, rt.input) : 'Working'}…</div>; })()}
         </div>
         )}
         {showLatest && !formMode && !showHistory && <button onClick={toLatest} style={{ alignSelf: 'center', marginTop: -44, marginBottom: 14, zIndex: 5, border, background: 'var(--bg-card, #fff)', color: 'var(--text-main, #0f172a)', borderRadius: 999, padding: '5px 12px', fontSize: 12, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><ArrowDown size={13} /> Latest</button>}

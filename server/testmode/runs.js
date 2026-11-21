@@ -63,6 +63,13 @@ export function saveShot(run, base64, tag) {
   return file;
 }
 
+// Which side did the case just run on? Looks at the steps since the previous case: browser (web_*), app (device tools) or both.
+export function surfaceSince(run) {
+  const st = (run.steps || []).slice(run.stepMark || 0).filter(x => x && x.name && !/^(report_|finish_report|automation_)/.test(x.name));
+  const web = st.some(x => /^web_/.test(x.name)), app = st.some(x => !/^web_/.test(x.name));
+  const last = st.length ? (/^web_/.test(st[st.length - 1].name) ? 'web' : 'phone') : null;
+  return { last, web, app, label: web && app ? 'App + Browser' : web ? 'Browser' : app ? 'App' : '' };
+}
 export function addStep(run, step) { run.steps.push({ t: new Date().toISOString(), ...step }); if (run.steps.length % 5 === 0) save(run); }
 export function progressOf(run) {
   const n = (k) => run.checks.filter(c => c.status === k).length;
@@ -96,11 +103,15 @@ export function addCheck(run, check) {
 // Every finished report is also written to <Downloads>\StreamFusion Reports as PDF + DOCX (SF_NO_AUTOSAVE=1 turns it off).
 export const downloadsDir = () => (process.env.SF_NO_AUTOSAVE ? '' : path.join(process.env.SF_DOWNLOADS_DIR || path.join(os.homedir(), 'Downloads'), 'StreamFusion Reports'));
 const platformOf = (run) => { const st = run.steps || []; const web = st.some(x => /^web_/.test(x.name || '')), app = st.some(x => x.name && !/^(web_|report_|finish_report)/.test(x.name)); return web && app ? 'App + Web' : web ? 'Web' : 'Android'; };
+// "<Project> - <Module> (2026-11-21 18-09)": the name of every saved / downloaded report (a colon is not allowed in a Windows file name)
 const fileBase = (run) => {
   const d = new Date(run.startedAt), p2 = (n) => String(n).padStart(2, '0');
-  const safe = (String(run.title || 'Test report').replace(/\s*\(resumed\)\s*$/i, '') + ' - ' + platformOf(run)).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 90);
-  return `${safe} - ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}`;
+  const safe = String(run.title || 'Test report').replace(/\s*\(resumed\)\s*$/i, '').replace(/^Test:\s*/i, '').replace(/[\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Test report';
+  return `${safe} (${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())})`;
 };
+export const reportFileName = (run) => run.fileName || fileBase(run);
+// The issues that were open for this project BEFORE this run: the report shows which are fixed and which are still there
+export function setPriorIssues(run, list) { if (run.priorIssues === undefined) { run.priorIssues = (list || []).slice(0, 60); save(run); } }
 export async function exportToDownloads(run) {
   const dir = run.savedTo || downloadsDir(); if (!dir) return null;
   fs.mkdirSync(dir, { recursive: true });
@@ -150,7 +161,7 @@ export function cleanCheck(i = {}) {
     id: opt(i.id, 30), total: Number.isFinite(Number(i.total)) && Number(i.total) > 0 ? Math.min(5000, Math.round(Number(i.total))) : undefined, title: str(i.title, 200), status: ['pass', 'fail', 'blocked'].includes(i.status) ? i.status : 'blocked', evidence: str(i.evidence, 3000),
     module: opt(i.module, 80), persona: opt(i.persona, 60), location: opt(i.location, 160), category: CATS.includes(i.category) ? i.category : undefined,
     severity: SEV.includes(i.severity) ? i.severity : undefined, steps: list(i.steps), expected: opt(i.expected, 600), actual: opt(i.actual, 1200), suggestion: opt(i.suggestion, 600),
-    description: opt(i.description, 400), issues: list(i.issues, 10, 300), remark: opt(i.remark, 90)
+    description: opt(i.description, 400), issues: list(i.issues, 10, 300), remark: opt(i.remark, 90), surface: opt(i.surface, 20)
   };
 }
 export function cleanExtras(b = {}) {
