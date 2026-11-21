@@ -224,7 +224,7 @@ async function autoConnectSavedDevices(activeDevices) {
 // Helper: Run ADB command safely
 function runAdb(args, timeoutMs = 8000) {
   return new Promise((resolve) => {
-    execFile(adbExe, args, { cwd: scrcpyBin, timeout: timeoutMs, encoding: 'utf8' }, (err, stdout, stderr) => {
+    execFile(adbExe, args, { cwd: scrcpyBin, timeout: timeoutMs, encoding: 'utf8', windowsHide: true }, (err, stdout, stderr) => {
       if (err) {
         resolve({ success: false, output: (stderr || err.message || '').trim() });
       } else {
@@ -456,7 +456,7 @@ app.post('/api/mirror/start', (req, res) => {
     if (existing && existing.proc && !existing.proc.killed) {
       try {
         existing.proc.kill('SIGTERM');
-        exec(`taskkill /F /T /PID ${existing.proc.pid}`, () => {});
+        exec(`taskkill /F /T /PID ${existing.proc.pid}`, { windowsHide: true }, () => {});
       } catch (e) {}
     }
     activeMirrors.delete(serial);
@@ -604,7 +604,7 @@ app.post('/api/mirror/stop', (req, res) => {
     try {
       runAdb(['-s', serial, 'shell', 'svc', 'power', 'stayon', 'false']);
       session.proc.kill('SIGTERM');
-      exec(`taskkill /F /T /PID ${session.proc.pid}`, () => {});
+      exec(`taskkill /F /T /PID ${session.proc.pid}`, { windowsHide: true }, () => {});
     } catch (e) {}
     activeMirrors.delete(serial);
     return res.json({ success: true, message: `Mirror for ${serial} stopped` });
@@ -615,7 +615,7 @@ app.post('/api/mirror/stop', (req, res) => {
     try {
       runAdb(['-s', s, 'shell', 'svc', 'power', 'stayon', 'false']);
       session.proc.kill('SIGTERM');
-      exec(`taskkill /F /T /PID ${session.proc.pid}`, () => {});
+      exec(`taskkill /F /T /PID ${session.proc.pid}`, { windowsHide: true }, () => {});
     } catch (e) {}
   }
   activeMirrors.clear();
@@ -920,7 +920,7 @@ app.post('/api/control/screenshot', (req, res) => {
   const filename = `Screenshot_${timestamp}.png`;
   const fullPath = path.join(defaultScreenshotDir, filename);
 
-  const proc = spawn(adbExe, ['-s', serial, 'exec-out', 'screencap', '-p'], { cwd: scrcpyBin });
+  const proc = spawn(adbExe, ['-s', serial, 'exec-out', 'screencap', '-p'], { cwd: scrcpyBin, windowsHide: true });
   const writeStream = fs.createWriteStream(fullPath);
 
   proc.stdout.pipe(writeStream);
@@ -983,14 +983,14 @@ function isSafeMediaPath(targetPath) {
 app.post('/api/recordings/play', (req, res) => {
   const { filePath } = req.body;
   if (isSafeMediaPath(filePath) && fs.existsSync(filePath)) {
-    execFile('cmd.exe', ['/c', 'start', '""', filePath], () => {});
+    execFile('cmd.exe', ['/c', 'start', '""', filePath], { windowsHide: true }, () => {});
     return res.json({ success: true });
   }
   res.json({ success: false, message: 'Invalid or missing file' });
 });
 
 app.post('/api/recordings/open-folder', (req, res) => {
-  execFile('explorer.exe', [defaultRecordDir], () => {});
+  execFile('explorer.exe', [defaultRecordDir], { windowsHide: true }, () => {});
   res.json({ success: true });
 });
 

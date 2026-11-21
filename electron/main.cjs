@@ -16,7 +16,7 @@ if (process.argv.includes('--cli')) {
   const { spawn } = require('child_process');
   const script = path.join(__dirname, '../server/cli/sf-run.mjs').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
   const args = process.argv.slice(process.argv.indexOf('--cli') + 1);
-  const p = spawn(process.execPath, [script, ...args], { stdio: 'inherit', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+  const p = spawn(process.execPath, [script, ...args], { stdio: 'inherit', windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
   p.on('exit', c => process.exit(c == null ? 1 : c));
   return;
 }

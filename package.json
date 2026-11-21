@@ -1,6 +1,6 @@
 {
   "name": "streamfusion",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "StreamFusion - Android mirroring, wireless control and AI-driven app and web testing with detailed reports",
   "author": "Milann Sharma <https://github.com/Milannsharma>",
   "main": "electron/main.cjs",
@@ -49,7 +49,7 @@
   "build": {
     "appId": "com.milannsharma.streamfusion",
     "productName": "StreamFusion",
-    "artifactName": "StreamFusion-v3.3.0-Setup.${ext}",
+    "artifactName": "StreamFusion-v3.3.1-Setup.${ext}",
     "asar": true,
     "publish": [
       {

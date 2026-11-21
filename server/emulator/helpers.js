@@ -76,7 +76,7 @@ export async function qemuStatus(emulatorBin) {
   }
   // 3. Check system PATH via where.exe
   return new Promise((resolve) => {
-    exec('where.exe qemu-system-x86_64', (err, stdout) => {
+    exec('where.exe qemu-system-x86_64', { windowsHide: true }, (err, stdout) => {
       if (!err && stdout && stdout.trim()) {
         resolve({ available: true, path: stdout.split(/\r?\n/)[0].trim() });
       } else {
@@ -89,11 +89,11 @@ export async function qemuStatus(emulatorBin) {
 // Helper: check if emulator process is currently running
 export function checkProcessRunning() {
   return new Promise((resolve) => {
-    exec('tasklist /FI "IMAGENAME eq StreamFusionEmulator.exe" /NH', (err, stdout) => {
+    exec('tasklist /FI "IMAGENAME eq StreamFusionEmulator.exe" /NH', { windowsHide: true }, (err, stdout) => {
       if (!err && stdout && stdout.toLowerCase().includes('streamfusionemulator.exe')) {
         return resolve(true);
       }
-      exec('tasklist /FI "IMAGENAME eq SoulAndroid.exe" /NH', (err2, stdout2) => {
+      exec('tasklist /FI "IMAGENAME eq SoulAndroid.exe" /NH', { windowsHide: true }, (err2, stdout2) => {
         if (!err2 && stdout2 && stdout2.toLowerCase().includes('soulandroid.exe')) {
           return resolve(true);
         }

@@ -35,7 +35,7 @@ function ensureServer() {
 function openApp() {
   const electron = path.join(ROOT, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
   if (fs.existsSync(electron)) { spawn(electron, [ROOT], { cwd: ROOT, detached: true, stdio: 'ignore', env: { ...process.env, SF_PORT: String(PORT) } }).unref(); return 'StreamFusion window opened.'; }
-  if (process.platform === 'win32') spawn('cmd', ['/c', 'start', '', BASE], { detached: true, stdio: 'ignore' }).unref();
+  if (process.platform === 'win32') spawn('cmd', ['/c', 'start', '', BASE], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   return 'Opened StreamFusion in your browser at ' + BASE;
 }
 
