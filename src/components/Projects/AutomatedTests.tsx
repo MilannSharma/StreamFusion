@@ -122,7 +122,8 @@ export const SaveAsTest: React.FC<{ runId: string; projectId?: string }> = ({ ru
   const [name, setName] = useState('');
   const [state, setState] = useState<'idle' | 'saved' | string>('idle');
   useEffect(() => { fetch('/api/automation/recording/' + runId).then(r => r.json()).then(j => setOk(!!j.available)).catch(() => {}); }, [runId]);
-  if (!ok || !projectId) return null;
+  if (!ok) return null;
+  if (!projectId) return <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted, #64748b)' }}>To save this as an automated test, run it from a project (choose or create one in the test brief).</div>;
   const save = async () => {
     const j = await (await fetch(`/api/automation/${projectId}/from-run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, name: name.trim() || 'Recorded test' }) })).json();
     setState(j.success ? 'saved' : j.message || 'Could not save');

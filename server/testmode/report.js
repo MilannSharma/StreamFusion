@@ -55,10 +55,11 @@ export function analyze(run) {
     ...(rep.defects || []).map((d, i) => ({ from: 'observed', ref: 'OBS-' + (i + 1), ...d, severity: SEV_ORDER.includes(d.severity) ? d.severity : 'minor', status: 'observed' }))
   ].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity));
   const bySeverity = SEV_ORDER.map(s => ({ name: s, count: defects.filter(d => d.severity === s).length }));
-  const verdict = !total ? 'NO RESULTS' : run.status === 'aborted' ? 'INCOMPLETE' : bySeverity[0].count ? 'FAIL: CRITICAL ISSUES' : fail ? 'FAIL' : blocked ? 'PASS WITH BLOCKED CASES' : 'PASS';
+  const planned = run.total || 0;
+  const verdict = !total ? 'NO RESULTS' : (run.status === 'aborted' || planned > total) ? 'INCOMPLETE' : bySeverity[0].count ? 'FAIL: CRITICAL ISSUES' : fail ? 'FAIL' : blocked ? 'PASS WITH BLOCKED CASES' : 'PASS';
   const steps = run.steps || [];
   return {
-    pass, fail, blocked, total, passRate: total ? Math.round(pass / total * 100) : 0, durationMs: t1 - t0, avgMs: total ? Math.round((t1 - t0) / total) : 0,
+    pass, fail, blocked, total, planned, passRate: total ? Math.round(pass / total * 100) : 0, durationMs: t1 - t0, avgMs: total ? Math.round((t1 - t0) / total) : 0,
     actions: steps.length, failedActions: steps.filter(s => !s.ok).length, defects, bySeverity, verdict,
     byModule: group('module', 'General'), byPersona: group('persona', 'General user'), byCategory: group('category', 'functional'),
     personas: rep.personas || [], coverage: rep.coverage || { tested: [], notTested: [] }, suggestions: rep.suggestions || [], risks: rep.risks || []

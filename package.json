@@ -1,6 +1,6 @@
 {
   "name": "streamfusion",
-  "version": "3.3.1",
+  "version": "3.3.2",
   "description": "StreamFusion - Android mirroring, wireless control and AI-driven app and web testing with detailed reports",
   "author": "Milann Sharma <https://github.com/Milannsharma>",
   "main": "electron/main.cjs",
@@ -17,7 +17,7 @@
     "build:exe": "vite build && electron-builder --win",
     "preview": "vite preview",
     "sf:run": "node server/cli/sf-run.mjs",
-    "test": "node --test server/automation/automation.test.mjs server/agent/batch.test.mjs",
+    "test": "node scripts/run-tests.cjs",
     "prebuild:exe": "node scripts/sync-version.cjs && npx tsc --noEmit -p . && npm test"
   },
   "dependencies": {
@@ -49,7 +49,7 @@
   "build": {
     "appId": "com.milannsharma.streamfusion",
     "productName": "StreamFusion",
-    "artifactName": "StreamFusion-v3.3.1-Setup.${ext}",
+    "artifactName": "StreamFusion-v3.3.2-Setup.${ext}",
     "asar": true,
     "publish": [
       {

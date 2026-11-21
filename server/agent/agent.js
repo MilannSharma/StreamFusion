@@ -1,6 +1,6 @@
 // M3-A: Chat agent. A manual tool loop over the M2 device tools using the official Anthropic SDK.
 import Anthropic from '@anthropic-ai/sdk';
-import { createRun, saveShot, addStep, addCheck, finishRun, discardRun, cleanCheck, cleanExtras } from '../testmode/runs.js';
+import { createRun, saveShot, addStep, addCheck, finishRun, discardRun, cleanCheck, cleanExtras, progressOf, findRunBySession, reopenRun } from '../testmode/runs.js';
 import { TEST_RULES, CHECK_PROPS, FINISH_PROPS } from './prompts.js';
 import { compactUiTree } from '../mcp/compact.mjs';
 
@@ -88,7 +88,7 @@ const summarize = (name, r) => {
 
 export const WORLD_PROMPT = {
   web: '\n\nThis chat is for WEB testing in the browser. Use only the web_* tools. Do NOT start or use the Android emulator.',
-  phone: '\n\nThis chat is for ANDROID app testing on the emulator/device. Use only the device tools. Do NOT use the web_* browser tools.'
+  phone: '\n\nThis chat is for ANDROID app testing on the emulator/device. Use the device tools for the app. You may ALSO use the web_* browser tools, which run in a hidden background browser, but ONLY to cross-check on the website what you changed or saw in the app (for example a record created in the app must also appear on the web side). Before the first browser step you need the website URL and a login for it: if the brief does not give them, STOP, ask the user for exactly what is missing and continue only after they answer.'
 };
 
 export async function runAgent({ sessionId, message, apiKey, model = 'claude-opus-5-5', effort = 'medium', serial, mode = 'ask', tools, emit, signal, maxSteps = 40, baseURL, testMode, world }) {
@@ -103,7 +103,8 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
   if (testMode) {
     let deviceInfo = null;
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-    run = createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(testMode.summary ?? message).slice(0, 4000), deviceInfo, projectId: testMode.projectId || null });
+    const again = findRunBySession(sessionId); // same chat: keep adding to the same report
+    run = again ? reopenRun(again) : createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(testMode.summary ?? message).slice(0, 4000), deviceInfo, projectId: testMode.projectId || null, sessionId });
     anthropicTools.push(...REPORT_TOOLS);
     emit({ type: 'run_started', runId: run.id });
   }
@@ -111,6 +112,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
   if (anthropicTools.length) anthropicTools[anthropicTools.length - 1] = { ...anthropicTools[anthropicTools.length - 1], cache_control: { type: 'ephemeral' } };
   let runEnded = false;
   let lastWorld = 'device';
+  let phase = 'app';
   const endRun = (reason) => { if (run && !runEnded) { runEnded = true; if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); } };
   const emitDone = emit;
   emit = (ev) => { emitDone(ev); if (ev.type === 'done') endRun(ev.reason); if (ev.type === 'error') endRun('error'); };
@@ -154,9 +156,14 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
             try { const sc = lastWorld === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
             addCheck(run, { ...ck, screenshot: shot });
             emit({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } });
+            emit({ type: 'progress', ...progressOf(run) });
           } else { run.summary = String(c.input.summary || ''); run.report = cleanExtras(c.input); }
           results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(r) });
           continue;
+        }
+        if (world === 'phone') {
+          const w = c.name.startsWith('web_') ? 'browser' : tool ? 'app' : '';
+          if (w && w !== phase) { phase = w; emit({ type: 'phase', phase: w, text: w === 'browser' ? 'Browser-based testing started' : 'Back to app testing' }); }
         }
         emit({ type: 'tool_call', id: c.id, name: c.name, input: c.input });
         let r;

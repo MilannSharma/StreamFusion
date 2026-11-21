@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowUp, ArrowDown, Square, Plus, Plug, ShieldAlert, Power, FlaskConical, FileText, X, Download, PanelLeftClose, PanelLeftOpen, History, MoreHorizontal, RotateCcw, User } from 'lucide-react';
+import { ArrowUp, ArrowDown, Square, Plus, Plug, ShieldAlert, Power, FlaskConical, FileText, X, Download, PanelLeftClose, PanelLeftOpen, History, MoreHorizontal, RotateCcw, User, Globe, Smartphone } from 'lucide-react';
 import { Markdown, CopyBtn, ToolGroup, HistoryPanel, ResumeBanner, type ChatSummary } from './ChatBits';
 import type { EmulatorApi } from './useEmulator';
 import { PowerPanel, startEmulator } from './PowerControl';
@@ -27,6 +27,7 @@ type Msg =
   | { kind: 'approval'; id: string; name: string; input: any; answered?: 'allowed' | 'denied' }
   | { kind: 'startPrompt'; pending: string; state: 'ask' | 'starting' | 'cancelled' }
   | { kind: 'info'; text: string }
+  | { kind: 'phase'; phase: string; text: string }
   | { kind: 'check'; id?: string; title: string; status: string; evidence: string; persona?: string }
   | { kind: 'report'; runId: string; status: string; projectId?: string; savedTo?: string }
   | { kind: 'error'; text: string };
@@ -77,6 +78,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [model, setModel] = useState(() => { try { return localStorage.getItem('sf_agent_model') || MODELS[1].id; } catch (e) { return MODELS[1].id; } }); // Sonnet by default: about 5x cheaper than Opus and good enough for test execution
   const [mode, setMode] = useState<'ask' | 'auto'>('ask');
   const [tokens, setTokens] = useState({ input: 0, output: 0, cached: 0 });
+  const [progress, setProgress] = useState<{ done: number; total: number; pass: number; fail: number; blocked: number } | null>(null); // live "case 7 of 145" counter
+  const [phaseNow, setPhaseNow] = useState<'app' | 'browser'>('app');
   const [pending, setPending] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(() => { try { return localStorage.getItem('sf_test_mode') === '1'; } catch (e) { return false; } });
   const [files, setFiles] = useState<BriefFile[]>([]);
@@ -84,6 +87,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
   const [brief, setBriefState] = useState<Brief>(() => { try { return { ...EMPTY_BRIEF, ...JSON.parse(localStorage.getItem(briefKey) || '{}'), login: '' }; } catch (e) { return EMPTY_BRIEF; } });
   const setBrief = (b: Brief) => { setBriefState(b); try { localStorage.setItem(briefKey, JSON.stringify({ ...b, login: '' })); } catch (e) {} }; // logins are never stored
   const runPidRef = useRef('');
+  const curProjectRef = useRef<string>(''); // the project of this chat: the reports panel shows only its reports
+  const runIdRef = useRef<string | null>(null); // the report run of this chat
   const testRunRef = useRef<{ title: string; summary: string; projectId: string; logins?: string } | null>(null);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [projectId, setProjectId] = useState('');
@@ -121,8 +126,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     return () => window.removeEventListener('sf-prefill-chat', h);
   }, [world, active]);
   useEffect(() => { try { localStorage.setItem('sf_test_mode', testMode ? '1' : '0'); } catch (e) {} }, [testMode]);
-  const loadRuns = () => fetch('/api/agent/reports').then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
-  useEffect(() => { if (showReports) loadRuns(); }, [showReports]);
+  curProjectRef.current = projectId || runPidRef.current || testInfoRef.current?.projectId || '';
+  const loadRuns = () => fetch('/api/agent/reports' + (curProjectRef.current ? '?projectId=' + encodeURIComponent(curProjectRef.current) : '')).then(r => r.json()).then(j => setRuns(j.runs || [])).catch(() => {});
+  useEffect(() => { if (showReports) loadRuns(); }, [showReports, projectId]);
   const addFiles = async (list: FileList | null, kind: 'cases' | 'docs' = 'cases') => {
     if (!list) return;
     const out = await readBriefFiles(list, kind, (text) => setMsgs(m => [...m, { kind: 'error', text }]));
@@ -289,7 +295,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       if (emu.phase === 'booting') setPending(text);
       return;
     }
-    const tm = testRunRef.current; testRunRef.current = null; if (tm) runPidRef.current = tm.projectId || ''; // only the first message of a test (or a resume) starts a report run
+    let tm = testRunRef.current; testRunRef.current = null;
+    // Every message of a test chat (a "continue" after a stop or a block, an answer to the AI) goes on with the same report.
+    if (!tm && testInfoRef.current) { const t = testInfoRef.current; const logins = t.projectId ? await loadSecret(loginSecretName(t.projectId)).catch(() => '') : ''; tm = { title: t.title, summary: t.summary, projectId: t.projectId, logins }; }
+    if (tm) runPidRef.current = tm.projectId || '';
     lastSentRef.current = text;
     setInterrupted(false);
     setBusy(true);
@@ -312,7 +321,18 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
       }
     } catch (e: any) {
       if (e?.name !== 'AbortError') setMsgs(m => [...m, { kind: 'error', text: e.message || String(e) }]);
-    } finally { setBusy(false); abortRef.current = null; }
+    } finally {
+      setBusy(false); abortRef.current = null;
+      // A stop (or a dropped connection) closes the stream before the server says "report ready": show the saved report anyway.
+      const rid = runIdRef.current;
+      if (rid) setTimeout(async () => {
+        try {
+          if (msgsRef.current.some(m => m.kind === 'report' && m.runId === rid)) return;
+          const r = ((await (await fetch('/api/agent/reports')).json()).runs || []).find((x: any) => x.id === rid);
+          if (r && r.total > 0 && r.status !== 'running') setMsgs(m => m.some(x => x.kind === 'report' && x.runId === rid) ? m : [...m, { kind: 'report', runId: rid, status: r.status, projectId: runPidRef.current }]);
+        } catch (e) {}
+      }, 1500);
+    }
   }, [input, busy, apiKey, engine, model, serial, mode, connected, emu.phase, testMode, files, isWeb, mcpLive]);
 
   useEffect(() => {
@@ -345,8 +365,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     else if (ev.type === 'tool_call') setMsgs(m => [...m, { kind: 'tool', id: ev.id, name: ev.name, input: ev.input, state: 'running' }]);
     else if (ev.type === 'tool_result') setMsgs(m => m.map(x => x.kind === 'tool' && x.id === ev.id ? { ...x, state: ev.ok ? 'ok' : 'error', summary: ev.summary } : x));
     else if (ev.type === 'approval') setMsgs(m => [...m, { kind: 'approval', id: ev.id, name: ev.name, input: ev.input }]);
-    else if (ev.type === 'check') setMsgs(m => [...m, { kind: 'check', ...ev.check }]);
-    else if (ev.type === 'report_ready') { setMsgs(m => [...m, { kind: 'report', runId: ev.runId, status: ev.status, projectId: runPidRef.current, savedTo: ev.savedTo }]); if (showReportsRef.current) loadRuns(); }
+    else if (ev.type === 'check') setMsgs(m => { const i = ev.check.id ? m.findIndex(x => x.kind === 'check' && x.id === ev.check.id) : -1; return i >= 0 ? m.map((x, k) => k === i ? { kind: 'check', ...ev.check } : x) : [...m, { kind: 'check', ...ev.check }]; }); // a corrected case replaces the earlier one
+    else if (ev.type === 'progress') setProgress({ done: ev.done, total: ev.total, pass: ev.pass, fail: ev.fail, blocked: ev.blocked });
+    else if (ev.type === 'phase') { setPhaseNow(ev.phase === 'browser' ? 'browser' : 'app'); setMsgs(m => [...m, { kind: 'phase', phase: ev.phase, text: ev.text }]); }
+    else if (ev.type === 'run_started') { runIdRef.current = ev.runId || null; setPhaseNow('app'); }
+    else if (ev.type === 'report_ready') { setMsgs(m => [...m.filter(x => !(x.kind === 'report' && x.runId === ev.runId)), { kind: 'report', runId: ev.runId, status: ev.status, projectId: runPidRef.current, savedTo: ev.savedTo }]); if (showReportsRef.current) loadRuns(); }
     else if (ev.type === 'no_report') setMsgs(m => [...m, { kind: 'info', text: 'No test case was executed, so no report was created.' }]);
     else if (ev.type === 'usage') setTokens(t => ({ input: t.input + (ev.input || 0), output: t.output + (ev.output || 0), cached: t.cached + (ev.cacheRead || 0) }));
     else if (ev.type === 'error') setMsgs(m => [...m, { kind: 'error', text: ev.message }]);
@@ -376,7 +399,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
     stop();
     fetch('/api/agent/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId.current }) });
     sessionId.current = 'sf-' + Math.random().toString(36).slice(2, 10);
-    testRunRef.current = null; testInfoRef.current = null; setStep(0); setShowErrors(false); setInterrupted(false); setShowHistory(false); setMsgs([]); setTokens({ input: 0, output: 0, cached: 0 });
+    testRunRef.current = null; testInfoRef.current = null; setStep(0); setShowErrors(false); setInterrupted(false); setShowHistory(false); setMsgs([]); setProgress(null); setPhaseNow('app'); setTokens({ input: 0, output: 0, cached: 0 });
   };
   const loadChat = async (id: string) => {
     if (id === sessionId.current) { setShowHistory(false); return; }
@@ -567,7 +590,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
           return <div style={{ padding: '6px 16px 8px', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', color: 'var(--text-muted, #64748b)' }}>
             {busy && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d97706' }} />}
             <b style={{ color: 'var(--text-main, #0f172a)' }}>{busy ? 'Testing' : 'Results'}</b>
-            <span style={{ color: '#16a34a', fontWeight: 700 }}>{p} pass</span><span style={{ color: f ? '#dc2626' : undefined, fontWeight: 700 }}>{f} fail</span>{o > 0 && <span style={{ color: '#d97706' }}>{o} blocked</span>}
+            {(() => { const tot = Math.max(progress?.total || 0, cks.length), dn = cks.length; return tot > 0 ? <span title={`${dn} of ${tot} test cases done`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              <b style={{ color: 'var(--text-main, #0f172a)', fontVariantNumeric: 'tabular-nums' }}>{busy && dn < tot ? 'Case ' + (dn + 1) : dn}/{tot}</b>
+              <span style={{ width: 90, height: 6, borderRadius: 3, background: 'rgba(120,120,128,0.2)', overflow: 'hidden', display: 'inline-flex' }}>
+                <span style={{ width: (p / tot * 100) + '%', background: '#16a34a', transition: 'width .4s' }} /><span style={{ width: (f / tot * 100) + '%', background: '#dc2626', transition: 'width .4s' }} /><span style={{ width: (o / tot * 100) + '%', background: '#d97706', transition: 'width .4s' }} />
+              </span></span> : null; })()}
+            <span style={{ color: '#16a34a', fontWeight: 700 }}>{p} pass</span><span style={{ color: f ? '#dc2626' : undefined, fontWeight: 700 }}>{f} fail</span><span style={{ color: o ? '#d97706' : undefined, fontWeight: o ? 700 : 400 }}>{o} blocked</span>
+            {busy && phaseNow === 'browser' && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(14,165,233,0.12)', color: '#0284c7', borderRadius: 999, padding: '1px 9px', fontWeight: 600 }}><Globe size={11} /> Browser check</span>}
             {(roleNow || roleAuto) && <span title={roleAuto ? 'Role picked automatically by the AI from your brief' : 'Role you chose in the test brief'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(79,70,229,0.08)', color: '#4f46e5', borderRadius: 999, padding: '1px 9px', fontWeight: 600 }}><User size={11} /> {roleNow ? roleNow : 'Auto'}{roleAuto && roleNow ? ' (auto)' : ''}</span>}
             {busy && tl && <span style={{ marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '40%' }}>{tl.name}</span>}
           </div>;
@@ -668,7 +697,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ emu, world = 'phone', ac
             <style>{'@keyframes sfIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}@keyframes sfBlink{50%{opacity:.35}}'}</style>
             <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: busy ? '#f59e0b' : '#22c55e', animation: busy ? 'sfBlink 1.1s ease-in-out infinite' : 'none' }} />
             <span key={line} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', animation: 'sfIn .25s ease-out', minWidth: 0 }}>{line}</span>
-            {(p > 0 || f > 0) && <span style={{ flexShrink: 0, opacity: 0.9, fontWeight: 700 }}><span style={{ color: '#4ade80' }}>{p}</span> / <span style={{ color: f ? '#f87171' : '#94a3b8' }}>{f}</span></span>}
+            {cks.length > 0 && <span style={{ flexShrink: 0, opacity: 0.95, fontWeight: 700 }}>{cks.length}/{Math.max(progress?.total || 0, cks.length)} · <span style={{ color: '#4ade80' }}>{p}</span> / <span style={{ color: f ? '#f87171' : '#94a3b8' }}>{f}</span></span>}
             <PanelLeftOpen size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
           </div>
         );
@@ -772,6 +801,14 @@ const Bubble: React.FC<{ m: Msg; onAnswer: (id: string, allow: boolean) => void;
         <SaveAsTest runId={m.runId} projectId={m.projectId} />
       </div>
     </div>);
+  }
+  if (m.kind === 'phase') {
+    const b = m.phase === 'browser';
+    return <div style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, fontWeight: 700, color: b ? '#0284c7' : '#4f46e5', margin: '4px 0' }}>
+      <span style={{ flex: 1, height: 1, background: 'currentColor', opacity: 0.25 }} />
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: b ? 'rgba(14,165,233,0.12)' : 'rgba(79,70,229,0.1)', borderRadius: 999, padding: '3px 12px' }}>{b ? <Globe size={13} /> : <Smartphone size={13} />}{m.text}{b ? ' (in the background)' : ''}</span>
+      <span style={{ flex: 1, height: 1, background: 'currentColor', opacity: 0.25 }} />
+    </div>;
   }
   if (m.kind === 'info') return <div style={{ alignSelf: 'center', fontSize: 12, color: 'var(--text-muted, #64748b)', textAlign: 'center' }}>{m.text}</div>;
   if (m.kind === 'error') return <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '8px 12px', borderRadius: 10, fontSize: 12.5, display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ flex: 1 }}>{m.text}</span>{onRetry && <button onClick={onRetry} style={{ ...iconBtn, fontSize: 11.5, color: '#b91c1c' }}><RotateCcw size={12} /> Retry</button>}</div>;

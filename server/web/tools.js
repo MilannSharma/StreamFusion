@@ -141,6 +141,8 @@ async function attachAndroid(runAdb, serial, target, pid) {
 
 // ---------- the user's own desktop Chrome / Edge ----------
 const DESKTOP_PORT = 9333;
+let background = false; // app testing: the browser is opened hidden (headless), so the user is not disturbed
+export function setWebBackground(on) { background = !!on; }
 async function cdpAlive() { try { const r = await fetch('http://127.0.0.1:' + DESKTOP_PORT + '/json/version', { signal: AbortSignal.timeout(1500) }); return r.ok; } catch (e) { return false; } }
 let attaching = null;
 export function attachDesktop() { return (attaching ||= doAttach().finally(() => { attaching = null; })); }
@@ -151,7 +153,7 @@ async function doAttach() {
     // A separate profile folder is required for remote debugging; it keeps your logins between sessions.
     const dir = path.join(BASE, 'own-chrome-profile');
     fs.mkdirSync(dir, { recursive: true });
-    spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', '--no-default-browser-check', 'https://www.google.com'], { detached: true, stdio: 'ignore' }).unref();
+    spawn(exe, ['--remote-debugging-port=' + DESKTOP_PORT, '--user-data-dir=' + dir, '--no-first-run', '--no-default-browser-check', ...(background ? ['--headless=new', '--window-size=1366,850', 'about:blank'] : ['https://www.google.com'])], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     for (let i = 0; i < 40 && !(await cdpAlive()); i++) await new Promise(r => setTimeout(r, 500));
     if (!(await cdpAlive())) throw new Error('The browser started but did not open its debugging port.');
   }

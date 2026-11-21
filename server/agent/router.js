@@ -1,9 +1,9 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { setContext } from '../automation/assertions.js';
+import { setContext, getContext } from '../automation/assertions.js';
 import { loginTokens } from '../automation/format.js';
-import { listRuns, getRun, shotPath, REPORTS_DIR, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras } from '../testmode/runs.js';
+import { listRuns, getRun, shotPath, REPORTS_DIR, buildDocx, buildPdf, discardRun, createRun, saveShot, addCheck, finishRun, cleanCheck, cleanExtras , progressOf , findRunBySession, reopenRun, addStep } from '../testmode/runs.js';
 import { WORLD_PROMPT } from './agent.js';
 import { authStatus, startLogin, logout, installMcp, runClaudeCli, resetCliSession, installClaude } from './claude-cli.js';
 import { lastWorld } from '../mcp/activity.js';
@@ -23,15 +23,16 @@ async function cachedBuild(run, fmt) {
 
 export function createAgentRouter({ tools }) {
   const router = express.Router();
+  let chatRun = null; // the report of the chat turn that is running now (its checks keep landing here even if the AI calls report_finish early)
   let current = null; // the open test-report run (in-app Test mode, or started by an external MCP client with report_begin)
   // A chat belongs to one world: the browser page only gets web_* tools, the phone page only device tools.
   const isWebTool = (n) => n.startsWith('web_');
-  const worldTools = (world) => (world === 'web' ? Object.fromEntries(Object.entries(tools).filter(([n]) => isWebTool(n))) : world === 'phone' ? Object.fromEntries(Object.entries(tools).filter(([n]) => !isWebTool(n))) : tools);
+  const worldTools = (world) => (world === 'web' ? Object.fromEntries(Object.entries(tools).filter(([n]) => isWebTool(n))) : tools); // the phone page also gets the web_* tools: they run hidden, to cross-check on the website what the app did
   const isRealPhone = (serial) => !/^emulator-/.test(String(serial || ''));
   const REAL_PHONE = (serial) => `
 
 The user chose their REAL phone (serial ${serial}). Work only on it: pass serial "${serial}" to every device tool. Never call emulator_start, emulator_status or emulator_stop and never start the Android emulator.`;
-  const otherWorldNames = (world, serial) => (world === 'phone' && isRealPhone(serial) ? Object.keys(tools).filter(isWebTool).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : world === 'phone' ? Object.keys(tools).filter(isWebTool) : []);
+  const otherWorldNames = (world, serial) => (world === 'phone' && isRealPhone(serial) ? ['emulator_start', 'emulator_status', 'emulator_stop'] : world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : []);
   const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
   const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status, savedTo: r.savedTo }); };
 
@@ -48,21 +49,34 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     const ac = new AbortController();
     res.on('close', () => ac.abort());
     const emit = (ev) => { if (!res.writableEnded) res.write(JSON.stringify(ev) + '\n'); };
+    setWebBackground(b.world === 'phone'); // browser steps during app testing run hidden in the background
     if (b.testMode) setContext({ projectId: b.testMode.projectId || null, loginTokens: loginTokens(b.testMode.logins), world: b.world, serial: b.serial });
     if (b.engine === 'claude') {
       let run = null;
       if (b.testMode) {
-        closeRun('aborted');
         let deviceInfo = null;
-        try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-        run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo, projectId: b.testMode.projectId ? String(b.testMode.projectId) : null });
-        current = run;
+        const again = findRunBySession(String(b.sessionId)); // same chat: keep adding to the same report
+        if (again) { if (current && current.id !== again.id) closeRun('aborted'); run = reopenRun(again); }
+        else {
+          closeRun('aborted');
+          try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
+          run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo, projectId: b.testMode.projectId ? String(b.testMode.projectId) : null, sessionId: String(b.sessionId) });
+        }
+        current = run; chatRun = run; run.emit = emit;
         emit({ type: 'run_started', runId: run.id });
       }
       let reason = 'complete';
-      const wrap = (ev) => { if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error'; emit(ev); };
-      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world, b.serial), worldPrompt: (WORLD_PROMPT[b.world] || '') + (b.world === 'phone' && isRealPhone(b.serial) ? REAL_PHONE(b.serial) : ''), emit: wrap, signal: ac.signal });
+      const calls = new Map();
+      const wrap = (ev) => {
+        if (ev.type === 'done') reason = ev.reason; if (ev.type === 'error') reason = 'error';
+        if (run && ev.type === 'tool_call') calls.set(ev.id, ev.input);
+        if (run && ev.type === 'tool_result' && !/^(report_|finish_report)/.test(ev.name || '')) { try { addStep(run, { name: ev.name, input: calls.get(ev.id) || {}, ok: !!ev.ok, summary: ev.summary }); } catch (e) {} }
+        emit(ev);
+      };
+      await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world, b.serial), worldPrompt: (WORLD_PROMPT[b.world] || '') + (b.world === 'phone' && isRealPhone(b.serial) ? REAL_PHONE(b.serial) : ''), world: b.world, emit: wrap, signal: ac.signal });
+      if (run && run.total > run.checks.length && reason === 'complete') emit({ type: 'text', text: `Only ${run.checks.length} of ${run.total} test cases have a result so far. Send "continue" and I will carry on with the rest: the same report keeps growing.` });
       if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
+      chatRun = null;
       return res.end();
     }
     await runAgent({
@@ -74,6 +88,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
     res.end();
   };
   router.post('/chat', (req, res) => chatHandler(req, res).catch(e => {
+    chatRun = null; // a crashed turn must not leave its report bound to later MCP calls
     console.error('[agent] chat failed:', e);
     try { if (!res.headersSent) res.status(500).json({ success: false, message: e.message || 'Agent failed' }); else { res.write(JSON.stringify({ type: 'error', message: e.message || 'Agent failed' }) + String.fromCharCode(10)); res.end(); } } catch (x) {}
   }));
@@ -86,7 +101,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
   router.delete('/chats/:id', (req, res) => res.json({ success: deleteChat(req.params.id) }));
 
   // Test reports
-  router.get('/reports',(req, res) => res.json({ success: true, runs: listRuns() }));
+  router.get('/reports', (req, res) => { const pid = String(req.query.projectId || ''); res.json({ success: true, runs: pid ? listRuns().filter(r => r.projectId === pid) : listRuns() }); });
   router.get('/reports/:id', (req, res) => { const r = getRun(req.params.id); r ? res.json({ success: true, run: r }) : res.status(404).json({ success: false, message: 'Not found' }); });
   router.get('/reports/:id/shot', (req, res) => { const p = shotPath(req.params.id, String(req.query.f || '')); p ? res.sendFile(p) : res.status(404).end(); });
   router.get('/reports/:id/:fmt(docx|pdf|json)', async (req, res) => {
@@ -113,24 +128,29 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
 
   // Test reports written by an AI that drives StreamFusion over MCP (report_begin / report_check / report_finish)
   router.post('/report/begin', async (req, res) => {
+    if (chatRun) return res.json({ ok: true, runId: chatRun.id, note: 'A report is already open for this chat. Do not start another one: continue with report_check for every test case, then report_finish.' });
     closeRun('aborted');
     const serial = String(req.body?.serial || 'emulator-5554');
     let deviceInfo = null;
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
-    current = createRun({ title: String(req.body?.title || 'Test run').slice(0, 120), model: String(req.body?.client || 'MCP client'), serial, instructions: String(req.body?.instructions || '').slice(0, 4000), deviceInfo });
+    current = createRun({ title: String(req.body?.title || 'Test run').slice(0, 120), model: String(req.body?.client || 'MCP client'), serial, projectId: getContext().projectId || null, instructions: String(req.body?.instructions || '').slice(0, 4000), deviceInfo });
     res.json({ ok: true, runId: current.id });
   });
   router.post('/report/check', async (req, res) => {
+    if (!current && chatRun) { reopenRun(chatRun); current = chatRun; } // report_finish was called early: later cases still count
     if (!current) return res.json({ ok: false, error: 'No open report. Call report_begin first (or turn on Test mode in StreamFusion).' });
     const b = req.body || {};
     const status = ['pass', 'fail', 'blocked'].includes(b.status) ? b.status : 'blocked';
     const world = b.world === 'web' || b.world === 'phone' ? b.world : lastWorld();
     let shot = null;
     try { const sc = world === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial: current.serial, maxDim: 700 }); if (sc.ok) shot = saveShot(current, sc.imageBase64, status); } catch (e) {}
-    addCheck(current, { ...cleanCheck({ ...b, status }), screenshot: shot });
-    res.json({ ok: true, recorded: current.checks.length, screenshot: !!shot });
+    const ck = cleanCheck({ ...b, status });
+    addCheck(current, { ...ck, screenshot: shot });
+    try { current.emit?.({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } }); current.emit?.({ type: 'progress', ...progressOf(current) }); } catch (e) {}
+    res.json({ ok: true, recorded: current.checks.length, ofTotal: current.total || undefined, screenshot: !!shot });
   });
   router.post('/report/finish', async (req, res) => {
+    if (!current && chatRun) { reopenRun(chatRun); current = chatRun; }
     if (!current) return res.json({ ok: false, error: 'No open report.' });
     const r = current; r.summary = String(req.body?.summary || ''); r.report = cleanExtras(req.body || {}); closeRun('complete');
     res.json({ ok: true, runId: r.id, status: r.status, pdf: '/api/agent/reports/' + r.id + '/pdf', docx: '/api/agent/reports/' + r.id + '/docx' });

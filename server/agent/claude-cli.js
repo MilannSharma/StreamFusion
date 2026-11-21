@@ -140,7 +140,7 @@ function resultSummary(name, content, isErr) {
   return text.trim() ? short(text.replace(/\s+/g, ' '), 110) : isErr ? 'error' : 'ok';
 }
 
-export async function runClaudeCli({ sessionId, message, serial, mode, model, testMode, dangerousNames = [], blockedNames = [], worldPrompt = '', emit, signal }) {
+export async function runClaudeCli({ sessionId, message, serial, mode, model, testMode, dangerousNames = [], blockedNames = [], worldPrompt = '', world = '', emit, signal }) {
   const st = await authStatus();
   if (!st.installed) return emit({ type: 'error', message: 'Claude Code is not installed on this PC. Install it from claude.com/claude-code, then sign in here.' });
   if (!st.loggedIn) return emit({ type: 'error', message: 'Not signed in. Press Connect, then Sign in with Claude.' });
@@ -162,7 +162,7 @@ export async function runClaudeCli({ sessionId, message, serial, mode, model, te
   signal.addEventListener('abort', onAbort, { once: true });
   child.stdin.end(message);
 
-  let errTail = '', gotResult = false, buf = '';
+  let errTail = '', gotResult = false, buf = '', phase = 'app';
   const names = new Map(); // tool_use_id -> short name
   child.stderr.on('data', d => { errTail = (errTail + d).slice(-600); });
   const handle = (ev) => {
@@ -173,6 +173,10 @@ export async function runClaudeCli({ sessionId, message, serial, mode, model, te
         else if (b.type === 'tool_use') {
           const name = String(b.name).replace(PREFIX, '');
           names.set(b.id, name);
+          if (world === 'phone' && !/^(report_|finish_report)/.test(name)) {
+            const w = name.startsWith('web_') ? 'browser' : 'app';
+            if (w !== phase) { phase = w; emit({ type: 'phase', phase: w, text: w === 'browser' ? 'Browser-based testing started' : 'Back to app testing' }); }
+          }
           emit({ type: 'tool_call', id: b.id, name, input: b.input || {} });
         }
       }

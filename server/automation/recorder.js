@@ -12,7 +12,17 @@ const CLEAN_KEYS = ['serial', 'baselineDir']; // never recorded: the device is c
 let rec = null;          // active recording
 const done = new Map(); // runId -> finished recording (kept in memory until the user saves it)
 
+// The recording is also kept on disk (next to the report), so "Save as automated test" still works after a restart or a crash.
+let store = null; // { save(runId, data), load(runId) } set by the report store
+export function setStore(s) { store = s; }
+const persist = () => { try { if (rec && store) store.save(rec.runId, { runId: rec.runId, projectId: rec.projectId, steps: compact(rec.steps), target: rec.steps.some(s => /^web_/.test(s.tool || '')) ? 'web' : 'phone', at: new Date().toISOString() }); } catch (e) {} };
 export function start(runId, meta = {}) { rec = { runId, steps: [], t0: Date.now(), ...meta }; }
+// A resumed run keeps what was recorded before: the new actions are added to the old ones.
+export function resume(runId, meta = {}) {
+  if (rec && rec.runId === runId) return;
+  const prev = done.get(runId) || (store && store.load(runId)) || null;
+  rec = { runId, steps: prev ? prev.steps.slice() : [], t0: Date.now(), ...meta };
+}
 export function active() { return !!rec; }
 const clean = (args) => { const o = { ...(args || {}) }; for (const k of CLEAN_KEYS) delete o[k]; return o; };
 
@@ -32,16 +42,17 @@ export function onCall(name, args, result) {
 export function onCheck(check) {
   if (!rec) return;
   rec.steps.push({ check: { id: check.id || '', title: check.title || '' } });
+  persist();
 }
 export function finish(runId) {
   if (!rec || rec.runId !== runId) return;
   const r = rec; rec = null;
   const actions = r.steps.filter(s => s.tool).length;
-  if (actions) done.set(runId, { runId, projectId: r.projectId, steps: compact(r.steps), target: r.steps.some(s => /^web_/.test(s.tool || '')) ? 'web' : 'phone', at: new Date().toISOString() });
+  if (actions) { const d = { runId, projectId: r.projectId, steps: compact(r.steps), target: r.steps.some(s => /^web_/.test(s.tool || '')) ? 'web' : 'phone', at: new Date().toISOString() }; done.set(runId, d); try { store?.save(runId, d); } catch (e) {} }
   if (done.size > 20) done.delete(done.keys().next().value);
 }
 export function discard(runId) { if (rec?.runId === runId) rec = null; done.delete(runId); }
-export const recordingOf = (runId) => done.get(runId) || null;
+export const recordingOf = (runId) => done.get(runId) || (store ? store.load(runId) : null) || null;
 
 // drop consecutive duplicates (e.g. repeated waits) and trailing actions that no check follows
 function compact(steps) {

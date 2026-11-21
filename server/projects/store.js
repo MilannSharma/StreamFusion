@@ -50,7 +50,9 @@ export function historyOf(id) {
 export function saveFromBrief({ projectId, world, brief = {}, files = [] }) {
   const name = clip(brief.product, 80).trim();
   if (!name) throw new Error('Product name is required');
-  let p = (projectId && getProject(projectId)) || all().find(x => x.name.toLowerCase() === name.toLowerCase());
+  // A project picked earlier is only reused when the product name is still that project's name: typing another product never renames or mixes into it.
+  const picked = projectId && getProject(projectId);
+  let p = (picked && picked.name.toLowerCase() === name.toLowerCase() ? picked : null) || all().find(x => x.name.toLowerCase() === name.toLowerCase());
   if (!p) p = { id: 'proj-' + slug(name) + '-' + Math.random().toString(36).slice(2, 6), name, createdAt: new Date().toISOString(), targets: { web: '', app: '' }, notes: '', docs: [], modules: [] };
   p.name = name;
   const target = clip(brief.target, 400).trim();

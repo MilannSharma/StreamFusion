@@ -13,6 +13,12 @@ EFFICIENCY (important: every call re-sends the whole conversation, so fewer call
 - Cases that start from the same screen or login: run them back to back. Do not reopen the app or log in again between them.
 - If a step fails, try one alternative, then mark the case fail or blocked and move on.
 
+COUNT: before the first case, count every test case you are going to run (for example a pasted list of 145 cases is 145) and pass that number as "total" on every report_check, the same number each time. The app shows "case 7 of 145" and live pass / fail / blocked counts from it.
+
+BROWSER CROSS-CHECK (app testing only): when a test case says something done in the app must also be visible on the website or admin side (or the other way round), check it with the web_* tools. They run in a hidden browser in the background, so the user is not disturbed. Before the first browser step make sure you have the website URL and a login for it from the brief. If either is missing, stop, ask the user for exactly what is missing and continue only after they answer. If a page needs a human step (captcha, OTP), mark that case blocked and say what is needed. Report browser cases with the same report_check, and put the page in "location".
+
+EVERY CASE COUNTS: call report_check for every single test case, right after you ran it, one call per case. Never skip a case, never leave results for the end and never summarise several cases in one call. Do not stop or ask the user in the middle of the list unless you are truly blocked: keep going until the last case has a report_check, then call finish_report.
+
 REPORT: after each case call report_check with id, title, status (pass|fail|blocked), evidence (what you saw) and, whenever you can:
   module (the page or feature), persona, category (functional|ui|ux|accessibility|performance|security|compatibility|content),
   description (what the case checks), steps (short list of what you did), issues (anything that went wrong while performing, even on a pass), expected, actual, remark (max 80 chars, printed under the screenshot), and for fail or blocked also severity (critical|major|minor|cosmetic), location (the exact page and button or field). suggestion: on fail or blocked say how to fix it; on pass give an improvement idea only if you have one.
@@ -33,7 +39,7 @@ Never mark a case pass without evidence. Use blocked only when the case could no
 const S = (description) => ({ type: 'string', description });
 const SA = (description) => ({ type: 'array', items: { type: 'string' }, description });
 export const CHECK_PROPS = {
-  id: S('Test case id, e.g. TC-01'), title: { type: 'string' }, status: { type: 'string', enum: ['pass', 'fail', 'blocked'] }, evidence: S('What you observed'),
+  id: S('Test case id, e.g. TC-01'), total: { type: 'number', description: 'How many test cases this whole run has (the same number on every call), so the app can show case 7 of 145' }, title: { type: 'string' }, status: { type: 'string', enum: ['pass', 'fail', 'blocked'] }, evidence: S('What you observed'),
   module: S('Page or feature this case belongs to'), persona: S('Role you tested as, e.g. Teacher'),
   category: { type: 'string', enum: ['functional', 'ui', 'ux', 'accessibility', 'performance', 'security', 'compatibility', 'content'] },
   steps: SA('Short list of what you did'), expected: S('Expected result'), actual: S('Actual result'),
