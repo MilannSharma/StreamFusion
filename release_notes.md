@@ -1,22 +1,19 @@
-# StreamFusion v3.2.9
+# StreamFusion v3.3.3
 
-## AI chat
-- Saved chat history with search, rename, delete and **Resume** for interrupted tests.
-- Markdown rendering, wider chat, grouped tool calls, retry, progress strip.
-- Phone screen shows fast in the chat, with Refresh and a loading state.
-- New 3-step test brief wizard, User 1/2/3 logins, saved project files (PRD, test cases) you can tick.
-- Project context file that updates after every run.
-- Guide is now a single **?** button that spotlights the real buttons.
+## Testing
+- Live, plain-language steps in the chat ("Opening the site", "Typing into password", "Checking the result") instead of "Working...".
+- A browser step that never answers no longer freezes the test (75 s limit, then it reconnects).
+- The hidden background browser is closed after an app test.
+- A missing website URL or login no longer stops the test: only those cases are marked blocked, all other cases still run, and you are asked once at the end.
+- Counter reads "3/7 done - testing case 4".
 
 ## Reports
-- Branded PDF + DOCX with the StreamFusion logo, application details, defects with page and button, coverage (tested / not tested), suggestions and risks.
-- Per test case: description, steps, issues while performing, expected, result with remark, how to fix, and a compact screenshot tagged with the case code.
-- Saved automatically to `Downloads\StreamFusion Reports`.
+- File name: `Project - Module (date time)`, in Downloads and in the Save dialog.
+- Every case shows whether it ran on the App, the Browser or both, and gets the screenshot of the right side.
+- New section "Earlier issues": bugs from earlier runs of the project, shown as fixed, still failing or not re-tested. The AI now re-tests open issues of the same feature as REG cases.
 
-## Faster and cheaper tests
-- Batched steps (`device_batch`, `web_batch`), compact UI trees and tighter rules: about 3 calls per test case instead of about 24.
+## History
+- Chat history shows only the chats of the current project.
 
 ## Fixes
-- Phone list over Wi-Fi no longer takes minutes or falsely says "No phone found".
-- App dropdown in the brief is no longer clipped.
-- Start menu and shortcut name no longer include the version.
+- "setWebBackground is not defined" error when starting an app test.
