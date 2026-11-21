@@ -43,6 +43,25 @@ StreamFusion puts your Android phone on your PC with very low lag and lets you c
 
 ---
 
+## 🖼️ See it in action
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-mirror.jpg" alt="Screen mirroring home" /><br/><sub><b>Mirror</b>: your phone, one row, one click to start.</sub></td>
+    <td width="50%"><img src="docs/screenshots/02-pair-without-cable.jpg" alt="Connect without a cable" /><br/><sub><b>No cable</b>: pair with a code, the phone reconnects by itself.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/04-test-apps.jpg" alt="Test Apps device picker" /><br/><sub><b>Test Apps</b>: pick your phone or the built-in emulator.</sub></td>
+    <td width="50%"><img src="docs/screenshots/05-test-websites.jpg" alt="Test Websites" /><br/><sub><b>Test Websites</b>: your Chrome, controlled by the AI.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/06-project-memory.jpg" alt="Project memory, feature by feature" /><br/><sub><b>Project memory</b>: what is tested, what is broken, feature by feature (sample project).</sub></td>
+    <td width="50%"><img src="docs/screenshots/03-fix-connection.jpg" alt="Fix my connection assistant" /><br/><sub><b>Fix my connection</b>: real checks, one step at a time, with a fix button.</sub></td>
+  </tr>
+</table>
+
+---
+
 ## 🚀 Features
 
 Click a section to open it.
