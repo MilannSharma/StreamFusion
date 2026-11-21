@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="How StreamFusion works: phone, adb and scrcpy, StreamFusion, AI tester, report">
+  <defs>
+    <linearGradient id="n" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#312e81"/><stop offset="1" stop-color="#1e1b4b"/></linearGradient>
+    <style>
+      .t{font-family:'Segoe UI',Inter,system-ui,-apple-system,Arial,sans-serif}
+      @keyframes flow{to{stroke-dashoffset:-48}}
+      @keyframes lift{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+      .f{stroke-dasharray:8 8;animation:flow 1.2s linear infinite}
+      .n1{animation:lift 4s ease-in-out infinite}.n2{animation:lift 4s .5s ease-in-out infinite}.n3{animation:lift 4s 1s ease-in-out infinite}.n4{animation:lift 4s 1.5s ease-in-out infinite}.n5{animation:lift 4s 2s ease-in-out infinite}
+    </style>
+  </defs>
+  <rect width="1200" height="300" rx="20" fill="#0f0f26"/>
+  <g fill="none" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round">
+    <path class="f" d="M200 150 H262"/><path class="f" d="M440 150 H502"/><path class="f" d="M680 150 H742"/><path class="f" d="M920 150 H982"/>
+  </g>
+  <g class="t" text-anchor="middle">
+    <g class="n1"><g transform="translate(40,90)"><rect width="160" height="120" rx="16" fill="url(#n)" stroke="#6366f1"/><text x="80" y="52" font-size="26" font-weight="800" fill="#a5b4fc">1</text><text x="80" y="82" font-size="15" font-weight="700" fill="#e0e7ff">Your phone</text><text x="80" y="102" font-size="11" fill="#a5b4fc">USB or Wi-Fi</text></g></g>
+    <g class="n2"><g transform="translate(262,90)"><rect width="178" height="120" rx="16" fill="url(#n)" stroke="#6366f1"/><text x="89" y="52" font-size="26" font-weight="800" fill="#a5b4fc">2</text><text x="89" y="82" font-size="15" font-weight="700" fill="#e0e7ff">adb + scrcpy</text><text x="89" y="102" font-size="11" fill="#a5b4fc">bundled, nothing to install</text></g></g>
+    <g class="n3"><g transform="translate(502,90)"><rect width="178" height="120" rx="16" fill="#4338ca" stroke="#a5b4fc"/><text x="89" y="52" font-size="26" font-weight="800" fill="#c7d2fe">3</text><text x="89" y="82" font-size="15" font-weight="700" fill="#fff">StreamFusion</text><text x="89" y="102" font-size="11" fill="#c7d2fe">local server + app</text></g></g>
+    <g class="n4"><g transform="translate(742,90)"><rect width="178" height="120" rx="16" fill="url(#n)" stroke="#a855f7"/><text x="89" y="52" font-size="26" font-weight="800" fill="#d8b4fe">4</text><text x="89" y="82" font-size="15" font-weight="700" fill="#f3e8ff">AI tester</text><text x="89" y="102" font-size="11" fill="#d8b4fe">Claude Code or API key</text></g></g>
+    <g class="n5"><g transform="translate(982,90)"><rect width="178" height="120" rx="16" fill="url(#n)" stroke="#ec4899"/><text x="89" y="52" font-size="26" font-weight="800" fill="#f9a8d4">5</text><text x="89" y="82" font-size="15" font-weight="700" fill="#fce7f3">Report</text><text x="89" y="102" font-size="11" fill="#f9a8d4">PDF + DOCX + memory</text></g></g>
+    <text x="600" y="262" font-size="13" fill="#818cf8">Everything runs on your PC. Your phone, apps and test data stay local.</text>
+  </g>
+</svg>
