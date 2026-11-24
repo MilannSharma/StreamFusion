@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { batchTool } from '../agent/batch.js';
 import zlib from 'zlib';
 import path from 'path';
+import { setAdb } from '../testmode/adbref.js';
 import { compareBaseline, baselineDir, getContext, crashScan, decodePng } from '../automation/assertions.js';
 
 // ---------- tiny helpers ----------
@@ -48,6 +49,7 @@ const PKG = /^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$/;
 const PERM = /^[A-Za-z][\w.]*$/;
 
 export function createTools({ runAdb, adbExe, cwd }) {
+  setAdb({ runAdb, adbExe });
   const adb = (serial, args, timeout = 10000) => runAdb(serial ? ['-s', serial, ...args] : args, timeout);
   const sh = (serial, cmd, timeout) => adb(serial, ['shell', cmd], timeout);
   const bin = (serial, args, timeout = 20000) => new Promise((resolve) =>
@@ -293,7 +295,7 @@ export function createTools({ runAdb, adbExe, cwd }) {
     return { ok: true, passed: !bad, detail: bad ? (s.crashed ? 'App crashed: ' + s.lines.slice(0, 3).join(' | ') : s.anrLine) : 'No crash or ANR found', lines: bad ? s.lines : undefined };
   });
   def('assert_screenshot', 'Compare the screen with a stored baseline image called name (the first call creates the baseline). threshold = allowed fraction of changed area (default 0.03). Result: passed true/false.', { name: { type: 'string' }, threshold: { type: 'number' } }, ['name'], async (a) => {
-    const sc = await TOOLS.screenshot.handler({ serial: a.serial, maxDim: 540 });
+    const sc = await TOOLS.screenshot.handler({ serial: a.serial, maxDim: 540, __noFrame: true });
     if (!sc.ok) return sc;
     try { const r = compareBaseline({ dir: a.baselineDir || baselineDir(getContext().projectId), name: a.name, png: Buffer.from(sc.imageBase64, 'base64'), threshold: a.threshold }); return { ok: true, passed: r.passed, detail: r.detail, state: r.state }; }
     catch (e) { return { ok: false, error: e.message }; }

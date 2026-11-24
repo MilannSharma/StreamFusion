@@ -8,7 +8,7 @@ WHO TESTS: read the brief, work out who really uses this product (for example te
 
 EFFICIENCY (important: every call re-sends the whole conversation, so fewer calls = faster and far cheaper):
 - Observe once, then plan. Run a whole test case in ONE batch call (device_batch / web_batch) containing the steps AND the assert steps (web_assert_text, web_assert_url, assert_text, assert_no_crash). Use single calls only to look at a screen or to recover from a failure.
-- Aim for at most 3 tool calls per test case: one batch, one report_check, and one look only if needed. Never look again after a step that succeeded. Do not take screenshots: one is attached to every check automatically, so just leave the screen showing the result.
+- Aim for at most 3 tool calls per test case: one batch, one report_check, and one look only if needed. Never look again after a step that succeeded. Do not take screenshots: the server captures them while each batch runs and attaches them to the case. Put "case": "<this case's id>" (for example TC-03) in every device_batch / web_batch call so the screenshots land on the right case, and call report_check right after each case.
 - If a saved automated test already covers a case, replay it with automation_run instead of testing by hand.
 - Cases that start from the same screen or login: run them back to back. Do not reopen the app or log in again between them.
 - If a step fails, try one alternative, then mark the case fail or blocked and move on.
@@ -47,7 +47,8 @@ export const CHECK_PROPS = {
   steps: SA('Short list of what you did'), expected: S('Expected result'), actual: S('Actual result'),
   severity: { type: 'string', enum: ['critical', 'major', 'minor', 'cosmetic'], description: 'For fail or blocked' },
   location: S('Exact page and button or field where the problem is'), suggestion: S('If fail or blocked: how to fix it. If pass: an optional improvement idea (leave empty if none)'),
-  description: S('One or two lines: what this test case checks and why'), issues: SA('Problems that happened while performing the steps (errors, delays, odd behaviour), even if the case passed'), remark: S('Very short note (max 80 chars) printed under the screenshot')
+  description: S('One or two lines: what this test case checks and why'), issues: SA('Problems that happened while performing the steps (errors, delays, odd behaviour), even if the case passed'), remark: S('Very short note (max 80 chars) printed under the screenshot'),
+  findings: { type: 'array', description: 'Problems you SEE on the screens of this case (not failed checks): visual / layout (ui), flow or wording (ux), slowness (performance), flicker or repeated redraw (rerender), crash, accessibility. Short title each; it is listed in the matching report section with this case screenshot.', items: { type: 'object', properties: { type: { type: 'string', enum: ['ui', 'ux', 'crash', 'performance', 'rerender', 'accessibility'] }, title: { type: 'string' }, severity: { type: 'string', enum: ['critical', 'major', 'minor', 'cosmetic'] } }, required: ['type', 'title'] } }
 };
 export const FINISH_PROPS = {
   summary: S('What was tested, what failed, likely cause, overall verdict'),

@@ -139,6 +139,33 @@ async function attachAndroid(runAdb, serial, target, pid) {
   return { socket, pages: ctx.pages().length };
 }
 
+// ---------- health probe for the report: errors since a time, failed requests, page speed and basic accessibility ----------
+export async function webProbe(since = 0) {
+  if (!page || page.isClosed()) return null;
+  const console_ = logs.console.filter(x => x.t >= since && (x.type === 'error' || x.type === 'pageerror' || (x.type === 'warning' && /Maximum update depth|Too many re-renders|Cannot update a component|Each child in a list|unique "key"/i.test(x.text)))).slice(-8);
+  const network = logs.network.filter(x => x.t >= since && (x.status === 0 || x.status >= 400) && !/favicon|google-analytics|googletagmanager|doubleclick/i.test(x.url) && (x.type === 'xhr' || x.type === 'fetch' || x.type === 'document' || x.type === 'script')).slice(-8);
+  let metrics = null;
+  try {
+    metrics = await Promise.race([page.evaluate(() => new Promise((resolve) => {
+      const out = { url: location.href, ttfb: 0, load: 0, fcp: 0, lcp: 0, cls: 0, longTaskMs: 0, domNodes: document.getElementsByTagName('*').length, heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0, audit: {} };
+      const nav = performance.getEntriesByType('navigation')[0];
+      if (nav) { out.ttfb = Math.round(nav.responseStart); out.load = Math.round(nav.loadEventEnd || nav.domContentLoadedEventEnd || 0); }
+      const fcp = performance.getEntriesByName('first-contentful-paint')[0]; if (fcp) out.fcp = Math.round(fcp.startTime);
+      const seen = (type, cb) => { try { const o = new PerformanceObserver((l) => l.getEntries().forEach(cb)); o.observe({ type, buffered: true }); return o; } catch (e) { return null; } };
+      const obs = [seen('largest-contentful-paint', e => { out.lcp = Math.round(e.startTime); }), seen('layout-shift', e => { if (!e.hadRecentInput) out.cls += e.value; }), seen('longtask', e => { out.longTaskMs += Math.max(0, e.duration - 50); })];
+      const q = (s) => Array.from(document.querySelectorAll(s));
+      const named = (e) => (e.getAttribute('aria-label') || e.getAttribute('aria-labelledby') || e.getAttribute('title') || (e.textContent || '').trim() || e.querySelector('img[alt]:not([alt=""])'));
+      out.audit.imgNoAlt = q('img').filter(i => !i.hasAttribute('alt')).length;
+      out.audit.inputNoLabel = q('input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea').filter(i => !i.getAttribute('aria-label') && !i.getAttribute('aria-labelledby') && !i.getAttribute('placeholder') && !(i.id && document.querySelector('label[for="' + i.id + '"]')) && !i.closest('label')).length;
+      out.audit.btnNoName = q('button, a[href], [role=button]').filter(e => !named(e)).length;
+      out.audit.overflowX = document.documentElement.scrollWidth > window.innerWidth + 2;
+      out.audit.tinyTargets = q('button, a[href], input, select, [role=button]').filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.width < 24 || r.height < 24); }).length;
+      setTimeout(() => { obs.forEach(o => o && o.disconnect()); out.cls = Math.round(out.cls * 1000) / 1000; resolve(out); }, 150);
+    })), new Promise((r) => setTimeout(() => r(null), 6000))]);
+  } catch (e) {}
+  return { console: console_, network, metrics };
+}
+
 // ---------- the user's own desktop Chrome / Edge ----------
 const DESKTOP_PORT = 9333;
 let background = false; // app testing: the browser is opened hidden (headless), so the user is not disturbed

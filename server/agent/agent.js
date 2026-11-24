@@ -1,5 +1,7 @@
 // M3-A: Chat agent. A manual tool loop over the M2 device tools using the official Anthropic SDK.
 import Anthropic from '@anthropic-ai/sdk';
+import { attachEvidence, setActiveRun } from '../testmode/evidence.js';
+import { startRunCollectors, stopRunCollectors } from '../testmode/collectors/index.js';
 import { createRun, saveShot, addStep, addCheck, finishRun, discardRun, cleanCheck, cleanExtras, progressOf, findRunBySession, reopenRun, surfaceSince } from '../testmode/runs.js';
 import { TEST_RULES, CHECK_PROPS, FINISH_PROPS } from './prompts.js';
 import { compactUiTree } from '../mcp/compact.mjs';
@@ -105,6 +107,8 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
     const again = findRunBySession(sessionId); // same chat: keep adding to the same report
     run = again ? reopenRun(again) : createRun({ title: testMode.title, model, serial, attachments: testMode.attachments || [], instructions: String(testMode.summary ?? message).slice(0, 4000), deviceInfo, projectId: testMode.projectId || null, sessionId });
+    setActiveRun(run);
+    await startRunCollectors(run, serial, '').catch(() => {});
     anthropicTools.push(...REPORT_TOOLS);
     emit({ type: 'run_started', runId: run.id });
   }
@@ -113,7 +117,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
   let runEnded = false;
   let lastWorld = 'device';
   let phase = 'app';
-  const endRun = (reason) => { if (run && !runEnded) { runEnded = true; if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); } };
+  const endRun = async (reason) => { if (run && !runEnded) { runEnded = true; setActiveRun(null); await stopRunCollectors(run).catch(() => {}); if (!run.checks.length) { discardRun(run); emitDone({ type: 'no_report' }); return; } finishRun(run, run.summary, reason); emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); } };
   const emitDone = emit;
   emit = (ev) => { emitDone(ev); if (ev.type === 'done') endRun(ev.reason); if (ev.type === 'error') endRun('error'); };
   const s = sessions.get(sessionId) || { messages: [] };
@@ -151,10 +155,9 @@ The user chose their REAL phone (serial ${serial}). Work only on it and never st
         if (run && (c.name === 'report_check' || c.name === 'finish_report')) {
           let r = { ok: true };
           if (c.name === 'report_check') {
-            const sf = surfaceSince(run); const ck = cleanCheck({ ...c.input, surface: sf.label || (lastWorld === 'web' ? 'Browser' : 'App') }); const status = ck.status;
-            let shot = null; if (sf.last) lastWorld = sf.last === 'web' ? 'web' : 'device';
-            try { const sc = lastWorld === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial, maxDim: 700 }); if (sc.ok) shot = saveShot(run, sc.imageBase64, status); } catch (e) {}
-            addCheck(run, { ...ck, screenshot: shot });
+            const ck = cleanCheck(c.input); const status = ck.status;
+            const ev = await attachEvidence(run, ck, async (w) => { const sc = w === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({ __noFrame: true }) : await tools.screenshot.handler({ serial, maxDim: 700, __noFrame: true }); return sc.ok ? sc.imageBase64 : null; });
+            addCheck(run, { ...ck, screenshot: ev.screenshot, screenshots: ev.screenshots, surface: ev.surface || ck.surface });
             emit({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } });
             emit({ type: 'progress', ...progressOf(run) });
           } else { run.summary = String(c.input.summary || ''); run.report = cleanExtras(c.input); }

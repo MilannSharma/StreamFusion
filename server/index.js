@@ -15,6 +15,7 @@ import { friendlyApp } from './routes/appnames.js';
 import { createEmulatorRouter } from './emulator/router.js';
 import { createDeviceRouter } from './device/router.js';
 import { createAgentRouter } from './agent/router.js';
+import { repairStaleProxies } from './testmode/collectors/index.js';
 import { createWebRouter } from './web/router.js';
 import { createProjectsRouter } from './projects/router.js';
 import { createMcpActivity } from './mcp/activity.js';
@@ -1049,5 +1050,7 @@ if (fs.existsSync(distPath)) {
 const PORT = parseInt(process.env.SF_PORT || '3001', 10);
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`[StreamFusion Server] Backend API and UI running at http://127.0.0.1:${PORT}`);
+  // a test that was cut off (crash, power loss) may have left a phone pointing at a capture proxy that is gone: put it right
+  setTimeout(() => repairStaleProxies().then(r => { for (const x of r) console.log(`[StreamFusion Server] capture proxy on ${x.serial}: ${x.ok ? 'removed' : 'could not be removed (phone offline?)'}`); }).catch(() => {}), 4000);
 });
 

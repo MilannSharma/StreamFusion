@@ -2,6 +2,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import * as recorder from '../automation/recorder.js';
 import { getContext } from '../automation/assertions.js';
 import { buildDocx as makeDocx, buildPdf as makePdf } from './report.js';
@@ -70,6 +71,55 @@ export function surfaceSince(run) {
   const last = st.length ? (/^web_/.test(st[st.length - 1].name) ? 'web' : 'phone') : null;
   return { last, web, app, label: web && app ? 'App + Browser' : web ? 'Browser' : app ? 'App' : '' };
 }
+// ---------- evidence frames: real screenshots taken WHILE a case runs, attached to that case later ----------
+export function addFrame(run, { base64, world, caseId, note }) {
+  if (!base64) return null;
+  run.frames ||= [];
+  const hash = crypto.createHash('md5').update(base64).digest('hex');
+  const cid = caseId ? String(caseId).trim() : '';
+  const last = [...run.frames].reverse().find(f => f.world === world);
+  if (last && last.hash === hash && last.caseId === cid) return null; // the screen did not change: no second copy
+  const file = `shots/f${String(run.frames.length + 1).padStart(3, '0')}-${world}.png`;
+  fs.writeFileSync(path.join(runDir(run.id), file), Buffer.from(base64, 'base64'));
+  const fr = { file, t: Date.now(), world, caseId: cid, note: String(note || '').slice(0, 120), hash, used: false };
+  run.frames.push(fr); save(run);
+  return fr;
+}
+// The frames of one case (up to max): those tagged with its id, else the not-yet-used untagged ones (cases reported one by one).
+// Every frame is used once: a case never shows another case's screen.
+export function claimFrames(run, caseId, max = 3) {
+  const id = String(caseId || '').trim().toLowerCase(), all = run.frames || [];
+  let mine = id ? all.filter(f => !f.used && f.caseId.toLowerCase() === id) : [];
+  if (!mine.length) mine = all.filter(f => !f.used && !f.caseId);
+  let pick = mine;
+  if (mine.length > max) { const fail = mine.find(f => /fail/i.test(f.note)); pick = [mine[0], ...(fail && fail !== mine[0] && fail !== mine[mine.length - 1] ? [fail] : []), mine[mine.length - 1]].slice(0, max); }
+  mine.forEach(f => { f.used = true; });
+  return pick;
+}
+// ---------- health findings (crashes, slowness, console errors ...) found automatically while the test ran ----------
+export function addHealth(run, ev) {
+  run.health ||= { events: [], samples: [] };
+  const key = ev.key || (ev.type + '|' + ev.title);
+  if (run.health.events.some(e => e.key === key)) return false;
+  run.health.events.push({ t: Date.now(), key, severity: 'minor', ...ev });
+  if (run.health.events.length > 300) run.health.events.shift();
+  save(run); return true;
+}
+// What the automatic checks could and could not do in this run (shown in the report, so a missing detector is never silent).
+// status: ok | partial | unavailable | error | skipped. A problem is sticky: a later "ok" does not hide an earlier "partial".
+const COV_RANK = { ok: 0, skipped: 1, partial: 2, unavailable: 3, error: 4 };
+export function setCoverage(run, name, label, status, note = '') {
+  if (!run) return;
+  run.health ||= { events: [], samples: [] };
+  const cov = (run.health.coverage ||= {}), old = cov[name];
+  if (old && status === 'ok' && COV_RANK[old.status] >= COV_RANK.partial) return; // keep the problem visible
+  if (old && old.status === status && old.note === note) return;
+  cov[name] = { label, status, note: String(note).slice(0, 300), t: Date.now() };
+  save(run);
+}
+export const persist = (run) => save(run);
+export function recordBatch(run, b) { run.batches ||= []; run.batches.push(b); if (run.batches.length > 300) run.batches.shift(); }
+export function addSample(run, s) { run.health ||= { events: [], samples: [] }; run.health.samples.push({ t: Date.now(), ...s }); if (run.health.samples.length > 400) run.health.samples.shift(); }
 export function addStep(run, step) { run.steps.push({ t: new Date().toISOString(), ...step }); if (run.steps.length % 5 === 0) save(run); }
 export function progressOf(run) {
   const n = (k) => run.checks.filter(c => c.status === k).length;
@@ -93,6 +143,7 @@ export function addCheck(run, check) {
     const merged = { ...old, t: new Date().toISOString() };
     for (const [k, v] of Object.entries(check)) if (v !== undefined && v !== '' && !(Array.isArray(v) && !v.length)) merged[k] = v;
     if (!check.screenshot && old.screenshot) merged.screenshot = old.screenshot;
+    if (!(check.screenshots || []).length && (old.screenshots || []).length) merged.screenshots = old.screenshots;
     run.checks[at] = merged; save(run);
   } else {
     recorder.onCheck(check); run.checks.push({ t: new Date().toISOString(), ...check }); save(run);
@@ -161,7 +212,8 @@ export function cleanCheck(i = {}) {
     id: opt(i.id, 30), total: Number.isFinite(Number(i.total)) && Number(i.total) > 0 ? Math.min(5000, Math.round(Number(i.total))) : undefined, title: str(i.title, 200), status: ['pass', 'fail', 'blocked'].includes(i.status) ? i.status : 'blocked', evidence: str(i.evidence, 3000),
     module: opt(i.module, 80), persona: opt(i.persona, 60), location: opt(i.location, 160), category: CATS.includes(i.category) ? i.category : undefined,
     severity: SEV.includes(i.severity) ? i.severity : undefined, steps: list(i.steps), expected: opt(i.expected, 600), actual: opt(i.actual, 1200), suggestion: opt(i.suggestion, 600),
-    description: opt(i.description, 400), issues: list(i.issues, 10, 300), remark: opt(i.remark, 90), surface: opt(i.surface, 20)
+    description: opt(i.description, 400), issues: list(i.issues, 10, 300), remark: opt(i.remark, 90), surface: opt(i.surface, 20),
+    findings: (Array.isArray(i.findings) ? i.findings : []).slice(0, 8).map(x => ({ type: ['ui', 'ux', 'crash', 'performance', 'rerender', 'accessibility', 'other'].includes(x?.type) ? x.type : 'other', title: str(x?.title, 160), severity: SEV.includes(x?.severity) ? x.severity : 'minor' })).filter(x => x.title)
   };
 }
 export function cleanExtras(b = {}) {

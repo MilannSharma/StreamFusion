@@ -142,6 +142,9 @@ export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId
         </label>); })}
     </div>
   );
+  const [capReal, setCapReal] = useState(false);
+  useEffect(() => { fetch('/api/agent/settings').then(r => r.json()).then(j => setCapReal(!!j.settings?.networkCaptureRealPhone)).catch(() => {}); }, []);
+  const toggleCap = (on: boolean) => { setCapReal(on); fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ networkCaptureRealPhone: on }) }).catch(() => {}); };
   const casesRef = useRef<HTMLInputElement>(null), docsRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const set = (k: keyof Brief) => (e: React.ChangeEvent<any>) => setBrief({ ...brief, [k]: e.target.value });
@@ -259,6 +262,7 @@ export const TestBrief: React.FC<Props> = ({ serial, onNote, projects, projectId
         </div>
         {files.some(f => f.kind === 'docs') && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>{chips('docs')}</div>}
         {picker(savedDocs, 'docs', 'Saved files of this project (PRD, specs…): tick the ones to use')}
+        {!isWeb && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 4px 0', fontSize: 12.5, color: INK, cursor: 'pointer' }}><input type="checkbox" checked={capReal} onChange={e => toggleCap(e.target.checked)} /><span>Also watch the app's API calls on a real phone <span style={{ color: SUB }}>(phone and PC must be on the same Wi-Fi; the phone's proxy is set during the test and removed after. Emulators are always watched.)</span></span></label>}
         <div style={{ fontSize: 11.5, color: SUB, padding: '8px 4px 0' }}>Login is stored encrypted on this PC and never appears in reports.</div>
         <div style={{ ...group, marginTop: 14, padding: '10px 14px', fontSize: 12.5, lineHeight: 1.7 }}>
           <div style={{ fontWeight: 650, marginBottom: 2 }}>Ready to start?</div>

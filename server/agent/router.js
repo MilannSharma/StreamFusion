@@ -10,6 +10,10 @@ import { lastWorld } from '../mcp/activity.js';
 import { extractText } from './extract.js';
 import { listChats, getChat, saveChat, deleteChat, renameChat } from './chats.js';
 import { runAgent, resolveApproval, resetSession, MODELS } from './agent.js';
+import { setActiveRun, attachEvidence, frame } from '../testmode/evidence.js';
+import { startRunCollectors, stopRunCollectors } from '../testmode/collectors/index.js';
+import { getSettings, saveSettings } from '../testmode/collectors/netproxy.js';
+import { appInfo } from '../testmode/report.js';
 import { openIssuesOf } from '../projects/store.js';
 import { setWebBackground, shutdownBackgroundBrowser } from '../web/tools.js';
 
@@ -25,6 +29,11 @@ async function cachedBuild(run, fmt) {
 
 export function createAgentRouter({ tools }) {
   const router = express.Router();
+  // A screenshot the AI takes itself during a test is kept as evidence too (it used to be thrown away).
+  for (const [n, world] of [['screenshot', 'phone'], ['web_screenshot', 'web']]) {
+    const t = tools[n]; if (!t || t.__hooked) continue; const orig = t.handler; t.__hooked = true;
+    t.handler = async (a) => { const r = await orig(a); if (r?.ok && !a?.__noFrame) frame({ base64: r.imageBase64, world, caseId: '', note: 'screenshot' }); return r; };
+  }
   let chatRun = null; // the report of the chat turn that is running now (its checks keep landing here even if the AI calls report_finish early)
   let current = null; // the open test-report run (in-app Test mode, or started by an external MCP client with report_begin)
   // A chat belongs to one world: the browser page only gets web_* tools, the phone page only device tools.
@@ -36,7 +45,11 @@ export function createAgentRouter({ tools }) {
 The user chose their REAL phone (serial ${serial}). Work only on it: pass serial "${serial}" to every device tool. Never call emulator_start, emulator_status or emulator_stop and never start the Android emulator.`;
   const otherWorldNames = (world, serial) => (world === 'phone' && isRealPhone(serial) ? ['emulator_start', 'emulator_status', 'emulator_stop'] : world === 'web' ? Object.keys(tools).filter(n => !isWebTool(n)).concat(['emulator_start', 'emulator_status', 'emulator_stop']) : []);
   const dangerousNames = () => Object.values(tools).filter(t => t.dangerous).map(t => t.name);
-  const closeRun = (reason, emit) => { if (!current) return; const r = current; current = null; if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status, savedTo: r.savedTo }); };
+  const closeRun = async (reason, emit) => { if (!current) return; const r = current; current = null; setActiveRun(null); await stopRunCollectors(r).catch(() => {}); if (!r.checks.length) { discardRun(r); emit?.({ type: 'no_report' }); return; } finishRun(r, r.summary, reason); emit?.({ type: 'report_ready', runId: r.id, status: r.status, savedTo: r.savedTo }); };
+
+  // Settings for the automatic checks (capturing API traffic on a REAL phone is opt-in)
+  router.get('/settings', (req, res) => res.json({ success: true, settings: getSettings() }));
+  router.post('/settings', (req, res) => res.json({ success: true, settings: saveSettings({ networkCaptureRealPhone: !!req.body?.networkCaptureRealPhone }) }));
 
   router.get('/models', (req, res) => res.json({ success: true, models: MODELS }));
 
@@ -58,14 +71,15 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
       if (b.testMode) {
         let deviceInfo = null;
         const again = findRunBySession(String(b.sessionId)); // same chat: keep adding to the same report
-        if (again) { if (current && current.id !== again.id) closeRun('aborted'); run = reopenRun(again); }
+        if (again) { if (current && current.id !== again.id) await closeRun('aborted'); run = reopenRun(again); }
         else {
-          closeRun('aborted');
+          await closeRun('aborted');
           try { const d = await tools.device_info?.handler({ serial: b.serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
           run = createRun({ title: String(b.testMode.title || '').slice(0, 120), model: 'Claude Code', serial: b.serial, attachments: (Array.isArray(b.testMode.attachments) ? b.testMode.attachments : []).slice(0, 10).map(a => ({ name: String(a.name || 'file').slice(0, 120) })), instructions: String(b.testMode.summary || '').slice(0, 4000), deviceInfo, projectId: b.testMode.projectId ? String(b.testMode.projectId) : null, sessionId: String(b.sessionId) });
         }
         if (run.projectId) { try { setPriorIssues(run, openIssuesOf(run.projectId)); } catch (e) {} }
-        current = run; chatRun = run; run.emit = emit;
+        current = run; chatRun = run; run.emit = emit; setActiveRun(run);
+        if (b.world !== 'web') await startRunCollectors(run, b.serial, appInfo(run).target).catch(() => {});
         emit({ type: 'run_started', runId: run.id });
       }
       let reason = 'complete';
@@ -78,7 +92,7 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
       };
       await runClaudeCli({ sessionId: String(b.sessionId), message: String(b.message), serial: b.serial, mode: b.mode === 'auto' ? 'auto' : 'ask', model: b.model, testMode: !!run, dangerousNames: dangerousNames(), blockedNames: otherWorldNames(b.world, b.serial), worldPrompt: (WORLD_PROMPT[b.world] || '') + (b.world === 'phone' && isRealPhone(b.serial) ? REAL_PHONE(b.serial) : ''), world: b.world, emit: wrap, signal: ac.signal });
       if (run && run.total > run.checks.length && reason === 'complete') emit({ type: 'text', text: `Only ${run.checks.length} of ${run.total} test cases have a result so far. Send "continue" and I will carry on with the rest: the same report keeps growing.` });
-      if (run) { if (current === run) closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
+      if (run) { if (current === run) await closeRun(reason, emit); else if (run.checks.length) emit({ type: 'report_ready', runId: run.id, status: run.status, savedTo: run.savedTo }); else { discardRun(run); emit({ type: 'no_report' }); } } // the AI may have finished it itself with report_finish
       chatRun = null;
       if (b.world === 'phone') await shutdownBackgroundBrowser().catch(() => {}); // the hidden browser used for cross-checks is closed when the turn ends
       return res.end();
@@ -133,33 +147,34 @@ The user chose their REAL phone (serial ${serial}). Work only on it: pass serial
   // Test reports written by an AI that drives StreamFusion over MCP (report_begin / report_check / report_finish)
   router.post('/report/begin', async (req, res) => {
     if (chatRun) return res.json({ ok: true, runId: chatRun.id, note: 'A report is already open for this chat. Do not start another one: continue with report_check for every test case, then report_finish.' });
-    closeRun('aborted');
+    await closeRun('aborted');
     const serial = String(req.body?.serial || 'emulator-5554');
     let deviceInfo = null;
     try { const d = await tools.device_info?.handler({ serial }); if (d?.ok) deviceInfo = { model: d.model, androidVersion: d.androidVersion || d.release }; } catch (e) {}
     current = createRun({ title: String(req.body?.title || 'Test run').slice(0, 120), model: String(req.body?.client || 'MCP client'), serial, projectId: getContext().projectId || null, instructions: String(req.body?.instructions || '').slice(0, 4000), deviceInfo });
     if (current.projectId) { try { setPriorIssues(current, openIssuesOf(current.projectId)); } catch (e) {} }
+    setActiveRun(current);
+    await startRunCollectors(current, serial, '').catch(() => {});
     res.json({ ok: true, runId: current.id });
   });
   router.post('/report/check', async (req, res) => {
-    if (!current && chatRun) { reopenRun(chatRun); current = chatRun; } // report_finish was called early: later cases still count
+    if (!current && chatRun) { reopenRun(chatRun); current = chatRun; setActiveRun(current); startRunCollectors(current, current.serial, '').catch(() => {}); } // report_finish was called early: later cases still count
     if (!current) return res.json({ ok: false, error: 'No open report. Call report_begin first (or turn on Test mode in StreamFusion).' });
     const b = req.body || {};
     const status = ['pass', 'fail', 'blocked'].includes(b.status) ? b.status : 'blocked';
-    const sf = surfaceSince(current);
-    const world = b.world === 'web' || b.world === 'phone' ? b.world : (sf.last || lastWorld()); // the screenshot comes from the side the case really used
-    let shot = null;
-    try { const sc = world === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({}) : await tools.screenshot.handler({ serial: current.serial, maxDim: 700 }); if (sc.ok) shot = saveShot(current, sc.imageBase64, status); } catch (e) {}
-    const ck = cleanCheck({ ...b, status, surface: sf.label || (world === 'web' ? 'Browser' : 'App') });
-    addCheck(current, { ...ck, screenshot: shot });
+    const ck = cleanCheck({ ...b, status });
+    const ev = await attachEvidence(current, ck, async (w) => { const sc = w === 'web' && tools.web_screenshot ? await tools.web_screenshot.handler({ __noFrame: true }) : await tools.screenshot.handler({ serial: current.serial, maxDim: 700, __noFrame: true }); return sc.ok ? sc.imageBase64 : null; });
+    addCheck(current, { ...ck, screenshot: ev.screenshot, screenshots: ev.screenshots, surface: ev.surface || ck.surface });
+    const shot = ev.screenshot;
     try { current.emit?.({ type: 'check', check: { id: ck.id, title: ck.title, status, evidence: ck.actual || ck.evidence, persona: ck.persona } }); current.emit?.({ type: 'progress', ...progressOf(current) }); } catch (e) {}
     res.json({ ok: true, recorded: current.checks.length, ofTotal: current.total || undefined, screenshot: !!shot });
   });
   router.post('/report/finish', async (req, res) => {
-    if (!current && chatRun) { reopenRun(chatRun); current = chatRun; }
+    if (!current && chatRun) { reopenRun(chatRun); current = chatRun; setActiveRun(current); startRunCollectors(current, current.serial, '').catch(() => {}); }
     if (!current) return res.json({ ok: false, error: 'No open report.' });
-    const r = current; r.summary = String(req.body?.summary || ''); r.report = cleanExtras(req.body || {}); closeRun('complete');
-    res.json({ ok: true, runId: r.id, status: r.status, pdf: '/api/agent/reports/' + r.id + '/pdf', docx: '/api/agent/reports/' + r.id + '/docx' });
+    const r = current; r.summary = String(req.body?.summary || ''); r.report = cleanExtras(req.body || {}); await closeRun('complete');
+    const gaps = Object.values(r.health?.coverage || {}).filter(c => c.status !== 'ok').map(c => `${c.label}: ${c.status}${c.note ? ' (' + c.note + ')' : ''}`).slice(0, 6);
+    res.json({ ok: true, runId: r.id, status: r.status, ...(gaps.length ? { coverageWarnings: gaps, note: 'Some automatic checks could not fully run. Say so in one short line in your final message.' } : {}), pdf: '/api/agent/reports/' + r.id + '/pdf', docx: '/api/agent/reports/' + r.id + '/docx' });
   });
   return router;
 }
